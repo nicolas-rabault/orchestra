@@ -16,6 +16,7 @@ function fakeGh({ issues = [], me = 'nico' } = {}) {
   const calls = [];
   const state = issues.map((i) => ({ labels: [], assignees: [], state: 'open', body: '', ...i }));
   let next = 200;
+  const find = (n) => state.find((x) => x.number === n);
   return {
     calls,
     state,
@@ -25,12 +26,15 @@ function fakeGh({ issues = [], me = 'nico' } = {}) {
       listIssues: ({ labels = [] } = {}) =>
         state.filter((i) => labels.every((l) => i.labels.includes(l))),
       createIssue: (i) => { const n = next++; state.push({ number: n, ...i, state: 'open', assignees: [] }); calls.push(['create', i.title]); return n; },
-      updateIssue: (n, i) => { calls.push(['update', n]); Object.assign(state.find((x) => x.number === n), i); },
-      reopenIssue: (n) => { calls.push(['reopen', n]); state.find((x) => x.number === n).state = 'open'; },
-      closeIssue: (n) => { calls.push(['close', n]); state.find((x) => x.number === n).state = 'closed'; },
-      addLabel: (n, l) => state.find((x) => x.number === n).labels.push(l),
-      removeLabel: () => {},
-      assign: (n, who) => state.find((x) => x.number === n).assignees.push(who),
+      updateIssue: (n, i) => { calls.push(['update', n]); Object.assign(find(n), i); },
+      reopenIssue: (n) => { calls.push(['reopen', n]); find(n).state = 'open'; },
+      closeIssue: (n) => { calls.push(['close', n]); find(n).state = 'closed'; },
+      addLabel: (n, l) => find(n).labels.push(l),
+      // A real removal, not a no-op: `reserve` and `release` are read back by later assertions,
+      // and a stub that always succeeds silently is exactly how their own bugs went untested.
+      removeLabel: (n, l) => { const i = find(n); i.labels = i.labels.filter((x) => x !== l); },
+      assign: (n, who) => { calls.push(['assign', n, who]); find(n).assignees.push(who); },
+      unassign: (n, who) => { calls.push(['unassign', n, who]); const i = find(n); i.assignees = i.assignees.filter((x) => x !== who); },
       listComments: () => [],
       addComment: () => {},
     },
@@ -122,4 +126,99 @@ test('publish creates the issues and deletes the draft', () => {
   assert.deepEqual(res.keys, ['demo/D1']);
   assert.deepEqual(ctx.store.drafts(), []);
   assert.ok(f.calls.some((c) => c[0] === 'create' && c[1] === 'demo/D1 — First thing'));
+});
+
+// claim/release lifecycle — entirely uncovered before this round, which is how a release that left
+// the GitHub assignee behind (assign is `--add-assignee`, which only ever ADDS) shipped unnoticed.
+test('claim, release, then a DIFFERENT user claims — release must free the assignee, not just the label', () => {
+  const f = fakeGh({ issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task] }] });
+  const { store } = online(f);
+  assert.deepEqual(store.claim('demo/D1', 'alice'), { ok: true });
+  store.release('demo/D1');
+  const result = store.claim('demo/D1', 'bob');
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(f.state.find((i) => i.number === 5).assignees, ['bob']);
+});
+
+test('claim on a task already held by someone else fails, naming the holder', () => {
+  const f = fakeGh({
+    issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task], assignees: ['alice'] }],
+  });
+  const { store } = online(f);
+  assert.deepEqual(store.claim('demo/D1', 'bob'), { ok: false, holder: 'alice' });
+});
+
+test('close closes the issue, and the overlay then reports it landed', () => {
+  const f = fakeGh({
+    me: 'nico',
+    issues: [
+      { number: 1, title: 'demo — Demo', labels: [LABELS.programme], author: 'nico', body: '- **Roadmap** demo\n' },
+      { number: 5, title: taskTitle(task), labels: [LABELS.task], body: 'Programme: #1\n' },
+    ],
+  });
+  const { store } = online(f);
+  assert.deepEqual(store.close('demo/D1'), { noop: false });
+  assert.equal(store.overlay().get('demo/D1').status, 'landed');
+});
+
+test('reserve removes the open label that openRoadmap added', () => {
+  const f = fakeGh({
+    issues: [{ number: 1, title: 'demo — Demo', labels: [LABELS.programme], body: '- **Roadmap** demo\n' }],
+  });
+  const { store } = online(f);
+  store.openRoadmap('demo');
+  assert.ok(f.state.find((i) => i.number === 1).labels.includes('open'));
+  store.reserve('demo');
+  assert.ok(!f.state.find((i) => i.number === 1).labels.includes('open'));
+});
+
+test('whoami, programmes and drafts read the same shapes the offline store returns', () => {
+  const f = fakeGh({
+    me: 'nico',
+    issues: [{ number: 1, title: 'demo — Demo', labels: [LABELS.programme], author: 'nico', body: '- **Roadmap** demo\n' }],
+  });
+  const { store, r, cfg } = online(f);
+  assert.equal(store.whoami(), 'nico');
+
+  const [p] = store.programmes();
+  assert.equal(p.slug, 'demo');
+  assert.equal(p.owner, 'nico');
+  assert.equal(p.open, false);
+  assert.equal(p.state, 'open');
+  assert.equal(p.ref, 1);
+
+  // The filename disagrees with the frontmatter on purpose: drafts() must read the slug the same
+  // way publish() does, or a draft can be listed under one name and published under another.
+  const dir = join(r.root, cfg.roadmaps.drafts);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'foo.md'), ROADMAP);
+  const [d] = store.drafts();
+  assert.equal(d.slug, 'demo');
+  assert.equal(d.path, join(dir, 'foo.md'));
+});
+
+test('a `# ` heading in a draft becomes the programme title and is not duplicated into the prose', () => {
+  const f = fakeGh();
+  const ctx = online(f);
+  const dir = join(ctx.r.root, ctx.cfg.roadmaps.drafts);
+  mkdirSync(dir, { recursive: true });
+  const headed = ROADMAP.replace(/^(---[\s\S]*?---\n\n)/, '$1# Demo Title\n\n');
+  const p = join(dir, 'demo.md');
+  writeFileSync(p, headed);
+  ctx.store.publish(p);
+  const programme = f.state.find((i) => i.labels?.includes(LABELS.programme));
+  assert.equal(programme.title, 'demo — Demo Title');
+  assert.ok(!programme.body.includes('# Demo Title'));
+});
+
+test('a headingless draft still publishes, titled by its own slug', () => {
+  const f = fakeGh();
+  const ctx = online(f);
+  const dir = join(ctx.r.root, ctx.cfg.roadmaps.drafts);
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, 'demo.md');
+  writeFileSync(p, ROADMAP);
+  ctx.store.publish(p);
+  const programme = f.state.find((i) => i.labels?.includes(LABELS.programme));
+  assert.equal(programme.title, 'demo — demo');
 });
