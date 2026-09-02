@@ -1,7 +1,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
@@ -52,5 +52,23 @@ test('an unknown subcommand exits non-zero and lists what exists', () => {
   assert.throws(
     () => execFileSync('node', [BIN, 'wat'], { cwd: r.root, encoding: 'utf8', stdio: 'pipe' }),
     (e) => e.status === 2 && /unknown subcommand "wat"/.test(e.stderr),
+  );
+});
+
+test('doctor marks a nested default at the leaf, not the whole group', () => {
+  const r = repo({ mode: 'offline', config: { roadmaps: { drafts: '.orchestra/wip' } } });
+  const out = run(r.root, 'doctor');
+  const draftsLine = out.split('\n').find((l) => l.includes('roadmaps.drafts'));
+  const publishedLine = out.split('\n').find((l) => l.includes('roadmaps.published'));
+  assert.match(publishedLine, /\(default\)/);
+  assert.doesNotMatch(draftsLine, /\(default\)/);
+});
+
+test('a broken config surfaces through a non-machine subcommand as exit 2, not a silent off switch', () => {
+  const r = repo();
+  writeFileSync(join(r.root, '.orchestra', 'config.json'), JSON.stringify({ gates: [{}] }));
+  assert.throws(
+    () => execFileSync('node', [BIN, 'roadmap', 'board'], { cwd: r.root, encoding: 'utf8', stdio: 'pipe' }),
+    (e) => e.status === 2 && /"mode" is required/.test(e.stderr) && /gates\[0\]/.test(e.stderr),
   );
 });

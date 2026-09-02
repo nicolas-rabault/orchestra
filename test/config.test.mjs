@@ -93,3 +93,18 @@ test('a non-object JSON value is an error, not a TypeError', () => {
   assert.throws(() => loadConfig(r.root), (e) =>
     !(e instanceof TypeError) && e.message.includes('must contain a JSON object'));
 });
+
+test('defaulted is leaf-grained: a nested default only marks the leaf actually left unset', () => {
+  const r = repo({ config: { roadmaps: { drafts: '.orchestra/wip' } } });
+  const cfg = loadConfig(r.root);
+  assert.ok(cfg.defaulted.includes('roadmaps.published'));
+  assert.ok(!cfg.defaulted.includes('roadmaps.drafts'));
+});
+
+test('defaulted lists an entirely-absent nested key by its bare group name, not by leaf', () => {
+  const r = repo();
+  const cfg = loadConfig(r.root);
+  assert.ok(cfg.defaulted.includes('roadmaps'));
+  assert.ok(!cfg.defaulted.includes('roadmaps.drafts'));
+  assert.ok(!cfg.defaulted.includes('roadmaps.published'));
+});
