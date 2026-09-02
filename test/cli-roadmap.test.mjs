@@ -277,3 +277,26 @@ test('cmdPublish catches an enrolment failure, reports both halves, and exits no
   assert.match(text, /orchestra roadmap enrol/);
   assert.equal(exitCode, 1);
 });
+
+// `board` and `publish` both used to list drafts themselves, deriving the slug as
+// `basename(f, '.md')` — a THIRD copy of the rule `lib/store/draft.mjs` exists to hold, and the one
+// that regresses to the filename. A draft named `zzz-notes.md` whose frontmatter says
+// `roadmap: demo` was printed as `unpublished: zzz-notes`, a roadmap name that will never exist:
+// publishing it produces `demo`. Both now go through `store.drafts()`, the twelfth interface method.
+test('board names an unpublished draft by its frontmatter slug, never by its filename', () => {
+  const { r, cfg } = offlineProject();
+  writeDraft(r.root, cfg, 'zzz-notes.md', ROADMAP);
+  const { text } = capture(() => roadmapCommand({ cfg, args: ['board'] }));
+  assert.match(text, /^unpublished: demo is a draft — nobody else can see it$/m);
+  assert.doesNotMatch(text, /zzz-notes/);
+});
+
+// The default target of a bare `publish` must be a decided draft, not whichever one the filesystem
+// happened to hand back first: `store.drafts()` sorts, and this pins which draft that picks.
+test('publish with no path takes the first draft in sorted order, and publishes its own slug', () => {
+  const { r, cfg } = offlineProject();
+  writeDraft(r.root, cfg, 'zzz-notes.md', ROADMAP.replaceAll('demo', 'zeta'));
+  writeDraft(r.root, cfg, 'alpha-notes.md', ROADMAP.replaceAll('demo', 'alpha'));
+  const { text } = capture(() => roadmapCommand({ cfg, args: ['publish'] }));
+  assert.match(text, /published alpha: alpha\/D1/);
+});
