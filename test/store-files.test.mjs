@@ -93,3 +93,36 @@ test('the overlay is EMPTY offline — the board derives from git and the regist
   ctx.store.publish(draft(ctx));
   assert.equal(ctx.store.overlay().size, 0);
 });
+
+test('republishing a byte-identical draft is a clean no-op: no error, no second commit, draft still removed', () => {
+  const ctx = offline();
+  ctx.store.publish(draft(ctx));
+  const commitCount = () => execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: ctx.r.root, encoding: 'utf8' }).trim();
+  const before = commitCount();
+  const p2 = draft(ctx);
+  assert.doesNotThrow(() => ctx.store.publish(p2));
+  assert.equal(commitCount(), before, 'a byte-identical republish makes no new commit');
+  assert.ok(!existsSync(p2), 'the draft is gone even though nothing was committed');
+});
+
+test('after a successful publish the working tree is clean for the published path, and the draft is gone', () => {
+  const ctx = offline();
+  const p = draft(ctx);
+  ctx.store.publish(p);
+  const status = execFileSync(
+    'git', ['status', '--porcelain', '--', ctx.cfg.roadmaps.published],
+    { cwd: ctx.r.root, encoding: 'utf8' },
+  );
+  assert.equal(status, '');
+  assert.ok(!existsSync(p));
+});
+
+test('a draft whose filename disagrees with its frontmatter slug is listed and published under the frontmatter slug', () => {
+  const ctx = offline();
+  const p = draft(ctx, ROADMAP, 'foo');
+  assert.deepEqual(ctx.store.drafts().map((d) => d.slug), ['demo']);
+  const res = ctx.store.publish(p);
+  assert.equal(res.slug, 'demo');
+  assert.ok(existsSync(join(ctx.r.root, ctx.cfg.roadmaps.published, 'demo.md')));
+  assert.ok(!existsSync(join(ctx.r.root, ctx.cfg.roadmaps.published, 'foo.md')));
+});
