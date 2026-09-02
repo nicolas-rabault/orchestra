@@ -101,10 +101,37 @@ test('defaulted is leaf-grained: a nested default only marks the leaf actually l
   assert.ok(!cfg.defaulted.includes('roadmaps.drafts'));
 });
 
-test('defaulted lists an entirely-absent nested key by its bare group name, not by leaf', () => {
+// An object-valued default always contributes leaf entries, never its own bare name — an absent
+// group is the COMMON case, and reporting it as one bare name would leave `doctor` marking neither
+// of that group's rows as defaulted.
+test('an entirely-absent nested group defaults BOTH its leaves, not its bare name', () => {
   const r = repo();
   const cfg = loadConfig(r.root);
-  assert.ok(cfg.defaulted.includes('roadmaps'));
-  assert.ok(!cfg.defaulted.includes('roadmaps.drafts'));
-  assert.ok(!cfg.defaulted.includes('roadmaps.published'));
+  assert.ok(cfg.defaulted.includes('roadmaps.drafts'));
+  assert.ok(cfg.defaulted.includes('roadmaps.published'));
+  assert.ok(!cfg.defaulted.includes('roadmaps'));
+});
+
+// The five probes from review round 2: a well-shaped partial override, an absent group (both
+// above), and three ways a group can be given the wrong shape.
+test('a group replaced by an array does not crash and honestly defaults both leaves', () => {
+  const r = repo();
+  writeFileSync(join(r.root, '.orchestra', 'config.json'), JSON.stringify({ mode: 'offline', roadmaps: [1] }));
+  const cfg = loadConfig(r.root);
+  assert.ok(cfg.defaulted.includes('roadmaps.drafts'));
+  assert.ok(cfg.defaulted.includes('roadmaps.published'));
+});
+
+test('a group replaced by a string does not crash loadConfig, and validate reports it by name', () => {
+  const r = repo();
+  writeFileSync(join(r.root, '.orchestra', 'config.json'), JSON.stringify({ mode: 'offline', roadmaps: 'oops' }));
+  assert.doesNotThrow(() => loadConfig(r.root));
+  assert.throws(() => loadConfigOrThrow(r.root), (e) => e.message.includes('"roadmaps"'));
+});
+
+test('a group replaced by null does not crash loadConfig, and validate reports it by name', () => {
+  const r = repo();
+  writeFileSync(join(r.root, '.orchestra', 'config.json'), JSON.stringify({ mode: 'offline', roadmaps: null }));
+  assert.doesNotThrow(() => loadConfig(r.root));
+  assert.throws(() => loadConfigOrThrow(r.root), (e) => e.message.includes('"roadmaps"'));
 });

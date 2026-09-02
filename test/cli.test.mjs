@@ -72,3 +72,12 @@ test('a broken config surfaces through a non-machine subcommand as exit 2, not a
     (e) => e.status === 2 && /"mode" is required/.test(e.stderr) && /gates\[0\]/.test(e.stderr),
   );
 });
+
+test('doctor marks BOTH leaves of a nested default when the whole group is absent', () => {
+  const r = repo({ mode: 'offline' });
+  const out = run(r.root, 'doctor');
+  const draftsLine = out.split('\n').find((l) => l.includes('roadmaps.drafts'));
+  const publishedLine = out.split('\n').find((l) => l.includes('roadmaps.published'));
+  assert.match(draftsLine, /\(default\)/);
+  assert.match(publishedLine, /\(default\)/);
+});
