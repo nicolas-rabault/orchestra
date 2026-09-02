@@ -1,7 +1,8 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
 import { mainCheckout, projectId, orchestraDir, assertRoot } from '../lib/paths.mjs';
@@ -50,4 +51,13 @@ test('assertRoot throws naming BOTH paths when they differ', () => {
     () => assertRoot('/projects/alpha', '/projects/beta'),
     (e) => e.message.includes('/projects/alpha') && e.message.includes('/projects/beta'),
   );
+});
+
+test('mainCheckout refuses a bare repository — the guard, not git, catches it', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orchestra-bare-')));
+  execFileSync('git', ['init', '-q', '--bare', 'project.git'], { cwd: dir });
+  const bare = join(dir, 'project.git');
+  assert.throws(() => mainCheckout(bare), (e) =>
+    e.message.includes('is not a working tree') && e.message.includes(bare));
+  rmSync(dir, { recursive: true, force: true });
 });
