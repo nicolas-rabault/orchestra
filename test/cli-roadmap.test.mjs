@@ -84,27 +84,56 @@ function writeDraft(root, cfg, name, text) {
   return p;
 }
 
-// The predicate `enrolInto` hands `enrol` as `foreign`, pinned in both directions: a single case
-// would pass against an inverted `open` check just as easily as against the real one.
-test('publish enrols a shared task dropped when nobody opened it, todo when they did', () => {
+// Shared by the two tests below: three roadmaps, each under its own programme, covering every
+// combination the `foreign` predicate and the board's ownership rendering care about.
+//   demo1 — authored by someone else ('alice'), never opened      -> not mine, not schedulable here
+//   demo2 — authored by someone else ('alice'), opened            -> not mine, but schedulable
+//   demo3 — authored by the CALLING identity ('nico'), never opened -> mine, always schedulable
+function publishThreeRoadmaps() {
   const { r, cfg, gh } = onlineProject('nico');
-  // Two programmes, each authored by someone else — the only way `mine` reads false here, since
-  // this process's OWN publish would otherwise be the author of any programme it has to create.
   gh.state.push(
     { number: 1, title: 'demo1 — Demo one', state: 'open', labels: [LABELS.programme], author: 'alice', assignees: [], body: '- **Roadmap** demo1\n' },
     { number: 2, title: 'demo2 — Demo two', state: 'open', labels: [LABELS.programme, 'open'], author: 'alice', assignees: [], body: '- **Roadmap** demo2\n' },
+    { number: 3, title: 'demo3 — Demo three', state: 'open', labels: [LABELS.programme], author: 'nico', assignees: [], body: '- **Roadmap** demo3\n' },
   );
   const draft1 = writeDraft(r.root, cfg, 'demo1.md', ROADMAP.replaceAll('demo', 'demo1'));
   const draft2 = writeDraft(r.root, cfg, 'demo2.md', ROADMAP.replaceAll('demo', 'demo2'));
-
+  const draft3 = writeDraft(r.root, cfg, 'demo3.md', ROADMAP.replaceAll('demo', 'demo3'));
   capture(() => roadmapCommand({ cfg, args: ['publish', draft1], deps: { gh } }));
   capture(() => roadmapCommand({ cfg, args: ['publish', draft2], deps: { gh } }));
+  capture(() => roadmapCommand({ cfg, args: ['publish', draft3], deps: { gh } }));
+  return { cfg, gh };
+}
 
+// The predicate `enrolInto` hands `enrol` as `foreign`, pinned on BOTH its clauses: `demo1`/`demo2`
+// alone pin `open`, but leave `o.mine === false` unpinned — drop that clause and both still pass,
+// because the predicate then reads "any unopened roadmap is foreign" and `demo2` (opened) is
+// unaffected either way. `demo3` is what catches it: MY OWN roadmap, never opened, would then
+// enrol `dropped` too — a terminal status nothing here would ever schedule, which is exactly the
+// failure this module's own header records happening three times in the source project (22, 15,
+// 28 tasks silently unscheduled, each caught only by a human reading the board).
+test('publish enrols not-mine+unopened dropped, not-mine+opened todo, and mine+unopened todo', () => {
+  const { cfg } = publishThreeRoadmaps();
   const rows = readState(cfg.root).tasks;
-  const notOpened = rows.find((row) => row.id === 'demo1/D1');
-  const opened = rows.find((row) => row.id === 'demo2/D1');
-  assert.equal(notOpened.status, 'dropped', 'not mine and not opened — dropped so nothing here ever schedules it');
-  assert.equal(opened.status, 'todo', 'not mine, but opened — schedulable, so it enrols todo');
+  const notMineNotOpened = rows.find((row) => row.id === 'demo1/D1');
+  const notMineOpened = rows.find((row) => row.id === 'demo2/D1');
+  const mineNotOpened = rows.find((row) => row.id === 'demo3/D1');
+  assert.equal(notMineNotOpened.status, 'dropped', 'not mine and not opened — dropped so nothing here ever schedules it');
+  assert.equal(notMineOpened.status, 'todo', 'not mine, but opened — schedulable, so it enrols todo');
+  assert.equal(mineNotOpened.status, 'todo', 'mine and never opened — openness only ever gates someone ELSE\'s roadmap');
+});
+
+// `cmdBoard` renders `b.notMine` as `not ours:` lines, and nothing else exercises that rendering
+// through `roadmapCommand` — only `board.test.mjs` pins `reconcile()`'s array directly. `demo1/D1`
+// is exactly the shape `notOurs` requires: a shared task (published, so the overlay has an entry)
+// whose register row the earlier enrolment already dropped on purpose.
+test('board reports a shared task the register dropped as "not ours", not a correction', () => {
+  const { cfg, gh } = publishThreeRoadmaps();
+  const { text } = capture(() => roadmapCommand({ cfg, args: ['board'], deps: { gh } }));
+  const lines = text.split('\n');
+  const notOursLines = lines.filter((l) => l.startsWith('not ours:'));
+  assert.equal(notOursLines.length, 1);
+  assert.match(notOursLines[0], /^not ours: demo1\/D1: shared, owned elsewhere \(issue #\d+\) — dropped here on purpose, derived todo$/);
 });
 
 test('board prints a correction, an unverified row and an orphan in each direction, each exactly once', () => {
