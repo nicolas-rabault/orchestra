@@ -130,14 +130,32 @@ test('publish creates the issues and deletes the draft', () => {
 
 // claim/release lifecycle — entirely uncovered before this round, which is how a release that left
 // the GitHub assignee behind (assign is `--add-assignee`, which only ever ADDS) shipped unnoticed.
+//
+// `me: 'alice'` here, deliberately: a plain `release` only gives up a claim the CALLER holds (see
+// the force test below), so exercising "release, then someone else claims" needs the releaser to
+// be the same identity that claimed it.
 test('claim, release, then a DIFFERENT user claims — release must free the assignee, not just the label', () => {
-  const f = fakeGh({ issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task] }] });
+  const f = fakeGh({ me: 'alice', issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task] }] });
   const { store } = online(f);
   assert.deepEqual(store.claim('demo/D1', 'alice'), { ok: true });
-  store.release('demo/D1');
+  assert.deepEqual(store.release('demo/D1'), { ok: true });
   const result = store.claim('demo/D1', 'bob');
   assert.deepEqual(result, { ok: true });
   assert.deepEqual(f.state.find((i) => i.number === 5).assignees, ['bob']);
+});
+
+// The refusal a plain `release` was missing: without it, `release` freed ANY assignee, so it
+// already released somebody else's claim silently — the exact thing `--force` was meant to gate.
+test('release refuses a claim held by someone else, and --force takes it anyway', () => {
+  const f = fakeGh({
+    me: 'nico',
+    issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task, LABELS.wip], assignees: ['alice'] }],
+  });
+  const { store } = online(f);
+  assert.deepEqual(store.release('demo/D1'), { ok: false, holder: 'alice' });
+  assert.deepEqual(f.state.find((i) => i.number === 5).assignees, ['alice']);
+  assert.deepEqual(store.release('demo/D1', { force: true }), { ok: true });
+  assert.deepEqual(f.state.find((i) => i.number === 5).assignees, []);
 });
 
 test('claim on a task already held by someone else fails, naming the holder', () => {
