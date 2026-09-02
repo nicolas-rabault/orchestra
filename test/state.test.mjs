@@ -1,0 +1,68 @@
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { writeFileSync, existsSync } from 'node:fs';
+import { makeRepo } from './helpers/fixture.mjs';
+import {
+  statePath, emptyState, readState, writeState, registerRow, qualifyDep, FOREIGN,
+} from '../lib/register/state.mjs';
+
+const repos = [];
+const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
+after(() => repos.forEach((r) => r.cleanup()));
+
+test('readState is null before anything is written', () => {
+  assert.equal(readState(repo().root), null);
+});
+
+test('writeState then readState round-trips and stamps the root', () => {
+  const r = repo();
+  writeState(r.root, emptyState(r.root));
+  const s = readState(r.root);
+  assert.equal(s.root, r.root);
+  assert.equal(s.adopted, false);
+  assert.deepEqual(s.tasks, []);
+  assert.ok(existsSync(statePath(r.root)));
+});
+
+test('writeState REFUSES a state recorded for another project, naming both paths', () => {
+  const a = repo();
+  const b = repo();
+  const foreign = emptyState(b.root);
+  assert.throws(
+    () => writeState(a.root, foreign),
+    (e) => e.message.includes(a.root) && e.message.includes(b.root),
+  );
+});
+
+test('an unparseable register is an error, not an empty one', () => {
+  const r = repo();
+  writeFileSync(statePath(r.root), '{ broken');
+  assert.throws(() => readState(r.root), /state\.json/);
+});
+
+test('qualifyDep is idempotent on an already-qualified dep', () => {
+  assert.equal(qualifyDep('demo', 'D2'), 'demo/D2');
+  assert.equal(qualifyDep('demo', 'other/D2'), 'other/D2');
+});
+
+test('registerRow carries the SLUG, qualified deps, and every runtime field as null or empty', () => {
+  const task = {
+    key: 'demo/D1', id: 'D1', title: 'First thing', order: 1, roadmap: 'demo',
+    deps: ['D0', 'other/X1'], touches: ['README.md'], lane: null,
+    branch: 'demo/d1-first-thing', design: false,
+  };
+  const row = registerRow(task, { roadmapSlug: 'demo', note: 'hello' });
+  assert.equal(row.id, 'demo/D1');
+  assert.equal(row.roadmap, 'demo');
+  assert.deepEqual(row.deps, ['demo/D0', 'other/X1']);
+  assert.equal(row.status, 'todo');
+  assert.deepEqual(row.subjects, []);
+  assert.deepEqual(row.pending, []);
+  assert.equal(row.session, null);
+  assert.equal(row.port, null);
+  assert.equal(row.note, 'hello');
+});
+
+test('FOREIGN is terminal so nothing schedules another developer\'s task here', () => {
+  assert.equal(FOREIGN, 'dropped');
+});
