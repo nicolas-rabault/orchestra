@@ -80,3 +80,16 @@ test('an unparseable config is an error, never a silent off switch', () => {
   writeFileSync(join(r.root, '.orchestra', 'config.json'), '{ not json');
   assert.throws(() => loadConfig(r.root), /config\.json.*(JSON|parse)/i);
 });
+
+test('a non-object JSON value is an error, not a TypeError', () => {
+  const r = repo();
+  writeFileSync(join(r.root, '.orchestra', 'config.json'), 'null');
+  assert.throws(() => loadConfig(r.root), (e) =>
+    !(e instanceof TypeError) && e.message.includes('must contain a JSON object'));
+  writeFileSync(join(r.root, '.orchestra', 'config.json'), '42');
+  assert.throws(() => loadConfig(r.root), (e) =>
+    !(e instanceof TypeError) && e.message.includes('must contain a JSON object'));
+  writeFileSync(join(r.root, '.orchestra', 'config.json'), '[]');
+  assert.throws(() => loadConfig(r.root), (e) =>
+    !(e instanceof TypeError) && e.message.includes('must contain a JSON object'));
+});
