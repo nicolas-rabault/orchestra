@@ -63,6 +63,30 @@ test('registerRow carries the SLUG, qualified deps, and every runtime field as n
   assert.equal(row.note, 'hello');
 });
 
+test('registerRow qualifies deps against roadmapSlug, not task.roadmap', () => {
+  const task = {
+    key: 'demo/D1', id: 'D1', title: 'First thing', order: 1, roadmap: 'demo',
+    deps: ['D0'], touches: ['README.md'], lane: null,
+    branch: 'demo/d1-first-thing', design: false,
+  };
+  const row = registerRow(task, { roadmapSlug: 'other', note: '' });
+  assert.equal(row.roadmap, 'other');
+  assert.deepEqual(row.deps, ['other/D0']);
+});
+
+test('writeState stamps root when the state object has no root field', () => {
+  const r = repo();
+  const stateWithoutRoot = {
+    version: 1,
+    adopted: false,
+    conductor: { session: null, language: null, inboxSeen: null },
+    tasks: [],
+  };
+  writeState(r.root, stateWithoutRoot);
+  const s = readState(r.root);
+  assert.equal(s.root, r.root);
+});
+
 test('FOREIGN is terminal so nothing schedules another developer\'s task here', () => {
   assert.equal(FOREIGN, 'dropped');
 });
