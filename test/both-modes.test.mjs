@@ -37,6 +37,27 @@ function fakeGh(me = 'nico') {
   };
 }
 
+// Seeds a roadmap that is ALREADY PUBLISHED, by the route each mode actually offers — the fixture
+// shape whose absence is what let the two stores disagree about `knownKeys` for a whole phase.
+//
+// Offline, a published roadmap is a committed file, and people name files after dates: a
+// hand-authored `docs/roadmaps/2026-09-lighting.md` declaring `roadmap: lighting` is an ordinary
+// convention and the only way a published file's basename can disagree with its frontmatter slug.
+// Online there are no filenames at all, so the same state — this slug's tasks already on the
+// channel — is reached by publishing. Either way the question the tests below ask is one question:
+// is re-publishing a slug the channel already holds an UPDATE, or a key collision?
+function seedPublished(p, { filename, text }) {
+  if (p.cfg.mode === 'offline') {
+    const dir = join(p.r.root, p.cfg.roadmaps.published);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, filename), text);
+    return;
+  }
+  const draft = join(p.r.root, p.cfg.roadmaps.drafts, filename);
+  writeFileSync(draft, text);
+  p.store.publish(draft);
+}
+
 function project(mode) {
   const r = makeRepo({ mode });
   repos.push(r);
@@ -125,6 +146,47 @@ for (const mode of ['offline', 'online']) {
     });
     assert.deepEqual(b.orphans.inRoadmapOnly, []);
     assert.deepEqual(b.orphans.inRegisterOnly, []);
+  });
+
+  // Offline REFUSED this and online accepted it — the cross-mode divergence this phase existed to
+  // find. `knownKeys` is "every OTHER roadmap's keys"; offline filtered the set by FILENAME, so a
+  // published file whose basename differs from its slug handed the roadmap ITS OWN keys and lint
+  // rejected every one of them as already taken. The suite could not see it because its only
+  // fixture had one roadmap, one task, and a filename equal to the slug.
+  test(`[${mode}] re-publishing a slug the channel already holds is an update, not a key collision`, () => {
+    const p = project(mode);
+    const LIGHTING = ROADMAP.replaceAll('demo', 'lighting');
+    seedPublished(p, { filename: '2026-09-lighting.md', text: LIGHTING });
+    const second = join(p.r.root, p.cfg.roadmaps.drafts, 'lighting.md');
+    writeFileSync(second, LIGHTING);
+    assert.deepEqual(p.store.publish(second).keys, ['lighting/D1']);
+    assert.ok(p.store.list().some((t) => t.key === 'lighting/D1'));
+  });
+
+  // And the shape that makes `knownKeys` non-empty for a real reason: with one roadmap in the
+  // project the set is always empty, so nothing above ever exercises what it holds. Two roadmaps
+  // also make a QUALIFIED dep resolvable — the other thing lint reads that set for.
+  test(`[${mode}] two published roadmaps coexist, and a cross-roadmap dep blocks on the other's key`, () => {
+    const p = project(mode);
+    const dir = join(p.r.root, p.cfg.roadmaps.drafts);
+    const alpha = join(dir, 'alpha.md');
+    const beta = join(dir, 'beta.md');
+    writeFileSync(alpha, ROADMAP.replaceAll('demo', 'alpha'));
+    writeFileSync(beta, ROADMAP.replaceAll('demo', 'beta').replace('- **Deps** —', '- **Deps** alpha/D1'));
+    p.store.publish(alpha);
+    p.store.publish(beta);
+    assert.deepEqual(p.store.list().map((t) => t.key).sort(), ['alpha/D1', 'beta/D1']);
+
+    const b = reconcile({
+      tasks: p.store.list(),
+      git: gatherGit(p.r.root, { mainBranch: p.cfg.mainBranch }),
+      register: [],
+      overlay: p.store.overlay(),
+    });
+    const betaRow = b.rows.find((r) => r.key === 'beta/D1');
+    assert.deepEqual(betaRow.blockedBy, ['alpha/D1']);
+    assert.equal(betaRow.depsMet, false);
+    assert.equal(b.rows.find((r) => r.key === 'alpha/D1').depsMet, true);
   });
 }
 
