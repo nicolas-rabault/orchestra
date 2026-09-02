@@ -1,0 +1,42 @@
+#!/usr/bin/env node
+// The plugin's one entry point. Everything a skill, a hook or a human runs comes through here.
+import { loadConfigOrThrow } from '../lib/config.mjs';
+import { COMMANDS, register } from '../lib/cli/registry.mjs';
+import { doctor } from '../lib/cli/doctor.mjs';
+
+register('doctor', { machine: true, run: ({ cfg }) => doctor(cfg) });
+
+// Replaced in task 14 by the real roadmap command; present now so the off-switch test has a
+// non-machine subcommand to prove itself against.
+register('roadmap', { run: () => { process.stdout.write('roadmap: not implemented yet\n'); } });
+
+const [name, ...rest] = process.argv.slice(2);
+
+if (!name || name === 'help' || name === '--help' || name === '-h') {
+  process.stdout.write(`orchestra <subcommand>\n\n${[...COMMANDS.keys()].sort().map((k) => `  ${k}`).join('\n')}\n`);
+  process.exit(0);
+}
+
+const cmd = COMMANDS.get(name);
+if (!cmd) {
+  process.stderr.write(`orchestra: unknown subcommand "${name}"\nknown: ${[...COMMANDS.keys()].sort().join(', ')}\n`);
+  process.exit(2);
+}
+
+let cfg = null;
+try {
+  cfg = loadConfigOrThrow(process.cwd());
+} catch (e) {
+  process.stderr.write(`${e.message}\n`);
+  process.exit(2);
+}
+
+// The off switch: outside the three machine-level commands, no config means no behaviour at all.
+if (!cfg && !cmd.machine) process.exit(0);
+
+try {
+  await cmd.run({ cfg, args: rest });
+} catch (e) {
+  process.stderr.write(`${e.message}\n`);
+  process.exit(1);
+}
