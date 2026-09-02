@@ -1,8 +1,12 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseRoadmap } from '../lib/roadmap/parse.mjs';
-import { reconcile, UNVERIFIED, isLanded } from '../lib/roadmap/board.mjs';
-import { ROADMAP } from './helpers/fixture.mjs';
+import { reconcile, gatherGit, UNVERIFIED, isLanded } from '../lib/roadmap/board.mjs';
+import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
 
 const tasks = parseRoadmap(ROADMAP).tasks;
 const noGit = { refs: new Set(), mainSubjects: new Set() };
@@ -70,6 +74,21 @@ test('a shared task the register dropped is "not ours", never a correction', () 
   assert.deepEqual(b.corrections, []);
 });
 
+// staleIssue's own branch: work landed here (register says landed, with a recorded subject) while
+// the shared overlay entry says the task is still open elsewhere (`claimed`, not `landed`). This is
+// a correction, and specifically a "closing it is a shared-channel action" one — not a generic
+// register-vs-derivation disagreement, not "not ours" (the register never said `dropped`), and not
+// "unverified" (the subject WAS recorded).
+test('work landed here while its shared overlay entry stayed open is a stale-issue correction', () => {
+  const overlay = new Map([['demo/D1', { status: 'claimed', ref: 5, owner: 'someone', open: false, mine: false }]]);
+  const register = [row({ status: 'landed', subjects: ['feat: the first thing'] })];
+  const b = reconcile({ tasks, git: noGit, register, overlay });
+  assert.equal(b.corrections.length, 1);
+  assert.match(b.corrections[0], /landed here but issue #5 is still claimed — closing it is a shared-channel action/);
+  assert.deepEqual(b.notMine, []);
+  assert.deepEqual(b.unverified, []);
+});
+
 test('offline can never produce a "not ours" line, because the overlay is empty', () => {
   const register = [row({ status: 'dropped' })];
   const b = reconcile({ tasks, git: noGit, register, overlay: new Map() });
@@ -89,4 +108,47 @@ test('orphans are reported in both directions', () => {
   const b = reconcile({ tasks, git: noGit, register, overlay: new Map() });
   assert.deepEqual(b.orphans.inRegisterOnly, ['demo/ZZ']);
   assert.deepEqual(b.orphans.inRoadmapOnly, ['demo/D1']);
+});
+
+// gatherGit — exercised against real temporary git repositories. The reconcile tests above hand it
+// a synthetic `{ refs, mainSubjects }` object; these prove the function that actually builds one.
+const repos = [];
+after(() => repos.forEach((r) => r.cleanup()));
+
+test('gatherGit reads the one commit on a fresh repo into mainSubjects, and its branch into refs', () => {
+  const r = makeRepo();
+  repos.push(r);
+  const g = gatherGit(r.root);
+  assert.ok(g.refs.has('main'));
+  assert.ok(g.mainSubjects.has('initial'));
+});
+
+test('gatherGit on a repository with NO commits returns empty sets and does not throw', () => {
+  const root = mkdtempSync(join(tmpdir(), 'orchestra-nocommit-'));
+  try {
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    const g = gatherGit(root);
+    assert.deepEqual(g.refs, new Set());
+    assert.deepEqual(g.mainSubjects, new Set());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('gatherGit finds a subject with no window: the FIRST of 12 commits is still in mainSubjects', () => {
+  const r = makeRepo();
+  repos.push(r);
+  for (let i = 2; i <= 12; i += 1) r.git('commit', '--allow-empty', '-q', '-m', `commit-${i}`);
+  const g = gatherGit(r.root);
+  assert.ok(g.mainSubjects.has('initial'), 'the first commit must not fall outside any window');
+});
+
+test('gatherGit is pinned to mainBranch, not to whatever HEAD happens to be checked out', () => {
+  const r = makeRepo();
+  repos.push(r);
+  r.git('checkout', '-q', '-b', 'other');
+  r.git('commit', '--allow-empty', '-q', '-m', 'only-on-other');
+  const g = gatherGit(r.root, { mainBranch: 'main' });
+  assert.ok(g.mainSubjects.has('initial'));
+  assert.ok(!g.mainSubjects.has('only-on-other'));
 });
