@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, existsSync } from 'node:fs';
 import { makeRepo } from './helpers/fixture.mjs';
 import {
-  statePath, emptyState, readState, writeState, registerRow, qualifyDep, FOREIGN,
+  statePath, emptyState, readState, writeState, registerRow, qualifyDep, FOREIGN, STRUCTURAL,
 } from '../lib/register/state.mjs';
 
 const repos = [];
@@ -89,4 +89,8 @@ test('writeState stamps root when the state object has no root field', () => {
 
 test('FOREIGN is terminal so nothing schedules another developer\'s task here', () => {
   assert.equal(FOREIGN, 'dropped');
+});
+
+test('every key of an empty state is structural, so the archive can never file one as prose', () => {
+  for (const k of Object.keys(emptyState('/tmp/x'))) assert.ok(STRUCTURAL.has(k), `${k} is not structural`);
 });
