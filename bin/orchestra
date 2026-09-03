@@ -4,12 +4,14 @@ import { loadConfigOrThrow } from '../lib/config.mjs';
 import { COMMANDS, register } from '../lib/cli/registry.mjs';
 import { doctor } from '../lib/cli/doctor.mjs';
 import { roadmapCommand } from '../lib/cli/roadmap.mjs';
-import { journalCommand, inboxCommand } from '../lib/cli/register.mjs';
+import { journalCommand, inboxCommand, beatCommand, watchAnswersCommand } from '../lib/cli/register.mjs';
 
 register('doctor', { machine: true, run: ({ cfg }) => doctor(cfg) });
 register('roadmap', { run: roadmapCommand });
 register('journal', { run: journalCommand });
 register('inbox', { run: inboxCommand });
+register('beat', { run: beatCommand });
+register('watch-answers', { run: watchAnswersCommand });
 
 const [name, ...rest] = process.argv.slice(2);
 
