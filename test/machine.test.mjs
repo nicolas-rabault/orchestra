@@ -54,23 +54,28 @@ test('an entry whose root no longer exists is reaped on the next write', () => {
   const gone = mkdtempSync(join(tmpdir(), 'orchestra-proj-'));
   const here = mkdtempSync(join(tmpdir(), 'orchestra-proj-'));
   const now = Date.now();
-  // A FRESH beat on the entry that is about to be reaped, so the missing root is the ONLY reason it
-  // can go. Without it the entry is dead twice over — no beat and no pid — and the test would pass
-  // with the root still there, proving nothing about the check it is named after.
-  recordInstance({ id: 'gone11', name: 'G', root: gone, mode: 'offline', workers: 3,
-    beatAt: new Date(now).toISOString() }, { now });
+  // No explicit freshness needed: `recordInstance` stamps `updatedAt` from its own clock on every
+  // write, so this entry is fresh by construction the moment it is recorded. The missing root is
+  // the ONLY reason it can go — without that check, a freshly-written entry would never be reaped,
+  // and this test would prove nothing about the check it is named after.
+  recordInstance({ id: 'gone11', name: 'G', root: gone, mode: 'offline', workers: 3 }, { now });
   assert.deepEqual(readInstances().map((i) => i.id), ['gone11']);   // alive while its root stands
   rmSync(gone, { recursive: true, force: true });
   recordInstance({ id: 'here11', name: 'H', root: here, mode: 'offline', workers: 1 }, { now });
   assert.deepEqual(readInstances().map((i) => i.id), ['here11']);
 });
 
-test('an entry whose beat is stale AND whose pid is dead is reaped', () => {
+test('a dead-pid entry that has gone quiet past the freshness window is reaped', () => {
   const a = mkdtempSync(join(tmpdir(), 'orchestra-proj-'));
   const b = mkdtempSync(join(tmpdir(), 'orchestra-proj-'));
-  const now = Date.parse('2026-09-03T10:00:00.000Z');
+  const past = Date.parse('2026-09-03T00:00:00.000Z');
+  const now = past + 6 * 60 * 60 * 1000 + 1;   // one ms past the six-hour SEEN_STALE_MS window
+  // Recorded once, by a conductor that is now gone, and never written again: `updatedAt` sits at
+  // `past` because nothing has reported since, and the pid it named no longer answers.
   recordInstance({ id: 'stale1', name: 'S', root: a, mode: 'offline', workers: 5,
-    conductorSession: 's1', conductorPid: 4242, beatAt: '2026-08-01T00:00:00.000Z' }, { now });
+    conductorSession: 's1', conductorPid: 4242 }, { now: past });
+  // A later write, past the window, reaps it. `alive` is overridden here so the test does not
+  // depend on pid 4242 happening to be free on the machine running it.
   recordInstance({ id: 'fresh1', name: 'F', root: b, mode: 'offline', workers: 1 },
     { now, alive: () => false });
   assert.deepEqual(readInstances().map((i) => i.id), ['fresh1']);
