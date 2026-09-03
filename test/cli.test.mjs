@@ -37,6 +37,27 @@ test('doctor names the mode, the id and every defaulted key', () => {
   assert.match(out, /mainBranch.*\(default\)/);
 });
 
+// The spec says doctor "prints the resolved configuration and names every key that fell back to a
+// default"; four keys were missing from the table — the three docs paths and briefExtra — so a
+// project that had set one of them saw no row for it, and a project that had not was never told
+// which directory the plugin would write a spec into.
+test('doctor prints every config key, the docs paths and briefExtra included', () => {
+  const r = repo({ mode: 'offline' });
+  const out = run(r.root, 'doctor');
+  assert.match(out, /docs\.specs\s+docs\/specs\s+\(default\)/);
+  assert.match(out, /docs\.plans\s+docs\/plans\s+\(default\)/);
+  assert.match(out, /docs\.results\s+docs\/results\s+\(default\)/);
+  assert.match(out, /briefExtra\s+—\s+\(default\)/);
+});
+
+test('doctor shows a set briefExtra by its first line, not as a wall of prose', () => {
+  const r = repo({ mode: 'offline', config: { briefExtra: 'Never touch the vendor tree.\nAnd run the linter.' } });
+  const out = run(r.root, 'doctor');
+  const line = out.split('\n').find((l) => l.includes('briefExtra'));
+  assert.match(line, /Never touch the vendor tree\. …/);
+  assert.doesNotMatch(line, /linter/);
+});
+
 test('doctor says what offline cannot answer', () => {
   const r = repo({ mode: 'offline' });
   assert.match(run(r.root, 'doctor'), /this machine only/i);

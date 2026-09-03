@@ -1,6 +1,10 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import {
+  writeFileSync, mkdirSync, rmSync, mkdtempSync, realpathSync,
+} from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
 import { DEFAULTS, findConfig, validate, loadConfig, loadConfigOrThrow } from '../lib/config.mjs';
@@ -46,6 +50,26 @@ test('findConfig walks up from a subdirectory', () => {
   const deep = join(r.root, 'a', 'b');
   mkdirSync(deep, { recursive: true });
   assert.equal(findConfig(deep), join(r.root, '.orchestra', 'config.json'));
+});
+
+// The walk had no repository boundary, so a repository nested under a directory somebody had
+// configured read the OUTER project's config while `mainCheckout` resolved the inner repository:
+// one config object whose `mode`, `roadmaps` and `gates` belong to one project and whose `root` and
+// `id` belong to another. Not reachable in the default worktree layout, and permanent once it is.
+test('findConfig stops at the repository, never returning a config from above it', () => {
+  const outer = realpathSync(mkdtempSync(join(tmpdir(), 'orchestra-outer-')));
+  try {
+    mkdirSync(join(outer, '.orchestra'), { recursive: true });
+    writeFileSync(join(outer, '.orchestra', 'config.json'), JSON.stringify({ mode: 'online' }));
+    const inner = join(outer, 'inner');
+    mkdirSync(inner, { recursive: true });
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: inner, stdio: 'ignore' });
+    assert.equal(findConfig(inner), null);
+    // And the off switch holds: no config for this project is no behaviour, not a throw.
+    assert.equal(loadConfig(inner), null);
+  } finally {
+    rmSync(outer, { recursive: true, force: true });
+  }
 });
 
 test('validate rejects a missing or unknown mode', () => {
