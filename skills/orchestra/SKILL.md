@@ -777,3 +777,60 @@ started *after* the hold was issued.
    for nudging workers between ticks. **It is a SECOND watch, on a different subject: do not
    fold it into the answer watch, whose loop must stay a two-second file read with no child
    process in it.**
+
+## Adoption (first run, or state lost)
+
+**A roadmap published after adoption enrols itself — do NOT hand-copy its rows.** `orchestra
+roadmap publish` writes a register row for every task it publishes, and `orchestra roadmap enrol`
+is the catch-up for what publish cannot reach: a roadmap published from another developer's
+machine, and anything published before adoption existed. `board` names that command on the orphan
+line itself. This section is what runs when there is NO table at all; it is not the way a new
+roadmap gets in, and treating it as such is what left 22 tasks out on 2026-08-19, 15 on 08-25 and
+28 on 09-02 in planetCraft, each caught by a human reading the board.
+
+Read-only. Build the task table from `orchestra roadmap board --json`, which returns one row per
+task with `key`, `order`, `deps`, `touches`, `lane`, `branch`, `design`, derived `status` and
+`issue`. **The board emits both `key` and already-resolved `deps`** — a task's own `Deps` field
+may name a bare sibling id or a `<roadmap>/<ID>` cross-file one, and `reconcile()`
+(`lib/roadmap/board.mjs`) resolves either into a qualified key before it ever leaves the board. So
+**a register row's `id` IS the board row's `key`, and a register row's `deps` IS the board row's
+`deps`, byte-for-byte** — a register row is a direct copy, nothing to resolve on the way in. **A
+register row's `roadmap` is the slug in both modes, never a file path — the path form is what
+forced that very rule in the project this protocol was ported from, and it left the field pointing
+at a draft `publish` had already deleted; the slug is what both stores already key on.**
+
+`orchestra ready` (`lib/register/ready.mjs`'s `computeReadySet`) trusts this and does no
+resolution of its own: it matches `deps` against `id` byte-for-byte, and throws — naming the
+offender — rather than schedule anything if a row's `id` or any of its `deps` is not already
+qualified. Getting this wrong once already emptied the ready set silently, in planetCraft:
+qualifying `id` without qualifying `deps` to match made every dependency look unmet, even a landed
+one, with no error anywhere.
+
+Inventory in-flight branches, worktrees and live sessions WITHOUT writing to any of them. Then
+present to the user: the table, who holds what, and the launch plan — and launch nothing until
+they approve it. Record their approval in `state.json` (`adopted: true`); ticks are autonomous
+from then on.
+
+## Preflight (once per machine, before the first launch)
+
+Prove the three mechanisms the whole protocol rests on, on one throwaway session, BEFORE planning
+any launch:
+
+```sh
+claude --bg -n orchestra-preflight --model haiku --dangerously-skip-permissions "reply OK and stop"
+claude agents --json | grep orchestra-preflight
+claude stop orchestra-preflight
+```
+
+If any of them is refused, put **one** question to the user carrying the exact command and the
+exact refusal, and stop the tick. Do not discover this one launch at a time, and **do not try to
+grant it to yourself** — editing `settings.json` to widen your own permissions is a hard boundary
+and will be refused too. Measured 2026-08-12 in planetCraft: three consecutive ticks were spent
+finding this out one refusal at a time (the launch flag refused, then the settings edit refused,
+then the allow-rule the user added turning out not to cover the flag), and the user ended up
+typing four launch commands into a terminal himself. Two hours forty-four minutes, before a single
+worker existed.
+
+**Retry a failed launch once, identically, before calling it a failure.** In planetCraft,
+`claude: command not found` appeared twice in a row from a shell whose `PATH` was correct, and an
+identical retry succeeded seconds later.
