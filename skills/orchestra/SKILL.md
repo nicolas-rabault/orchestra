@@ -961,3 +961,136 @@ becomes a question — a note nobody reads is how one survived forty hours.
 - a `branchTests` command that selects by import graph can select exactly ONE file for a tool
   nothing imports but its own test. When the subset looks suspiciously small, **say the number out
   loud** and run the full suite instead of trusting it.
+
+## Design→execution handoff (design tasks)
+
+A row whose `design` field is true — the roadmap's own `**Design** yes`, set by
+`lib/roadmap/parse.mjs` — launches on the design model, with the Design brief below: its only
+deliverable is the committed spec (`docs.specs`) and plan (`docs.plans`) on its own branch. It must
+not write implementation code, and its session ends there.
+
+When it reports done: **adopt the plan's own recommended approach — do NOT ask the user.** This is
+the one bounded exception to never #2: a stated recommendation is acted on, not relayed to the user
+as a question. If the design genuinely ends in a fork with no recommendation, THAT is a blocking
+question. Then launch a fresh execution-model session on the SAME worktree, with the brief "read
+the committed spec and plan, execute the plan," and update `model` on the row. Do not kill
+anything first: a completed background session costs nothing.
+
+**Where the two models come from.** The launch plan (`planLaunches`, `lib/register/ready.mjs`)
+sets each launched row's `model` from that same `design` field — the design model when it is true,
+the execution model otherwise — and the tick prints the choice in its launch line
+(`lib/cli/tick.mjs`):
+```
+launch: <id> — <title> [fable] on <branch>
+```
+for a design row, `[opus]` for any other. So the choice is the roadmap's, made when the task was
+written — not a judgment call the conductor makes at launch time.
+
+## Worker briefs
+
+Every launch and every hand-over below fills a brief from the same nine substitutions. One table,
+read once:
+
+| Placeholder | Filled from |
+|---|---|
+| `{branch}` | the row's `branch` |
+| `{task}` | the row's qualified key, `<roadmap>/<ID>` |
+| `{title}` | the row's title |
+| `{excerpt}` | the task's own section, verbatim: offline from the file under `roadmaps.published`, online from the issue body |
+| `{language}` | `orchestra doctor`'s `language` row |
+| `{branchTests}` | `orchestra doctor`'s `branchTests` row. **When it prints `—`, the project has configured none**: drop the clause and tell the worker to run the project's own tests for what it changed and to say which |
+| `{specsDir}` | `orchestra doctor`'s `docs.specs` row |
+| `{plansDir}` | `orchestra doctor`'s `docs.plans` row |
+| `{briefExtra}` | `orchestra doctor`'s `briefExtra` row, pasted verbatim. Empty means the paragraph is omitted entirely |
+
+`{briefExtra}` is the replacement for the source brief's appeals to one project's own subject map:
+it is where a project states the rules a prompt cannot derive on its own — where its code lives,
+what a worker must never touch, whether a fresh worktree needs a bootstrap step (step 8, above,
+already runs no dependency install, for exactly that reason).
+
+Fill the nine placeholders and pass the result as the `claude --bg` prompt — step 8, above, gives
+the rest of the launch line. Execution brief (the execution model):
+
+```
+You are a dev agent working ONLY in this worktree, on branch {branch}.
+Task {task} — {title}. Your roadmap excerpt, verbatim:
+{excerpt}
+Hard rules: never work on the main branch; run {branchTests} on every iteration, never the project's
+full suite; everything you commit is English.
+{briefExtra}
+Your roadmap excerpt above names its `Touches` files: START FROM THEM. Reach for a repository-wide
+search only when the excerpt and the rules above have both failed you. This is not a style note:
+every file you open stays in front of every later request of this session, so a sweep at turn 10 is
+still being paid for at turn 200.
+Write to me in {language} — questions, reports, anything of yours that reaches me. That is not in
+tension with the rule above: what you commit is English, what you say to me reaches one person on
+one machine.
+Protocol: your conductor will message you a hello. SENDING A MESSAGE BACK DOES NOT WORK — a worker
+session cannot resolve the conductor's address, measured three times, and a report sent that way
+reaches nobody. Instead: STATE YOUR REPORT OR QUESTION AS YOUR FINAL MESSAGE AND STOP. The conductor
+watches for your session leaving the working state and resumes you, and what you printed comes back
+on that resume. Design question → state it and stop until answered. Built → say so; start a dev
+server only when told, and report the port it ACTUALLY bound plus its pid (servers are killed by pid
+here, never by pattern). You never merge, and whether your branch needs a human look first is your
+conductor's call, not yours.
+```
+
+Design brief (the design model): the same header and rules as above, then:
+
+```
+This task's design is open. Use superpowers:brainstorming, then superpowers:writing-plans. Your
+deliverable is the committed spec ({specsDir}) and plan ({plansDir}) on this branch, with a
+recommended approach stated. Do not write implementation code. State your done-report as your final
+message (see the protocol above — messaging the conductor does not work); your session ends there.
+```
+
+Relaunch brief (dead session, intact worktree): the original brief — execution or design, whichever
+the row was launched with — prefixed with:
+
+```
+A previous session worked this task and died. Its worktree is intact. Before anything else: read
+git log <the project's main branch>..{branch} and git status in this worktree, and continue from
+what exists — do not restart the task from scratch.
+```
+
+Handover brief (the previous session was ALIVE and retired on purpose — see below): the original
+brief, prefixed with:
+
+```
+A previous session took this task to <n> turns and was retired to drop its accumulated context. It
+committed its work and wrote where it had got to. Before anything else: read
+git log <the project's main branch>..{branch}, git status in this worktree, and the `note` on your
+row. Continue from there — do not restart, and do not re-read files the note tells you are already
+done.
+```
+
+## Retiring a long worker (EXPERIMENT — one row at a time)
+
+A worker's context grows monotonically, roughly 2 K tokens a turn from its own tool results —
+measured in planetCraft — and every request re-reads the whole prefix. Measured on one run in
+planetCraft: sessions started at 57 K and reached 400–740 K, and one worker's request cost ten
+times more at its last turn than at its first. Cutting a long session in two saves 20–30 % of its
+read tokens, measured on that same run in planetCraft.
+
+**What that buys is quota, not speed.** A turn's duration tracks what it OUTPUTS, not the context
+behind it — measured flat over 1 831 turns in planetCraft. But the five-hour ceiling is a token
+budget: on that run in planetCraft, four workers and the conductor hit it within forty minutes of
+each other, and the whole fleet stopped for 1 h 36. Fewer tokens bought a later exhaustion, not a
+faster turn.
+
+**Measure before you act, and act on ONE row.** The saving depends on how much a handover has to
+re-read — measured in planetCraft: 31 % at a 50 K re-acquisition, 13 % at 150 K, and below roughly
+110 turns splitting costs more than it saves. That sensitivity is exactly why this is an
+**EXPERIMENT**, not a settled rule: what it saves on one project's shape of task is not a promise
+about yours.
+
+**This plugin ships no tool that measures a session's token use.** The source project scores every
+handover with its own scanner; this plugin carries none. The turn count is therefore the only
+signal a conductor has here.
+
+Past ~120 turns on a row you are willing to experiment on: ask the worker to commit, write where it
+got to into its row's `note`, and stop it. Then launch a **NEW** session on the same worktree with
+the Handover brief above — **never `--resume`**, which keeps precisely the context this is trying
+to drop. Journal it as a `note` with the turn count, so a later measurement can judge what the
+hand-over actually cost. Keep both limits: do not do this to more than one row until that number
+exists, and never to a row in the middle of a playtest gate.
