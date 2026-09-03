@@ -1,0 +1,51 @@
+import { test, after as afterAll } from 'node:test';
+import assert from 'node:assert/strict';
+import { appendFileSync } from 'node:fs';
+import { makeRepo } from './helpers/fixture.mjs';
+import { writeState, emptyState } from '../lib/register/state.mjs';
+import { inboxPath } from '../lib/register/inbox.mjs';
+import { pendingId } from '../lib/register/pending.mjs';
+import { relay } from '../lib/register/relay.mjs';
+
+const repos = [];
+const repo = () => { const r = makeRepo(); repos.push(r); return r; };
+afterAll(() => repos.forEach((r) => r.cleanup()));
+
+const seed = (r, { pending = [], answer }) => {
+  writeState(r.root, { ...emptyState(r.root),
+    tasks: [{ id: 'demo/D1', branch: 'demo/d1', session: 'abcdef12-0000', sessionName: 'orchestra-a1-D1', pending }] });
+  appendFileSync(inboxPath(r.root), `${JSON.stringify(answer)}\n`);
+};
+
+test('nothing to say is the empty string, not a header', () => {
+  assert.equal(relay(repo().root), '');
+});
+
+test('an answer names the question, the session that asked it, and the answer verbatim', () => {
+  const r = repo();
+  const item = { kind: 'question', ask: 'Ship at 0.75 or 1.0?' };
+  seed(r, { pending: [item], answer: { ts: '2026-09-03T10:00:00.000Z', task: 'demo/D1', pending: pendingId('demo/D1', item), answer: '0.75' } });
+  const out = relay(r.root);
+  assert.match(out, /Ship at 0\.75 or 1\.0\?/);
+  assert.match(out, /orchestra-a1-D1 \(abcdef12\)/);
+  assert.match(out, /the user's answer: "0\.75"/);
+  assert.match(out, /conductor\.inboxSeen/);
+});
+
+test('an answer to an item no longer in pending says so instead of inventing one', () => {
+  const r = repo();
+  seed(r, { pending: [], answer: { ts: '2026-09-03T10:00:00.000Z', task: 'demo/D1', pending: 'demo-d1-deadbeef', answer: 'yes' } });
+  assert.match(relay(r.root), /NO LONGER in this row's pending\[\]/);
+});
+
+test('the batch is the OLDEST unconsumed answers and it says how many are behind', () => {
+  const r = repo();
+  writeState(r.root, { ...emptyState(r.root), tasks: [{ id: 'demo/D1', branch: 'demo/d1', pending: [] }] });
+  for (let i = 0; i < 25; i += 1)
+    appendFileSync(inboxPath(r.root), `${JSON.stringify({ ts: `2026-09-03T10:${String(i).padStart(2, '0')}:00.000Z`, task: 'demo/D1', answer: `a${i}` })}\n`);
+  const out = relay(r.root);
+  assert.match(out, /count="20"/);
+  assert.match(out, /"a0"/);
+  assert.doesNotMatch(out, /"a20"/);
+  assert.match(out, /5 further answers are waiting/);
+});
