@@ -1095,3 +1095,141 @@ the Handover brief above — **never `--resume`**, which keeps precisely the con
 to drop. Journal it as a `note` with the turn count, so a later measurement can judge what the
 hand-over actually cost. Keep both limits: do not do this to more than one row until that number
 exists, and never to a row in the middle of a playtest gate.
+
+## The stand-down tick
+
+**It is a heartbeat's own end-of-run duty, written before the heartbeat is.** The three commands
+below already ship — `orchestra tick-gate`, `orchestra archive` and `orchestra archive-images` —
+while the loop that would call the first of them hourly is phase 5's `orchestra install-heartbeat`
+(see `## What is not here yet`). So this section is not a description of a timer; it is what a
+conductor's own last tick on a roadmap does before it goes quiet, whether that tick is fired by a
+person or, once phase 5 lands, by the loop itself.
+
+`orchestra tick-gate` answers in **one line whose first word is the verb**:
+
+```sh
+orchestra tick-gate
+```
+
+```
+skip a conductor is live (<session>, pid N)
+skip no register — orchestra has not been adopted here
+skip budget resets <ts>
+skip nothing to do — 87 row(s), all landed or dropped
+run hold-awake
+run — took the baton back from <session> (pid N), beating but silent for 97 min
+```
+
+A line rather than JSON, because its consumer is `/bin/sh` and a shell that has to parse JSON is a
+shell that will one day parse it wrong. **The exit code is deliberately NOT the channel** — a gate
+that cannot answer must not be able to stop the heartbeat, and a `set -e` in some future caller
+would turn a non-zero exit into exactly that. The shell reads the first word of the line and
+nothing else.
+
+**Order matters, and the conductor rule runs first.** The cost of a second conductor is corruption
+— two writers on one register — while the cost of a late tick is only lateness. It stands down for
+a conductor that is live **and conducting**, never merely live: the beat proves only that a session
+can be REACHED, and a window left open and untouched would otherwise silence the heartbeat for
+good.
+
+`absent` and `unreadable` are told apart **by errno**, not guessed: the register is rewritten in
+place, so a failed read is most likely a mid-write and the tick runs; an absent register is a
+machine where nobody has ever typed `/orchestra`, and firing a session at it hourly buys nothing.
+
+Four things override the stand-down, each a way orchestra could otherwise go permanently deaf: an
+unconsumed answer in the inbox — **the one that matters most**, because a monitoring page that
+spawns a tick from its own reply button would, if the gate ignored this, swallow the answer the
+user had just typed, in silence; a `pending[]` item on any row, whatever that row's status; an
+undelivered relay; and any row not yet terminal — this last one is what prints `hold-awake`.
+
+**It holds the machine awake while work is in flight.** `hold-awake` is the word the gate's line
+carries whenever a row is still non-terminal; the shell that turns that word into a wake lock is
+phase 5's, not this tick's — this tick only prints it. Keep the reason it exists: eight heartbeat
+slots of 1 h 23 to 3 h 26 were lost to sleep in one 46-hour roadmap in planetCraft, about six hours
+of it, one of them killing a worker mid-turn.
+
+**It stands down when there is nothing to do, and every decision is logged**, so a heartbeat that
+went quiet always says why — the four `skip` lines above are the whole of it. An unused heartbeat
+costs nothing on purpose: once a roadmap finishes, an hourly session that reads sixteen landed rows
+and exits is real budget for no work — the account ceiling was hit twice during the roadmap this
+measurement came from, in planetCraft, freezing everything for 2 h 48. Waking it back up costs one
+`/orchestra`: adoption writes `todo` rows, and the very next slot returns `run`.
+
+**A GREEN REGISTER IS NOT A FINISHED RUN, and the stand-down tick is where you say so.** Every row
+terminal means the roadmaps are done; it says nothing about what the run FOUND on its way there.
+The council of 2026-08-24/26 in planetCraft landed fifteen lines and opened seventeen tickets doing
+it, three of them S1 — one of which was the runtime wall at the far end of the very advice another
+line had just landed to fix. All seventeen were filed correctly and none was routed anywhere.
+
+So on the tick that stands orchestra down, before the stand-down: list what the run opened, name
+the S1s and S2s in the journal and at the checkpoint, and put one question there, in the Decision
+Template — work them down, or leave them for the queue. **Do not open the lines yourself**: a
+finished roadmap is the user's moment to choose the next one.
+
+The ticket queue is phase 5's `orchestra tickets`. Until it exists there is no ledger to list, so
+this sweep is over what the run's own journal `note` lines record — say that plainly rather than
+naming a command that is not there.
+
+**Then archive the finished rows, on that same tick.**
+
+```sh
+orchestra archive --write
+```
+
+It moves every terminal row's `note`, `subjects`, `decisions` and `touches` — and the register's
+own top-level prose with them — into `.orchestra/archive.jsonl`. This is more precise than it
+sounds: a finished row **leaves the register entirely**, unless a surviving row still depends on
+it, in which case it stays stripped of exactly those four fields, so dependency resolution and the
+progress bar keep working. It is a MOVE: nothing is deleted.
+
+Keep the measurement it exists for: measured 2026-08-30 in planetCraft, at the end of one roadmap,
+`state.json` was 202 KB and 87 of its 87 rows were terminal — not one live row — with 136 KB of
+that in post-mortem notes describing work landed weeks earlier, and every hourly tick re-read all
+of it. This is not tidiness, it is the register you rehydrate from.
+
+It refuses while a conductor is live — the register is rewritten in place and a conductor holds it
+in memory across a whole tick, so a write underneath one would silently lose everything that tick
+decided — and it is a no-op when nothing is terminal, so it is safe on any tick. It sits here
+rather than earlier because a row's note is worth having in the register while its roadmap is still
+running.
+
+**Then the photographs those notes point at.**
+
+```sh
+orchestra archive-images --write
+```
+
+Prose is not the weight — pictures are: measured 2026-09-02 in planetCraft, the register's own
+runtime directory held 70.2 MB in 199 files, of which 68 MB was 114 screenshots and boards, every
+one belonging to a run that had landed weeks earlier. The sweep asks one question of each
+photograph: can any live surface still draw it? Three can — an open `pending` ask on any row
+whatever its status, the `note` of a row that is not terminal, and a journal or inbox line about
+work that is still running. The rest are filed as `photo` lines in the same archive, each carrying
+its size and the finished row or line that named it, before the file is removed.
+
+Two things about it worth stating on their own:
+
+- **The sweep's world is `.orchestra/images/`, never `.orchestra/`.** In this plugin `.orchestra/`
+  also holds `config.json` and defaults to holding `worktrees/`, so a sweep of the whole directory
+  would walk into a live worktree, decide no register line names the project's own pictures, and
+  delete them.
+- **It carries no conductor refusal, deliberately, and needs none: it rewrites no register.** Its
+  hazard is a different one — a picture a worker has just taken and nobody has cited yet — and a
+  clock answers it where a lock cannot. Measured over the 22 photographs the journal named, in
+  planetCraft: the gap between a file being written and the first line citing it was at most
+  1.2 hours. Seven days is 140x the worst measured gap.
+
+### The answer net, and what has no net under it yet
+
+An answer normally reaches a conductor through none of this: the two-second watch armed at step 1
+hands it over in seconds, and phase 4's page starts nothing while that beat is live.
+
+What the watch cannot cover, in the code's own words: an answer **already sitting when the watch
+was armed** — its first round announces nothing and only remembers what is already there — and one
+left behind by **a tick that died before relaying it**, because the watch dies with the session
+too.
+
+**There is no level-triggered net under it in this plugin.** A second launchd agent or systemd
+timer is the shape that would work, and choosing to install one is the user's, not a tick's —
+phase 5 is where it is wired and where it is paid for. Never propose a cron entry for it: a cron
+tick cannot read the login keychain, so the net would catch nothing while reading as protection.
