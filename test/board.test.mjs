@@ -89,6 +89,22 @@ test('work landed here while its shared overlay entry stayed open is a stale-iss
   assert.deepEqual(b.unverified, []);
 });
 
+test('an overlay claim does not mask an unrecorded landing', () => {
+  // The register says landed and recorded no subject. Git sees no branch and no subject, so the
+  // LOCAL derivation is `todo` — the recording gap. The shared entry, still open and mine, says
+  // `claimed`. Reading the gap off the overlay-aware status hides it: the row prints `claimed`,
+  // `isLanded` is false, and every task depending on it is blocked by a landing that happened.
+  const tasks = [{ key: 'demo/D1', branch: 'demo/d1', deps: [] },
+                 { key: 'demo/D2', branch: 'demo/d2', deps: ['demo/D1'] }];
+  const git = { refs: new Set(), mainSubjects: new Set() };
+  const register = [{ id: 'demo/D1', status: 'landed', subjects: [] }];
+  const overlay = new Map([['demo/D1', { status: 'claimed', mine: true, open: true, ref: 7 }]]);
+  const b = reconcile({ tasks, git, register, overlay });
+  assert.equal(b.rows[0].status, UNVERIFIED);
+  assert.equal(b.unverified.length, 1);
+  assert.deepEqual(b.rows[1].blockedBy, []);
+});
+
 test('offline can never produce a "not ours" line, because the overlay is empty', () => {
   const register = [row({ status: 'dropped' })];
   const b = reconcile({ tasks, git: noGit, register, overlay: new Map() });

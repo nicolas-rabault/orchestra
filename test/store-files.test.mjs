@@ -1,6 +1,8 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
+import {
+  writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync,
+} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
@@ -125,4 +127,35 @@ test('a draft whose filename disagrees with its frontmatter slug is listed and p
   assert.equal(res.slug, 'demo');
   assert.ok(existsSync(join(ctx.r.root, ctx.cfg.roadmaps.published, 'demo.md')));
   assert.ok(!existsSync(join(ctx.r.root, ctx.cfg.roadmaps.published, 'foo.md')));
+});
+
+test('publish targets the existing file of a slug when exactly one file declares it', () => {
+  const ctx = offline();
+  const dir = join(ctx.r.root, ctx.cfg.roadmaps.published);
+  // Both the frontmatter AND the task's own Roadmap field must move — the fixture's D1 declares
+  // its Roadmap explicitly, and lint refuses a task whose field disagrees with its file's
+  // frontmatter (lib/roadmap/lint.mjs: "Roadmap must agree").
+  const lighting = ROADMAP.replace('roadmap: demo', 'roadmap: lighting')
+    .replace('- **Roadmap** demo', '- **Roadmap** lighting');
+  mkdirSync(dir, { recursive: true });
+  // A hand-written file whose NAME is not its slug — a date-named file is an ordinary convention.
+  // Offline, two files can declare one slug because nothing but this rule stops them; online, the
+  // issue number is the identity and cannot collide.
+  writeFileSync(join(dir, '2026-09-lighting.md'), lighting);
+  const res = ctx.store.publish(draft(ctx, lighting, 'whatever'));
+  assert.equal(res.slug, 'lighting');
+  // The existing file was rewritten; no second file appeared under a different name.
+  assert.deepEqual(readdirSync(dir).filter((f) => f.includes('lighting')), ['2026-09-lighting.md']);
+});
+
+test('publish REFUSES when two published files declare the same slug, naming both', () => {
+  const ctx = offline();
+  const dir = join(ctx.r.root, ctx.cfg.roadmaps.published);
+  const lighting = ROADMAP.replace('roadmap: demo', 'roadmap: lighting')
+    .replace('- **Roadmap** demo', '- **Roadmap** lighting');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'a-lighting.md'), lighting);
+  writeFileSync(join(dir, 'b-lighting.md'), lighting);
+  assert.throws(() => ctx.store.publish(draft(ctx, lighting, 'whatever')), (e) =>
+    e.message.includes('a-lighting.md') && e.message.includes('b-lighting.md'));
 });
