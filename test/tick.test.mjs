@@ -1,6 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, utimesSync } from 'node:fs';
 import { makeRepo } from './helpers/fixture.mjs';
 import { writeState, emptyState, statePath } from '../lib/register/state.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
@@ -54,9 +54,22 @@ test('gateLine reads the same unconsumed rule the relay does', () => {
   assert.match(gateLine(r.root), /^run$/);
 });
 
-test('an unreadable register cannot tell whether an answer is waiting, so it assumes one is', () => {
+// This register never reaches the "cannot tell whether an answer is waiting" catch below: JSON.parse
+// fails on it, so `gateLine` reads it as the string 'unreadable' and `decideTick`'s own
+// `register === 'unreadable'` branch returns 'run' directly, before the inbox is ever consulted.
+test('a register that fails to parse takes decideTick\'s own unreadable branch, not the assumed-answer one', () => {
   const r = repo();
   writeFileSync(statePath(r.root), '{"tasks":');
+  assert.equal(gateLine(r.root), 'run');
+});
+
+// Here JSON.parse SUCCEEDS — `register` is a real object, not the string 'unreadable' — so this is
+// the branch that actually reaches `unconsumedAnswers = 1`: `openPendingIds`'s
+// `for (const t of state.tasks ?? [])` iterates over the number 5, throws, and gateLine's catch
+// assumes an answer is waiting rather than losing one nobody could confirm.
+test('an object register whose task list cannot be iterated still assumes an answer is waiting', () => {
+  const r = repo();
+  writeFileSync(statePath(r.root), '{"tasks":5}');
   assert.equal(gateLine(r.root), 'run');
 });
 
@@ -64,6 +77,11 @@ test('yieldVerdict hands back to a live conductor, once, and journals it once', 
   const r = repo();
   const now = Date.parse('2026-09-03T10:00:00.000Z');
   writeState(r.root, emptyState(r.root));
+  // `conductorState`'s `silentFor` is measured against the register's REAL mtime, not against
+  // `now` — pinned here to `now` itself, as test/beat.test.mjs does, so this passes because the
+  // conductor genuinely just wrote it, not because `now` happens to be close to the real clock
+  // when the suite runs.
+  utimesSync(statePath(r.root), now / 1000, now / 1000);
   writeBeat(r.root, { session: 'abcdef12-1111', pid: 9, now });
   const v = yieldVerdict({ root: r.root, selfSession: 'other', now, alive: () => true });
   assert.equal(v.yield, true);
@@ -85,6 +103,9 @@ test('a beat shorter than eight characters is not an identity', () => {
   const r = repo();
   const now = Date.parse('2026-09-03T10:00:00.000Z');
   writeState(r.root, emptyState(r.root));
+  // Same pin as above: `conducting` must be true here for `.yield` to be true, and that has to
+  // hold regardless of the real clock at the moment the suite happens to run.
+  utimesSync(statePath(r.root), now / 1000, now / 1000);
   writeBeat(r.root, { session: 'abc', pid: 9, now });
   // `selfSession.startsWith('abc')` would read a garbled beat as MY OWN and conduct beside it.
   assert.equal(yieldVerdict({ root: r.root, selfSession: 'abcdef12-1111', now, alive: () => true }).yield, true);

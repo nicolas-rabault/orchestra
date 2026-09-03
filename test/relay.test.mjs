@@ -69,3 +69,32 @@ test('the batch is the OLDEST unconsumed answers and it says how many are behind
   assert.doesNotMatch(out, /"a20"/);
   assert.match(out, /5 further answers are waiting/);
 });
+
+test('an out-of-order timestamp past the cap is still shown, and shown first, sorted by instant not file order', () => {
+  const r = repo();
+  writeState(r.root, { ...emptyState(r.root), tasks: [{ id: 'demo/D1', branch: 'demo/d1', pending: [] }] });
+  for (let i = 0; i < 20; i += 1)
+    appendFileSync(inboxPath(r.root), `${JSON.stringify({ ts: `2026-09-03T10:${String(i).padStart(2, '0')}:00.000Z`, task: 'demo/D1', answer: `a${i}` })}\n`);
+  // Appended LAST — file position 21, past RELAY_CAP — but its ts is the OLDEST of the whole batch:
+  // a clock adjustment or a late-flushed write, exactly the case file order alone cannot survive.
+  appendFileSync(inboxPath(r.root),
+    `${JSON.stringify({ ts: '2026-09-03T09:00:00.000Z', task: 'demo/D1', answer: 'oldest-but-last' })}\n`);
+  const out = relay(r.root);
+  assert.match(out, /"oldest-but-last"/);
+  // Sorted to the FRONT of the shown batch, ahead of every entry written before it in the file.
+  assert.ok(out.indexOf('oldest-but-last') < out.indexOf('"a0"'));
+  // Bumped out to make room: the newest of the original 20 is now behind the cap.
+  assert.doesNotMatch(out, /"a19"/);
+  assert.match(out, /1 further answers are waiting/);
+});
+
+test('an unparseable timestamp sorts LAST, never jumping ahead of a provably older entry', () => {
+  const r = repo();
+  writeState(r.root, { ...emptyState(r.root), tasks: [{ id: 'demo/D1', branch: 'demo/d1', pending: [] }] });
+  appendFileSync(inboxPath(r.root),
+    `${JSON.stringify({ ts: 'not-a-date', task: 'demo/D1', answer: 'unparseable-ts' })}\n`);
+  appendFileSync(inboxPath(r.root),
+    `${JSON.stringify({ ts: '2026-09-03T10:00:00.000Z', task: 'demo/D1', answer: 'provably-old' })}\n`);
+  const out = relay(r.root);
+  assert.ok(out.indexOf('provably-old') < out.indexOf('unparseable-ts'));
+});

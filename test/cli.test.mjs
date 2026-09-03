@@ -1,10 +1,11 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { rmSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
+import { writeState, emptyState } from '../lib/register/state.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 const repos = [];
@@ -101,4 +102,63 @@ test('doctor marks BOTH leaves of a nested default when the whole group is absen
   const publishedLine = out.split('\n').find((l) => l.includes('roadmaps.published'));
   assert.match(draftsLine, /\(default\)/);
   assert.match(publishedLine, /\(default\)/);
+});
+
+// A NaN --width would otherwise slice `planLaunches` to nothing AND suppress both lines that would
+// have explained why (see lib/cli/tick.mjs), so a typo'd flag must be refused loudly rather than
+// disable launching in total silence.
+test('ready refuses a non-integer --width, naming what was passed', () => {
+  const r = repo();
+  writeState(r.root, emptyState(r.root));
+  assert.throws(
+    () => execFileSync('node', [BIN, 'ready', '--width', 'abc'], { cwd: r.root, encoding: 'utf8', stdio: 'pipe' }),
+    (e) => e.status === 1 && /--width must be a positive integer/.test(e.stderr) && /"abc"/.test(e.stderr),
+  );
+});
+
+test('ready refuses a --width with no value, the same as a non-numeric one', () => {
+  const r = repo();
+  writeState(r.root, emptyState(r.root));
+  assert.throws(
+    () => execFileSync('node', [BIN, 'ready', '--width'], { cwd: r.root, encoding: 'utf8', stdio: 'pipe' }),
+    (e) => e.status === 1 && /--width must be a positive integer/.test(e.stderr),
+  );
+});
+
+// A NaN --pid is written to disk as `pid: null` by JSON.stringify, and `holderIsDead` (lock.mjs)
+// then reads a `tick` holder with a null pid as dead on its very first check — a lock that protects
+// nothing. See lib/cli/register.mjs.
+test('lock acquire refuses a --pid with no value, rather than writing a null pid', () => {
+  const r = repo();
+  assert.throws(
+    () => execFileSync('node', [BIN, 'lock', 'acquire', '--pid'], { cwd: r.root, encoding: 'utf8', stdio: 'pipe' }),
+    (e) => e.status === 1 && /--pid must be a positive integer/.test(e.stderr),
+  );
+});
+
+// The off switch (`if (!cfg && !cmd.machine) process.exit(0)` in bin/orchestra) is written in ONE
+// place and every verb but `doctor` relies on it rather than re-implementing the check — but until
+// now only `roadmap board` was ever pinned against it. `archive-images` is behind that same gate
+// and deletes files; a verb that quietly stopped honouring it would only be caught here.
+//
+// The verb list is read from `orchestra help`'s own output (bin/orchestra prints `[...COMMANDS.keys()]`
+// verbatim) rather than duplicated by hand, so a verb registered later is covered automatically
+// without this test being told about it.
+test('every registered verb but doctor honours the off switch — exits 0 and prints nothing', () => {
+  const help = execFileSync('node', [BIN, 'help'], { encoding: 'utf8' });
+  const verbs = help.split('\n').map((l) => l.trim())
+    .filter((l) => l && l !== 'orchestra <subcommand>');
+  assert.ok(verbs.includes('doctor'));
+  assert.ok(verbs.includes('archive-images'));
+  assert.ok(verbs.length > 2, 'the help output did not parse into a real verb list');
+
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  for (const verb of verbs) {
+    if (verb === 'doctor') continue;
+    const res = spawnSync('node', [BIN, verb], { cwd: r.root, encoding: 'utf8' });
+    assert.equal(res.status, 0, `${verb}: expected exit 0, got ${res.status} (stderr: ${res.stderr})`);
+    assert.equal(res.stdout, '', `${verb}: expected no stdout, got ${JSON.stringify(res.stdout)}`);
+    assert.equal(res.stderr, '', `${verb}: expected no stderr, got ${JSON.stringify(res.stderr)}`);
+  }
 });

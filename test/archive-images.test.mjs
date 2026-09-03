@@ -122,6 +122,23 @@ test('a surviving board keeps the montages it names', () => {
   assert.deepEqual(sweep(r.root, { now: NOW }).dropped, []);
 });
 
+test('archivePhotos prunes an emptied subdirectory but leaves the images directory itself standing', () => {
+  const r = repo();
+  // A nested directory that becomes fully empty once its only photo is archived — pruning it is
+  // what proves `pruned` is ever observed at all, which nothing else in this suite asserts.
+  photo(r, 'nested/only.png', 64);
+  writeState(r.root, { ...emptyState(r.root),
+    tasks: [{ id: 'demo/D1', status: 'landed', note: 'the fix, only.png', pending: [] }] });
+  const res = archivePhotos(r.root, { now: NOW });
+  assert.equal(res.removed, 1);
+  assert.equal(res.pruned, 1);
+  assert.equal(existsSync(join(imagesDir(r.root), 'nested')), false);
+  // The images directory ITSELF must survive even though the sweep just left it completely empty —
+  // a worker can write a fresh screenshot into it mid-run, and removing it out from under one would
+  // turn a missing folder into a worker crash instead of an empty one.
+  assert.ok(existsSync(imagesDir(r.root)));
+});
+
 test('the sweep never leaves its own directory', () => {
   const r = repo();
   // A CONTROL photograph under images/, named by the same finished row: it must be swept, which is

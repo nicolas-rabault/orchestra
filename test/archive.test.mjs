@@ -1,9 +1,9 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
-import { writeState, readState, emptyState } from '../lib/register/state.mjs';
+import { writeState, readState, emptyState, statePath } from '../lib/register/state.mjs';
 import { partition, archive, loadArchive, isStripped, archivePath, PROSE_FIELDS } from '../lib/register/archive.mjs';
 
 const repos = [];
@@ -73,6 +73,20 @@ test('archive writes the line before it rewrites the register, and round-trips',
   assert.deepEqual(readState(r.root).tasks, []);
   assert.equal(readState(r.root).root, r.root);       // the wrong-project guard survives the pass
   assert.equal(loadArchive(r.root)[0].note, 'a long post-mortem');
+});
+
+test('archive REFUSES to write a register recorded for another project, naming both paths', () => {
+  const a = repo();
+  const b = repo();
+  // Written directly, bypassing writeState's own guard, to reproduce a register that already
+  // carries a foreign root on disk (a copied .orchestra/, a hand-edited state.json) — exactly
+  // the case archive() must catch on its own write, since it reads through readState but is not
+  // guaranteed to write through writeState.
+  writeFileSync(statePath(a.root), JSON.stringify({ ...emptyState(b.root), tasks: [row('demo/D1')] }, null, 2));
+  assert.throws(
+    () => archive(a.root, { at: 'T' }),
+    (e) => e.message.includes(a.root) && e.message.includes(b.root),
+  );
 });
 
 test('a torn tail line in the archive is skipped, not fatal', () => {
