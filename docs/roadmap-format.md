@@ -8,17 +8,17 @@ the reader.
 ## 1. The task block
 
 ```
-### N2 — Cluster the cave emitters into rare groves
+### N2 — Cache the parsed manifest between runs
 
-- **Roadmap** night
+- **Roadmap** startup
 - **Order** 2
 - **Deps** N1
-- **Touches** `src/engine/worldgen/caveFeatures.js`, `src/lavaLights.js`
-- **Branch** `night/n2-emitter-clusters`
+- **Touches** `src/manifest.js`, `src/cache.js`
+- **Branch** `startup/n2-manifest-cache`
 - **Design** no
 - **Lane** —
 
-**Why.** Plain language, what the player sees differently.
+**Why.** Plain language, what is different for whoever uses this project.
 
 **Acceptance.** How you know it landed, and with which instrument.
 ```
@@ -72,11 +72,12 @@ there is no field for it.
 
 Two paragraphs, required, in this order:
 
-- **Why.** What the player sees differently once this task lands. Not what the code does — what
-  changes for someone playing the game.
-- **Acceptance.** The instrument that will show it: a gate scene, a bench number, a test, a
-  screenshot pair. Name the thing someone would look at to agree the task is done, not a description
-  of doneness.
+- **Why.** What is different, once this task lands, for whoever uses what this project produces —
+  a reader, an operator, a caller of its API, a player. Not what the code does: what changes on the
+  other side of it.
+- **Acceptance.** The instrument that will show it: a test, a benchmark figure, a screenshot pair,
+  a command's output before and after. Name the thing someone would look at to agree the task is
+  done, not a description of doneness.
 
 If you can't point at what would change or what would show it, the task isn't ready to write down
 yet — it's still an idea.
