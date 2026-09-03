@@ -345,3 +345,108 @@ started *after* the hold was issued.
 - **The one thing that is yours**: a worker reporting that its measurement could not get what it
   needed is a tooling finding — it goes to the user, not into a workaround. No amount of conductor
   vigilance substitutes for fixing it.
+
+## The tick
+
+0. **Before anything else — before the page, before the watch, before you record yourself — ask
+   whether somebody is already conducting.** One command, and phase 5's heartbeat runs the same
+   one:
+   ```sh
+   orchestra yield-check     # exit 10 = hand back; it has already journalled the line
+   ```
+   On exit 10, STOP. Nothing else in this tick happens.
+
+   **The check itself is the beat, and step 1 explains it — this step is about WHEN.** Step 1 has
+   you arm a watch and record yourself as a replacement, and both are writes a session that is not
+   the conductor must not make: a second watch overwrites the live conductor's beat with its own,
+   and recording yourself puts a session that is about to hand back into `conductor.session`.
+   Asking after those two is asking too late, so it is asked here, off a file that costs a read and
+   a signal-0.
+1. **Rehydrate.**
+
+   **The page.** There is no monitoring page yet — `orchestra monitor` is phase 4. Two rules were
+   measured against it in planetCraft and are recorded here for whichever session builds that
+   phase, so they are not paid for twice: probe with `lsof`, never with `curl` — measured
+   2026-08-12, `curl` from the conductor's shell could not reach a localhost server that `lsof`
+   proved was listening and a browser was using, so the `curl` form hung forever and the `||`
+   never fired. And a page that accepts the connection and never replies is not a wedged process —
+   restarting it changes nothing, because a fresh one does the same; it is blocked on something it
+   fetches synchronously per request, and that was GitHub being unreachable, through the board
+   read, for nine hours on 2026-08-12. The page is never required.
+
+   **Then arm the answer watch, once, before anything else in this tick.** It is what turns an
+   answer's worst case from a whole heartbeat interval into seconds:
+   ```
+   Monitor(command: "orchestra watch-answers <your full session uuid>",
+           persistent: true, description: "answers posted on the monitoring page")
+   ```
+   One two-second loop doing two jobs. It prints one line per answer the page takes, and that line
+   reaches THIS session as an event whatever you are doing — including sitting idle between ticks,
+   which is the one state nothing else can reach (`SendMessage` only queues, and your next turn
+   otherwise comes when the user types). Measured 2026-08-13 in planetCraft: one second from the
+   file changing to the event arriving. And it writes `.orchestra/conductor.beat.json`, which is
+   the only evidence anywhere that a conductor is ALIVE — the loop lives exactly as long as this
+   session, so a beat under a minute old whose pid answers signal 0 is a live conductor, where a
+   register naming one is not. Until phase 4 there is no page writing answers, so this loop's
+   announcements are empty and it is armed for the beat alone — which the lock and phase 5's
+   heartbeat both read.
+   Arm exactly one: a second watch on the same session announces everything twice. **A headless
+   tick arms none** — the loop would die with the tick, and its beat would spend the next minute
+   naming a conductor that is already gone.
+
+   Then `orchestra ready --json`. Read `claude agents --json` and `ListAgents`. If there is no
+   state file, go to Adoption. If `state.json`'s `conductor.session` is not you, you are a
+   replacement: record yourself, and SendMessage every live worker a new hello — "new conductor;
+   reply to this address; resend any pending question". A question lost in the handover is
+   re-collected by step 3's probe, not dropped.
+
+   **Then take the lock, before anything else this tick does.** A headless tick and an interactive
+   one take the identical lock, and that symmetry is the fix for a measured defect, not a
+   formality: on 2026-08-12 in planetCraft, before the lock covered an interactive tick at all, a
+   second tick ran beside the first three times, once double-running the landing on the same
+   branch.
+   ```sh
+   orchestra lock acquire --kind conductor --session <your full session uuid>
+   ```
+   Exit 0 means it is yours; exit 1 prints who holds it, and you stop the tick there — journal one
+   line and hand back. Release it in step 9, and only there: while you hold it, no headless tick
+   will start. A holder that is provably gone is broken automatically — a dead pid for a tick, a
+   stopped beat for a conductor — so a killed session cannot wedge the heartbeat. Arm the answer
+   watch before you rely on this: your beat is what proves you are alive, and a conductor that
+   holds the lock without beating is one the next tick will correctly break.
+
+   **Then check that you are the only conductor anyway.** The lock stops two conductors from
+   *starting* together; it cannot see one that began before it existed — six sessions took the
+   baton from each other in half an hour on 2026-08-13 in planetCraft. `.orchestra/conductor.beat.json`
+   is the one check that answers rather than hints, and step 0 has already made it — what follows
+   is what that check means. A beat naming a session that is not you, stamped under a minute ago,
+   whose pid is still alive, IS a live conductor: journal one line and hand back, whatever
+   `conductor.session` says.
+
+   **One exception, and it is the only one: a beat proves a session can be REACHED, never that it
+   is conducting.** The loop is armed for the whole session, so a window left open and untouched
+   beats for ever — measured 2026-08-17/18 in planetCraft: four consecutive heartbeat slots stood
+   down for one while four finished workers sat uncollected about thirteen hours. `orchestra
+   yield-check` therefore also reads how long the register has stood still and lets you act past
+   ninety minutes of it. When it does, say so in your journal line and **ask the user to close
+   that session**: its answer watch is still writing the beat and yours will be too, so the two
+   loops take turns naming the conductor until one of them is closed. **The register is the
+   opposite and always was**: it named a dead conductor for half an hour that morning while three
+   answers rotted in it, so `conductor.session` naming somebody else is not evidence that anybody
+   is there.
+
+   When there is no beat at all, fall back to the tells: a row that reconciles to `claimed` on a
+   ref you never created; a `git worktree list` entry you did not add; a `git branch -d` that
+   refuses because a worktree you do not know holds the branch; an `inboxSeen` ahead of your own
+   last write. When you find one, name the other session from `ListAgents` and SendMessage it to
+   stand down — the user is in the session they typed `/orchestra` into, and that is the one that
+   keeps the baton. Do NOT touch its worktree (never 3), and record what it built so the work is
+   not lost. **The branch ref is the interlock that actually held**: a worktree and branch created
+   by one conductor make the row read `claimed` to the other, which is why no task was ever
+   launched twice.
+2. **Apply corrections.** `orchestra ready` prints its corrections as `fix: <id>: <what changed>`
+   lines; write the reconciled rows back to `.orchestra/state.json`. You are the only writer of
+   this file; workers never touch it. This is a hand-edit, not a subcommand, so the guard from the
+   top of this document applies here for real: the register carries the `root` it was created for,
+   and a hand-written path after a `cd` into a worktree is how another project's register gets
+   written — check `state.json`'s own `root` key before you save.
