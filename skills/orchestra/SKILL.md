@@ -643,3 +643,133 @@ started *after* the hold was issued.
    back with, and a pointer to the evidence. **Discoverability is the whole deliverable, not the
    prose**: `docs.results` is the directory `orchestra doctor` prints, and reading it is the
    first thing anyone does before opening new work.
+7. **Sync the shared channel.**
+   ```sh
+   orchestra roadmap enrol   # rows the register lacks; silent when there are none
+   ```
+   `enrol` is first and costs nothing when there is nothing to do. It exists for the tasks
+   `publish` cannot enrol — another developer's roadmap never passes through this machine's
+   publish at all — and a task with no register row is one nothing here will ever schedule or
+   even count. It refuses a stale board rather than degrading to it: an existing row is never
+   touched, only added to — `if (!task.key || known.has(task.key)) continue;`
+   (`lib/roadmap/enrol.mjs`) — so a task the register already knows about is left exactly as this
+   machine last wrote it, however far the board's own read of it has drifted since.
+
+   `orchestra roadmap sync` is **phase 3, and online only** (see `## What is not here yet`): it
+   will close what the register proves landed, move every `status:` label onto what the board
+   derives, tick each programme's checklist, and close a finished programme — which is what makes
+   a finished roadmap leave the monitor. When it arrives it is the BACKSTOP, not the primary
+   writer: the merge gate runs the same command after every fast-forward. Offline there is
+   nowhere to write a status, so it does nothing there, and that is correct (spec §4.1).
+
+   Keep the stale-board rule as a rule of this step: **if `orchestra roadmap board` reports
+   itself stale, launch nothing this tick and end here** — a cached board cannot say whether
+   another developer has taken a task, and starting anyway overwrites their claim. Say so in the
+   journal. Offline, a board is never served from cache, so this rule is online's.
+8. **Launch, and the names.** Launch each row `orchestra ready` places in `launches` — already
+   width-capped by "The machine's capacity" above. **Claim first, always**, for your own
+   roadmaps too, now that every roadmap is published:
+   ```sh
+   orchestra roadmap claim <key>
+   ```
+   Online the claim is what turns the issue `status:wip` for everyone else watching; offline it
+   is the register row and the branch ref. If it reports a loss — `lib/cli/roadmap.mjs`'s
+   `claim` case throws `claim lost: <key> is held by <holder>` when the store refuses — drop the
+   row from this batch and record who holds it. Phase 5's `guard-claim` hook is the backstop,
+   not the mechanism.
+   ```sh
+   git worktree add <worktrees>/<slug> -b <branch> <the project's main branch>
+   claude --bg -n orchestra-<project id>-<task slug> --model <model> --dangerously-skip-permissions "<brief>"
+   ```
+   `<worktrees>` is the `worktrees` config (`orchestra doctor`'s own row; default
+   `.orchestra/worktrees`). **Do not run a dependency install here.** The source project's launch
+   did; a portable protocol cannot know whether a fresh worktree needs one, so if the project
+   needs a per-worktree bootstrap the worker's brief says so — that is one of the things
+   `briefExtra` is for.
+
+   **The session name is `orchestra-<project id>-<task slug>`, and it is not optional** (spec
+   §8.4). Four parts, and each is load-bearing:
+   - `<project id>` is the `id` row of `orchestra doctor` — six hex of sha256 over the main
+     checkout's absolute path (`lib/paths.mjs`'s `projectId`), so two checkouts of one repository
+     and two projects that happen to share a directory name do not collide.
+   - `<task slug>` is the register row's own id, lowercased, with every run of non-alphanumeric
+     characters replaced by a single dash. Worked example: project `a3f19c`, row `lod/C2` →
+     `orchestra-a3f19c-lod-c2`.
+   - **Without a name, the session is named from the whole prompt**, which exceeds
+     SendMessage's 200-character address limit and makes the worker unaddressable by name —
+     measured in planetCraft: the first batch had to be relaunched for it. The name above stays
+     far inside that limit.
+   - **Without the project id**, `orchestra-<task id>` alone collides the moment two projects
+     have a task called `S3`, and the symptom is bad: `SendMessage` addresses by name, and
+     `claude agents --json` is matched by name and cwd, so two sessions can answer to the same
+     name at once.
+
+   And two rules that already held for a single project are now load-bearing for isolation as
+   well (spec §8.4): a worker is matched by **cwd equal to its worktree path**, and the
+   worktrees directory is **per project** — `<worktrees>` above, never one shared across
+   projects.
+
+   Journal the launch with the session name you gave it, alongside the task, its branch and its
+   model (see The journal): a name that does not match the session in `claude agents --json` is
+   then visible on the next tick, not silently wrong.
+
+   `--bg` with skipped permissions requires the user to have accepted the disclaimer once,
+   interactively. If launches fail with a disclaimer error, that one-time step is the fix, and it
+   is the user's to run.
+
+   Then find the new session in `claude agents --json` (match cwd = the worktree path), record
+   the **full session UUID** — the resume cycle needs it, a short id is not enough — plus
+   `sessionName`, `model` and status `claimed` in `state.json`, and SendMessage it a hello: "I am
+   your conductor — reply to this address with questions and reports." The hello drains at the
+   worker's next turn, not instantly. **Say in the same hello that replying does not work** and
+   that its report must be its FINAL MESSAGE: telling a worker to reply to an address that
+   cannot resolve is telling it to wait for ever.
+
+   **`cd` PERSISTS BETWEEN Bash CALLS.** Keep the measurement — a `state.json` write straight
+   after a launch went to the worktree and failed with `ENOENT` on 2026-08-12 in planetCraft,
+   and the same shape has silently written files into the wrong tree since — and the
+   instruction: after any launch, `cd` back to the main checkout or use absolute paths. The one
+   thing that is different here: every subcommand resolves runtime state to the main checkout
+   itself, so this hazard is now confined to the files you write by hand — `state.json` above
+   all.
+
+   Keep the two launch-plan rules the tool does not make: never launch two rows of the same
+   serial `Lane` together; and **files are not a reason to wait** — two rows editing the same
+   file run side by side and the conflict is resolved at the merge, which changed on 2026-09-01
+   in planetCraft because the declared `Touches` never predicted what a task actually edited and
+   the collisions happened anyway. `Touches` is documentation for the reader and for the landing
+   now; it schedules nothing, and `orchestra ready` no longer reads it.
+
+   Keep **take your own roadmaps first**: `planLaunches` fills every slot from rows whose `mine`
+   is not false before it takes a row from a roadmap another developer opened to everyone — they
+   offered spare capacity, not priority.
+
+   Add the one line from the budget above: the plan is already capped by the machine's capacity,
+   so a `HELD:` line means launch nothing and say so.
+9. **Write, release, stop.**
+   ```sh
+   orchestra lock release --kind conductor --session <your full session uuid>
+   ```
+   Release it even though your session lives on: the lock covers the TICK, and your beat covers
+   the gaps between ticks — a headless tick stands down for a live beat on its own, so holding
+   the lock across your idle time would block the heartbeat for nothing. The release is
+   identity-checked (`lib/register/lock.mjs`), so if you were already broken for being stale it
+   leaves your successor's lock alone.
+
+   **Write the register even on a tick that changed nothing.** Its write time is the only mark
+   that separates a conductor which is conducting from a session which is merely open
+   (`lib/register/beat.mjs`'s `conductorState`, read off the register file's own mtime), and a
+   tick that skips the write reads as ninety minutes of silence at the next heartbeat slot.
+
+   Stopping is no longer going deaf. Four things wake you, each named with its phase where it
+   has one: the answer watch armed in step 1 hands you each new answer within seconds — and
+   until phase 4 there is no page to write one, so the beat is what it is really doing; worker
+   turns you resumed notify you as their Bash tasks complete; the landing re-invokes you once
+   phase 3 brings it; and phase 5's heartbeat guarantees a tick every hour whatever happens to
+   you, standing down while you are alive so it cannot become a second conductor beside you.
+
+   An interactive conductor may additionally arm one Monitor polling `claude agents --json` for
+   `orchestra-*` sessions leaving `busy` (2-minute interval, transitions only) — the fast path
+   for nudging workers between ticks. **It is a SECOND watch, on a different subject: do not
+   fold it into the answer watch, whose loop must stay a two-second file read with no child
+   process in it.**
