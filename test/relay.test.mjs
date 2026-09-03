@@ -1,8 +1,8 @@
 import { test, after as afterAll } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { makeRepo } from './helpers/fixture.mjs';
-import { writeState, emptyState } from '../lib/register/state.mjs';
+import { writeState, emptyState, statePath } from '../lib/register/state.mjs';
 import { inboxPath } from '../lib/register/inbox.mjs';
 import { pendingId } from '../lib/register/pending.mjs';
 import { relay } from '../lib/register/relay.mjs';
@@ -36,6 +36,26 @@ test('an answer to an item no longer in pending says so instead of inventing one
   const r = repo();
   seed(r, { pending: [], answer: { ts: '2026-09-03T10:00:00.000Z', task: 'demo/D1', pending: 'demo-d1-deadbeef', answer: 'yes' } });
   assert.match(relay(r.root), /NO LONGER in this row's pending\[\]/);
+});
+
+test('a corrupt register during relay is silence, not a crash', () => {
+  const r = repo();
+  // Write the inbox FIRST: relay() bails on its own "no inbox" check before it ever reaches
+  // readState(), so a corrupt-or-missing register with no inbox file would never exercise the
+  // catch this test is actually for. Only with a real, unconsumed answer sitting in the inbox does
+  // relay() proceed far enough to call readState() on the broken file below.
+  appendFileSync(inboxPath(r.root), `${JSON.stringify({ ts: '2026-09-03T10:00:00.000Z', task: 'demo/D1', answer: 'x' })}\n`);
+  writeFileSync(statePath(r.root), '{"tasks":');
+  assert.equal(relay(r.root), '');
+});
+
+test('no register at all, with a real inbox, is silence too', () => {
+  const r = repo();
+  // Same ordering rule as above: the inbox is written first so relay() actually reaches
+  // readState(), which here returns null (no state.json at all) rather than throwing — a different
+  // branch than the corrupt-JSON case, and both must resolve to the same silent ''.
+  appendFileSync(inboxPath(r.root), `${JSON.stringify({ ts: '2026-09-03T10:00:00.000Z', task: 'demo/D1', answer: 'x' })}\n`);
+  assert.equal(relay(r.root), '');
 });
 
 test('the batch is the OLDEST unconsumed answers and it says how many are behind', () => {
