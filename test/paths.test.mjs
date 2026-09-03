@@ -96,7 +96,10 @@ test('mainCheckout ignores GIT_DIR exported by a hook and uses cwd instead', () 
   const b = repo();
   const oldGitDir = process.env.GIT_DIR;
   try {
-    process.env.GIT_DIR = b.git('rev-parse', '--git-dir').trim();
+    // Must be ABSOLUTE: a relative GIT_DIR is resolved against the invoking cwd, so it cannot
+    // redirect anything. With a relative path, this test would pass identically with or without
+    // the scrubbed environment fix, proving nothing.
+    process.env.GIT_DIR = join(b.root, '.git');
     // mainCheckout is called from inside repo a, but GIT_DIR points to b.
     // Without the scrubbed environment, git would follow GIT_DIR and return b's root.
     // The scrubbed environment makes cwd authoritative, so it must return a's root.
