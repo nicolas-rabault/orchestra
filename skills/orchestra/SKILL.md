@@ -834,3 +834,50 @@ worker existed.
 **Retry a failed launch once, identically, before calling it a failure.** In planetCraft,
 `claude: command not found` appeared twice in a row from a shell whose `PATH` was correct, and an
 identical retry succeeded seconds later.
+
+## The decision template
+
+**Before you put ANY question mid-development, three checks.** Was it already answered at framing —
+`decisions[]` on the row (see The framing pass, and the one interruption)? Can you answer it
+yourself from a recorded decision, the project's own rules (which reach a worker as `briefExtra`),
+or a precedent already set on another row? Has this row already spent its one interruption? If any
+of those lands, **rule and journal it instead of asking** (`kind: ruling`). The two most expensive
+questions of the 2026-08-12/14 roadmap, in planetCraft, were both of this kind: releasing a file
+hold owned by a branch abandoned two weeks earlier, which no rule ever created, waited 8 h 07; and
+taking over four worktrees whose sessions were provably dead waited two hours forty-four before the
+answer came back "yes, all four" in six minutes.
+
+Every question reaching the user uses this shape, in the user's language, body written for
+someone who has never read the code (no path, no function name, no identifier, no
+millisecond in the body — what the user sees, what it changes, what each option costs;
+technical detail in a `<sub>` footer):
+
+> **[<ID> — <title> · `<branch>` · session `<name>` · server :<port>]**
+> **Where it stands**: <one sentence, plain language>
+> **Its question**: "<the worker's question, plain language>"
+> **What you need to decide**: <the context that makes the choice real: rules that apply,
+> precedents, what waits behind it>
+> **Options**: A) … · B) … · C) …
+> <sub>Technical: <the numbers and names, for when the user wants them>
+> Pictures: <repo-relative path(s) to any screenshot the question is about></sub>
+
+Relay the user's answer back to the worker verbatim, plus whatever context the worker needs.
+
+### A question about a picture must carry the picture
+
+You have no way to show the user an image and they have no way to open one you only describe, so a
+question like "which of these two arms reads better?" is unanswerable unless the file itself is on
+screen. **Name every screenshot the question is about by its repo-relative path, in the `<sub>`
+footer** — `.orchestra/images/c1-altitude-branch.png`, `.orchestra/images/s1-dossier-home.png`. The
+page (phase 4) reads those paths out of the ask, resolves them against the checkout, the worker's
+worktree and `.orchestra/images/`, and draws each one as a thumbnail beside the question, one click
+from full size. Nothing else is required of you: there is no field to fill and no upload.
+`.orchestra/images/` is also the one directory `orchestra archive-images` sweeps.
+
+The footer is where they belong precisely because the body stays free of paths — a path in the body
+would break the plain-language rule above, and a path in the footer breaks nothing.
+
+The same reading applies to a `note` and to a journal line, so a capture worth keeping is worth
+naming in either. Ask a worker that reports a measurement from a frame to write the frame's path
+where it says what it measured; a note that says "it looks wrong now" with no path is a claim the
+user cannot check.
