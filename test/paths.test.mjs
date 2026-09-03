@@ -1,11 +1,11 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
-import { mainCheckout, projectId, orchestraDir, assertRoot } from '../lib/paths.mjs';
+import { mainCheckout, projectId, orchestraDir, assertRoot, gitEnv } from '../lib/paths.mjs';
 
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
@@ -60,4 +60,33 @@ test('mainCheckout refuses a bare repository — the guard, not git, catches it'
   assert.throws(() => mainCheckout(bare), (e) =>
     e.message.includes('is not a working tree') && e.message.includes(bare));
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('assertRoot accepts a root reached through a symlink', () => {
+  const r = repo();
+  const link = join(realpathSync(mkdtempSync(join(tmpdir(), 'orchestra-link-'))), 'via');
+  symlinkSync(r.root, link);
+  // Same tree, two spellings. Refusing this is the wrong-project guard firing on the right project.
+  assert.doesNotThrow(() => assertRoot(r.root, link));
+  assert.doesNotThrow(() => assertRoot(link, r.root));
+});
+
+test('assertRoot still refuses two genuinely different trees, naming both', () => {
+  const a = repo();
+  const b = repo();
+  assert.throws(() => assertRoot(a.root, b.root), (e) =>
+    e.message.includes(a.root) && e.message.includes(b.root));
+});
+
+test('assertRoot compares a path that does not exist without throwing on the stat', () => {
+  // A register recorded for a checkout since deleted must still be REFUSED, not crash the caller
+  // with ENOENT — the guard's job is to name the mismatch.
+  const r = repo();
+  assert.throws(() => assertRoot(join(r.root, 'gone-since'), r.root), /refusing to write across projects/);
+});
+
+test('gitEnv strips every GIT_ variable', () => {
+  const env = gitEnv({ PATH: '/bin', GIT_DIR: '/elsewhere/.git', GIT_WORK_TREE: '/elsewhere', GIT_INDEX_FILE: '/x' });
+  assert.equal(env.PATH, '/bin');
+  assert.deepEqual(Object.keys(env).filter((k) => k.startsWith('GIT_')), []);
 });
