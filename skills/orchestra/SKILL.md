@@ -881,3 +881,83 @@ The same reading applies to a `note` and to a journal line, so a capture worth k
 naming in either. Ask a worker that reports a measurement from a frame to write the frame's path
 where it says what it measured; a note that says "it looks wrong now" with no path is a claim the
 user cannot check.
+
+## The playtest gate
+
+When a worker reports built, first ask what the row actually ships. **If it ships no page a human
+reads and no gameplay change, there is no gate**: it lands once every configured gate is green
+(`gates`, phase 3), the `landing` line goes in the journal, and the digest carries it (never #1).
+Seven of the sixteen rows of the dev-loop roadmap, in planetCraft, shipped nothing a human reads,
+and every one of their approvals was granted unread.
+
+Otherwise: tell the worker to start its dev server — **the project's own dev command; the worker
+knows it and you do not need to** — and to report the port it actually bound plus its pid. Set the
+row to `review`, and add a `pending[]` item — `kind: "playtest"` — naming the port (the Decision
+Template's own `server :<port>`). **The user's validation of the page IS the approval** — do not
+then ask a second time for the merge; that second question is the one this roadmap paid for
+thirteen times over, in planetCraft (see The framing pass, and the one interruption). What follows
+validation is step 6's business (see The tick): record the branch's commit `subjects` in the row
+BEFORE the hand-off — that is what makes landed detection work. The hand-off itself is phase 3's,
+and a landing deletes the worktree and the ref.
+
+**Never hand out a URL you have not fetched AND READ.** Not `curl` — it cannot reach a localhost
+server this shell can see listening. Fetch it and look at the body:
+
+```sh
+node -e 'fetch(process.argv[1],{signal:AbortSignal.timeout(4000)}).then(r=>r.text())
+  .then(t=>console.log(t.replace(/\s+/g," ").slice(0,200))).catch(e=>console.log("FAILED",e.message))' <url>
+```
+
+The status code is worthless here: in planetCraft the dev server answers 200 with the
+application's own entry page for any path at all, so a wrong path looks healthy from every angle
+except the one that matters. Measured 2026-08-13 in planetCraft: an ask sent the user to the wrong
+path, nothing flagged it, and he lost a whole test run to it. **Any dev server with a catch-all
+route does this**, so reading the first 200 characters is the entire check.
+
+**And when a worktree is deleted, kill its dev server and any page explicitly.** A server whose
+directory has been removed keeps serving — which reads as a live page showing stale code, and is
+indistinguishable from a working one until someone trusts it. Servers are killed **by pid**, never
+by pattern.
+
+### The dev-server sweep
+
+**And sweep for the ones you did not start, once per tick** — killing your own on deletion is not
+enough, because the server that hurts is the one nobody remembers launching. A dev server in the
+MAIN checkout takes the ticket ledger's queue lock and writes its tickets into main's ledger, which
+is what refused a landing on 2026-08-25 in planetCraft: one orphan was found and killed that
+afternoon, its worktree deleted that morning, and another was still listening forty hours later,
+from the main checkout, when the run was reviewed.
+
+```sh
+lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk '$1=="node"{print $2"\t"$9}' | sort -u |
+while IFS=$'\t' read -r pid addr; do
+  cmd=$(ps -o command= -p "$pid"); case "$cmd" in *orchestra*monitor*) continue;; esac
+  cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | grep '^n' | head -1 | cut -c2-)
+  if   [ -z "$cwd" ];       then v="NO CWD -> ask"
+  elif [ ! -d "$cwd" ];     then v="ORPHAN -> kill"
+  elif [ "$cwd" = "$PWD" ]; then v="MAIN CHECKOUT -> ask, never kill"
+  else v="OTHER TREE -> leave"; fi
+  echo "pid=$pid port=${addr##*:} age=$(ps -o etime= -p $pid|tr -d ' ')  $v"
+done
+```
+
+Three details, each one a wrong answer the first drafts gave: **skip your own page** — this
+plugin's monitoring page (phase 4) runs from the main checkout and, in planetCraft, had been up
+eight days, so without that `case` the sweep reports the conductor's own instrument as a suspect
+every hour; `$NF` is `(LISTEN)`, the address is `$9`; and `lsof -Fn` answers `p<pid>`/`f<fd>`/
+`n<path>`, so take the first `n` line, not the second line.
+
+**ORPHAN is the only verdict that kills.** A server in the main checkout may be the USER's, so it
+becomes a question — a note nobody reads is how one survived forty hours.
+
+**Two rules the subset gate cannot enforce for you**, both paid for on 2026-08-14 in planetCraft:
+
+- a branch that is a **new consumer** of a module another in-flight row has just rewritten needs
+  the full suite. A dead-code sweep on the main branch removed an export that a branch in flight
+  had just started importing; different lines, so git merged both sides happily and produced a
+  runtime `TypeError`. Neither the diff nor the dead-code gate could see it — the gate was right on
+  main and the branch was right on itself;
+- **land an unused-export sweep LAST**, after everything in flight against the same modules;
+- a `branchTests` command that selects by import graph can select exactly ONE file for a tool
+  nothing imports but its own test. When the subset looks suspiciously small, **say the number out
+  loud** and run the full suite instead of trusting it.
