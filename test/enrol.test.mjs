@@ -44,3 +44,14 @@ test('enrolling twice adds nothing the second time', () => {
   assert.deepEqual(second.added, []);
   assert.equal(second.state.tasks.length, 1);
 });
+
+test('a row records whether the task is mine, and offline every row is', () => {
+  const stranger = { ...tasks[0], key: 'demo/D2' };
+  const { state } = enrol({ tasks: [] }, [tasks[0], stranger], {
+    at, host, mine: (t) => t.key !== 'demo/D2',
+  });
+  assert.equal(state.tasks[0].mine, true);
+  assert.equal(state.tasks[1].mine, false);
+  // Offline there is no overlay at all, so the default applies and every row is mine.
+  assert.equal(enrol({ tasks: [] }, tasks, { at, host }).state.tasks[0].mine, true);
+});

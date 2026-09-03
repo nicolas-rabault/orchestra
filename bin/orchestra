@@ -5,6 +5,7 @@ import { COMMANDS, register } from '../lib/cli/registry.mjs';
 import { doctor } from '../lib/cli/doctor.mjs';
 import { roadmapCommand } from '../lib/cli/roadmap.mjs';
 import { journalCommand, inboxCommand, beatCommand, watchAnswersCommand, lockCommand } from '../lib/cli/register.mjs';
+import { readyCommand } from '../lib/cli/tick.mjs';
 
 register('doctor', { machine: true, run: ({ cfg }) => doctor(cfg) });
 register('roadmap', { run: roadmapCommand });
@@ -13,6 +14,7 @@ register('inbox', { run: inboxCommand });
 register('beat', { run: beatCommand });
 register('watch-answers', { run: watchAnswersCommand });
 register('lock', { run: lockCommand });
+register('ready', { run: readyCommand });
 
 const [name, ...rest] = process.argv.slice(2);
 
