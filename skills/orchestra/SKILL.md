@@ -183,7 +183,8 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    recover. It matters more than it sounds: on 2026-08-12/14, in planetCraft, the user answered in
    8 to 15 minutes whenever he knew something was waiting, and in 2 to 8 hours whenever he did
    not — and four asks that had waited between 2 h 19 and 8 h 07 were then all answered inside the
-   same four minutes. `askedAt` is what lets a question's wait be measured at all.
+   same four minutes. `askedAt` is what lets a tick see that and say so (see The tick's checkpoint
+   step).
 
    ```json
    {"id":"c2-playtest-1","kind":"playtest","askedAt":"2026-08-13T17:57:00Z","ask":"…","options":[
