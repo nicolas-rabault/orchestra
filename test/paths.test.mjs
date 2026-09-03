@@ -90,3 +90,19 @@ test('gitEnv strips every GIT_ variable', () => {
   assert.equal(env.PATH, '/bin');
   assert.deepEqual(Object.keys(env).filter((k) => k.startsWith('GIT_')), []);
 });
+
+test('mainCheckout ignores GIT_DIR exported by a hook and uses cwd instead', () => {
+  const a = repo();
+  const b = repo();
+  const oldGitDir = process.env.GIT_DIR;
+  try {
+    process.env.GIT_DIR = b.git('rev-parse', '--git-dir').trim();
+    // mainCheckout is called from inside repo a, but GIT_DIR points to b.
+    // Without the scrubbed environment, git would follow GIT_DIR and return b's root.
+    // The scrubbed environment makes cwd authoritative, so it must return a's root.
+    assert.equal(mainCheckout(a.root), a.root);
+  } finally {
+    if (oldGitDir === undefined) delete process.env.GIT_DIR;
+    else process.env.GIT_DIR = oldGitDir;
+  }
+});
