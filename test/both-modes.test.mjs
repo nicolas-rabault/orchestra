@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
+import { makeFakeGh } from './helpers/gh.mjs';
 import { loadConfig } from '../lib/config.mjs';
 import { makeStore } from '../lib/store/index.mjs';
 import { reconcile, gatherGit } from '../lib/roadmap/board.mjs';
@@ -17,26 +18,6 @@ import { parseRoadmap } from '../lib/roadmap/parse.mjs';
 
 const repos = [];
 after(() => repos.forEach((r) => r.cleanup()));
-
-// A `gh` recorder that keeps issues in memory, so the online store is exercised with no network.
-function fakeGh(me = 'nico') {
-  const state = [];
-  let next = 100;
-  const find = (n) => state.find((i) => i.number === n);
-  return {
-    state,
-    me: () => me,
-    ensureLabels: () => {},
-    listIssues: ({ labels = [] } = {}) => state.filter((i) => labels.every((l) => i.labels.includes(l))),
-    createIssue: (i) => { const n = next++; state.push({ number: n, state: 'open', assignees: [], author: me, ...i }); return n; },
-    updateIssue: (n, i) => Object.assign(find(n), i),
-    reopenIssue: (n) => { find(n).state = 'open'; },
-    closeIssue: (n) => { find(n).state = 'closed'; },
-    addLabel: (n, l) => { if (!find(n).labels.includes(l)) find(n).labels.push(l); },
-    removeLabel: (n, l) => { find(n).labels = find(n).labels.filter((x) => x !== l); },
-    assign: (n, who) => find(n).assignees.push(who),
-  };
-}
 
 // Seeds a roadmap that is ALREADY PUBLISHED, by the route each mode actually offers — the fixture
 // shape whose absence is what let the two stores disagree about `knownKeys` for a whole phase.
@@ -72,7 +53,7 @@ function project(mode) {
   const r = makeRepo({ mode });
   repos.push(r);
   const cfg = loadConfig(r.root);
-  const gh = mode === 'online' ? fakeGh() : null;
+  const gh = mode === 'online' ? makeFakeGh() : null;
   const store = makeStore(cfg, gh ? { gh } : {});
   const dir = join(r.root, cfg.roadmaps.drafts);
   mkdirSync(dir, { recursive: true });

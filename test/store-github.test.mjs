@@ -7,50 +7,21 @@ import { loadConfig } from '../lib/config.mjs';
 import { makeStore } from '../lib/store/index.mjs';
 import { LABELS, taskTitle } from '../lib/store/github/issues.mjs';
 import { parseRoadmap } from '../lib/roadmap/parse.mjs';
+import { makeFakeGh } from './helpers/gh.mjs';
 
 const repos = [];
 const task = parseRoadmap(ROADMAP).tasks[0];
 
-// A recorder in place of the `gh` CLI: every store method is exercised with no network.
-function fakeGh({ issues = [], me = 'nico' } = {}) {
-  const calls = [];
-  const state = issues.map((i) => ({ labels: [], assignees: [], state: 'open', body: '', ...i }));
-  let next = 200;
-  const find = (n) => state.find((x) => x.number === n);
-  return {
-    calls,
-    state,
-    gh: {
-      me: () => me,
-      ensureLabels: () => calls.push(['ensureLabels']),
-      listIssues: ({ labels = [] } = {}) =>
-        state.filter((i) => labels.every((l) => i.labels.includes(l))),
-      createIssue: (i) => { const n = next++; state.push({ number: n, ...i, state: 'open', assignees: [] }); calls.push(['create', i.title]); return n; },
-      updateIssue: (n, i) => { calls.push(['update', n]); Object.assign(find(n), i); },
-      reopenIssue: (n) => { calls.push(['reopen', n]); find(n).state = 'open'; },
-      closeIssue: (n) => { calls.push(['close', n]); find(n).state = 'closed'; },
-      addLabel: (n, l) => find(n).labels.push(l),
-      // A real removal, not a no-op: `reserve` and `release` are read back by later assertions,
-      // and a stub that always succeeds silently is exactly how their own bugs went untested.
-      removeLabel: (n, l) => { const i = find(n); i.labels = i.labels.filter((x) => x !== l); },
-      assign: (n, who) => { calls.push(['assign', n, who]); find(n).assignees.push(who); },
-      unassign: (n, who) => { calls.push(['unassign', n, who]); const i = find(n); i.assignees = i.assignees.filter((x) => x !== who); },
-      listComments: () => [],
-      addComment: () => {},
-    },
-  };
-}
-
-function online(fake) {
+function online(gh) {
   const r = makeRepo({ mode: 'online' });
   repos.push(r);
   const cfg = loadConfig(r.root);
-  return { r, cfg, store: makeStore(cfg, { gh: fake.gh }) };
+  return { r, cfg, store: makeStore(cfg, { gh }) };
 }
 after(() => repos.forEach((x) => x.cleanup()));
 
 test('list reads task issues back through the SAME parser', () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     issues: [{
       number: 5, title: taskTitle(task), labels: [LABELS.task],
       body: `### D1 — First thing\n\n- **Roadmap** demo\n- **Order** 1\n- **Deps** —\n- **Touches** \`README.md\`\n- **Branch** \`demo/d1-first-thing\`\n- **Design** no\n- **Lane** —\n\n**Why.** w\n\n**Acceptance.** a\n\nProgramme: #1\n`,
@@ -63,7 +34,7 @@ test('list reads task issues back through the SAME parser', () => {
 });
 
 test('the overlay reports status, owner and openness — and it is NOT empty', () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     me: 'nico',
     issues: [
       { number: 1, title: 'demo — Demo', labels: [LABELS.programme], author: 'nico', body: '- **Roadmap** demo\n' },
@@ -80,7 +51,7 @@ test('the overlay reports status, owner and openness — and it is NOT empty', (
 });
 
 test('a closed issue reads landed whoever owns it', () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     me: 'nico',
     issues: [
       { number: 1, title: 'demo — Demo', labels: [LABELS.programme], author: 'someone', body: '- **Roadmap** demo\n' },
@@ -91,7 +62,7 @@ test('a closed issue reads landed whoever owns it', () => {
 });
 
 test("another developer's roadmap is not mine, and openRoadmap adds exactly one label", () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     me: 'nico',
     issues: [
       { number: 1, title: 'demo — Demo', labels: [LABELS.programme], author: 'someone', body: '- **Roadmap** demo\n' },
@@ -105,7 +76,7 @@ test("another developer's roadmap is not mine, and openRoadmap adds exactly one 
 });
 
 test('publish lints the draft, refuses a bad one, and never calls gh for it', () => {
-  const f = fakeGh();
+  const f = makeFakeGh();
   const ctx = online(f);
   const dir = join(ctx.r.root, ctx.cfg.roadmaps.drafts);
   mkdirSync(dir, { recursive: true });
@@ -116,7 +87,7 @@ test('publish lints the draft, refuses a bad one, and never calls gh for it', ()
 });
 
 test('publish creates the issues and deletes the draft', () => {
-  const f = fakeGh();
+  const f = makeFakeGh();
   const ctx = online(f);
   const dir = join(ctx.r.root, ctx.cfg.roadmaps.drafts);
   mkdirSync(dir, { recursive: true });
@@ -135,7 +106,7 @@ test('publish creates the issues and deletes the draft', () => {
 // the force test below), so exercising "release, then someone else claims" needs the releaser to
 // be the same identity that claimed it.
 test('claim, release, then a DIFFERENT user claims — release must free the assignee, not just the label', () => {
-  const f = fakeGh({ me: 'alice', issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task] }] });
+  const f = makeFakeGh({ me: 'alice', issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task] }] });
   const { store } = online(f);
   assert.deepEqual(store.claim('demo/D1', 'alice'), { ok: true });
   assert.deepEqual(store.release('demo/D1'), { ok: true });
@@ -147,7 +118,7 @@ test('claim, release, then a DIFFERENT user claims — release must free the ass
 // The refusal a plain `release` was missing: without it, `release` freed ANY assignee, so it
 // already released somebody else's claim silently — the exact thing `--force` was meant to gate.
 test('release refuses a claim held by someone else, and --force takes it anyway', () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     me: 'nico',
     issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task, LABELS.wip], assignees: ['alice'] }],
   });
@@ -159,7 +130,7 @@ test('release refuses a claim held by someone else, and --force takes it anyway'
 });
 
 test('claim on a task already held by someone else fails, naming the holder', () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     issues: [{ number: 5, title: taskTitle(task), labels: [LABELS.task], assignees: ['alice'] }],
   });
   const { store } = online(f);
@@ -167,7 +138,7 @@ test('claim on a task already held by someone else fails, naming the holder', ()
 });
 
 test('close closes the issue, and the overlay then reports it landed', () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     me: 'nico',
     issues: [
       { number: 1, title: 'demo — Demo', labels: [LABELS.programme], author: 'nico', body: '- **Roadmap** demo\n' },
@@ -180,7 +151,7 @@ test('close closes the issue, and the overlay then reports it landed', () => {
 });
 
 test('reserve removes the open label that openRoadmap added', () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     issues: [{ number: 1, title: 'demo — Demo', labels: [LABELS.programme], body: '- **Roadmap** demo\n' }],
   });
   const { store } = online(f);
@@ -191,7 +162,7 @@ test('reserve removes the open label that openRoadmap added', () => {
 });
 
 test('whoami, programmes and drafts read the same shapes the offline store returns', () => {
-  const f = fakeGh({
+  const f = makeFakeGh({
     me: 'nico',
     issues: [{ number: 1, title: 'demo — Demo', labels: [LABELS.programme], author: 'nico', body: '- **Roadmap** demo\n' }],
   });
@@ -216,7 +187,7 @@ test('whoami, programmes and drafts read the same shapes the offline store retur
 });
 
 test('a `# ` heading in a draft becomes the programme title and is not duplicated into the prose', () => {
-  const f = fakeGh();
+  const f = makeFakeGh();
   const ctx = online(f);
   const dir = join(ctx.r.root, ctx.cfg.roadmaps.drafts);
   mkdirSync(dir, { recursive: true });
@@ -230,7 +201,7 @@ test('a `# ` heading in a draft becomes the programme title and is not duplicate
 });
 
 test('a headingless draft still publishes, titled by its own slug', () => {
-  const f = fakeGh();
+  const f = makeFakeGh();
   const ctx = online(f);
   const dir = join(ctx.r.root, ctx.cfg.roadmaps.drafts);
   mkdirSync(dir, { recursive: true });

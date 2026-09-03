@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
+import { makeFakeGh } from './helpers/gh.mjs';
 import { loadConfig } from '../lib/config.mjs';
 import { makeStore } from '../lib/store/index.mjs';
 import {
@@ -47,33 +48,10 @@ function offlineProject() {
   return { r, cfg: loadConfig(r.root) };
 }
 
-// A `gh` recorder that keeps issues in memory, so the online path is exercised with no network —
-// the same shape `both-modes.test.mjs` uses, plus `unassign`, which `release` needs and nothing
-// there exercised.
-function fakeGh(me = 'nico') {
-  const state = [];
-  let next = 100;
-  const find = (n) => state.find((i) => i.number === n);
-  return {
-    state,
-    me: () => me,
-    ensureLabels: () => {},
-    listIssues: ({ labels = [] } = {}) => state.filter((i) => labels.every((l) => i.labels.includes(l))),
-    createIssue: (i) => { const n = next++; state.push({ number: n, state: 'open', assignees: [], author: me, ...i }); return n; },
-    updateIssue: (n, i) => Object.assign(find(n), i),
-    reopenIssue: (n) => { find(n).state = 'open'; },
-    closeIssue: (n) => { find(n).state = 'closed'; },
-    addLabel: (n, l) => { if (!find(n).labels.includes(l)) find(n).labels.push(l); },
-    removeLabel: (n, l) => { find(n).labels = find(n).labels.filter((x) => x !== l); },
-    assign: (n, who) => find(n).assignees.push(who),
-    unassign: (n, who) => { find(n).assignees = find(n).assignees.filter((x) => x !== who); },
-  };
-}
-
 function onlineProject(me) {
   const r = makeRepo({ mode: 'online' });
   repos.push(r);
-  return { r, cfg: loadConfig(r.root), gh: fakeGh(me) };
+  return { r, cfg: loadConfig(r.root), gh: makeFakeGh({ me }) };
 }
 
 function writeDraft(root, cfg, name, text) {
