@@ -35,16 +35,24 @@ command except `doctor` exits 0 and prints nothing, so the plugin is safe to ins
 
 ## What works today
 
-This is phase 1 of five. It ships the roadmap layer:
+Phase 1 shipped the roadmap layer; phase 2a shipped the register and the machine budget:
 
-- **`/roadmap`** — the skill: the grammar, the board, and the eight subcommands below.
+- **`/roadmap`** — the skill: the grammar, the board, and the eight roadmap subcommands.
 - **`orchestra doctor`** — the resolved configuration, and the only command that answers in a
   project with no config.
 - **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve>`**.
+- **`orchestra journal|inbox|beat|lock|watch-answers`** — the register: one line with a measured
+  clock, the answers a user posted on the page, who holds the baton, and one conductor at a time.
+- **`orchestra ready|tick-gate|yield-check`** — the launch plan, whether a heartbeat should tick at
+  all, and whether this session should hand the baton back. `ready` budgets its launches against
+  every other orchestra on this machine (`~/.orchestra/machine.json`, `maxWorkers`, default 8).
+- **`orchestra archive|archive-images`** — move a finished run's prose out of the register, and
+  sweep the photographs under `.orchestra/images/` that nothing live still names.
 
-Not yet: the conductor and its worker sessions, the merge gate, the monitoring page, the guard
-hooks, `orchestra init`, and `roadmap sync`. See the spec's phase table (§14) for the order they
-arrive in, and the plan's closing section for what phase 1 deliberately left out.
+Not yet: the conductor's protocol document and the worker briefs (2b), the merge gate (3), the
+monitoring page and `orchestra instances` (4), the guard hooks, `orchestra init`, the ticket queue
+and the heartbeat (5), and `roadmap sync`. There is **no launcher**: `ready` produces a plan, and
+nothing here spawns a session to execute it. See the spec's phase table (§15).
 
 ---
 
