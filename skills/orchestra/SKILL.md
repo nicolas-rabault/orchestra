@@ -849,7 +849,7 @@ answer came back "yes, all four" in six minutes.
 
 Every question reaching the user uses this shape, in the user's language, body written for
 someone who has never read the code (no path, no function name, no identifier, no
-millisecond in the body — what the user sees, what it changes, what each option costs;
+millisecond in the body — what a user of the thing sees, what it changes, what each option costs;
 technical detail in a `<sub>` footer):
 
 > **[<ID> — <title> · `<branch>` · session `<name>` · server :<port>]**
