@@ -92,12 +92,27 @@ const FORBIDDEN = [
   'reports/', 'CLAUDE.md', 'com.planetcraft', 'launchctl', 'crontab -',
 ];
 
+// The slice of `text` that belongs to ONE heading — from the heading's own line up to (not
+// including) the next heading at level 2 or 3. Anchors are tested against this slice, not the
+// whole document: several items share a heading, and several headings share a document, so an
+// anchor belonging to a section not yet written must not be satisfiable by prose that belongs to
+// its neighbour. Returns null when the heading itself is absent.
+function sectionSlice(text, heading) {
+  const at = text.indexOf(`\n${heading}\n`);
+  if (at < 0) return null;
+  const bodyStart = at + 1 + heading.length; // index of the heading's own trailing newline
+  const next = text.slice(bodyStart).search(/\n#{2,3} /);
+  const end = next < 0 ? text.length : bodyStart + next;
+  return text.slice(at + 1, end);
+}
+
 test('every section of spec §6 is present, with the measurement that paid for it', () => {
   const text = read(SKILL);
   const missing = [];
   for (const s of SECTIONS) {
-    if (!text.includes(`\n${s.heading}\n`)) { missing.push(`${s.item}: no heading "${s.heading}"`); continue; }
-    for (const a of s.anchors) if (!a.test(text)) missing.push(`${s.item}: anchor ${a} absent`);
+    const slice = sectionSlice(text, s.heading);
+    if (slice === null) { missing.push(`${s.item}: no heading "${s.heading}"`); continue; }
+    for (const a of s.anchors) if (!a.test(slice)) missing.push(`${s.item}: anchor ${a} absent`);
   }
   assert.deepEqual(missing, []);
 });

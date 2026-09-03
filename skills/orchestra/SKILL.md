@@ -79,15 +79,15 @@ something to type — every occurrence of it elsewhere in this document is a bug
    is absent from `claude agents --json`; no file under it has changed in 60 minutes
    (`/usr/bin/find <wt> -newermt '-60 minutes' -not -path '*/node_modules/*' -type f | head -1`);
    and its branch is behind its own last report.** Then take it over with the relaunch brief and
-   record it in a `note` — do not ask. If any of the three is unclear, ask. (Measured 2026-08-12:
-   asking cost two hours forty-four minutes on evidence stricter than this, and the answer was
+   record it in a `note` — do not ask. If any of the three is unclear, ask. (Measured 2026-08-12 in
+   planetCraft: asking cost two hours forty-four minutes on evidence stricter than this, and the answer was
    "yes, take all four", in six minutes. The probe uses the absolute `/usr/bin/find` on purpose: a
    PATH-rewriting hook in the source project dropped `-newermt` from the bare name.)
 4. Never start a dev server before a task reaches the playtest gate.
 5. Never trust `.orchestra/state.json` over git — for a LOCAL task; git wins there, correct the
    register. A SHARED task, online, is the opposite: another developer's landing closes its issue
    but that commit never reaches your local main, so git under-reports it forever — the closed
-   issue is authority instead (`deriveSharedStatus` in `lib/roadmap/board.mjs`), not git. Offline
+   issue is authority instead (`deriveSharedStatus` in `lib/store/github/index.mjs`), not git. Offline
    every task is local, so it is simply **git wins**, with no exception to remember (spec §4.1).
 6. Never work — or launch a worker on — a shared task you have not claimed.
    `orchestra roadmap claim <key>` first. Online, the issue is how every other machine learns the
