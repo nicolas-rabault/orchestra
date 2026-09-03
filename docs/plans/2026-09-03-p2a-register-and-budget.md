@@ -123,12 +123,14 @@ Four questions, and the fourth is one the handoff did not have.
 - Produces: `assertRoot(recorded, actual)` unchanged in signature but comparing real paths;
   `gitEnv(env)` returning a copy of `env` with every `GIT_*` variable removed.
 
-**Why now.** P1 shipped `assertRoot` comparing two `resolve()`d strings, which is inoffensive while
-`mainCheckout()` is the only source of a root. This phase adds eight writers, and one of them —
-`lib/machine.mjs` — stores a root in a file outside the project and compares it back. On macOS
-`/tmp` is a symlink to `/private/tmp`, which is why `test/helpers/fixture.mjs` already calls
-`realpathSync`; a root that reaches `assertRoot` through the un-realpathed side is refused, and the
-refusal is a hard error naming two paths a human will read as identical.
+**Why now.** P1 shipped `assertRoot` comparing two `resolve()`d strings. Its only caller is
+`writeState`, reached today by `roadmap publish` → `enrol` and, from this phase on, by every session
+that adopts or ticks — so the number of ways a root reaches it only grows. On macOS `/tmp` is a
+symlink to `/private/tmp`, which is exactly why `test/helpers/fixture.mjs` already calls
+`realpathSync`: a root that arrives through the un-realpathed side is refused, and the refusal is a
+hard error naming two paths a human reads as identical. `gitEnv` lands in the same task because
+`lib/paths.mjs` is where this plugin asks git which repository it is standing in, and Task 8's port
+needs that answer to have one definition rather than a copy per call site.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -976,10 +978,14 @@ test('a conductor holder is alive only while the beat names THAT session', () =>
   const r = repo();
   const now = Date.parse('2026-09-03T10:00:00.000Z');
   acquire(r.root, { kind: 'conductor', session: 's1', now });
-  writeBeat(r.root, { session: 's1', pid: 9, now });
+  // `process.pid`, deliberately: `holderIsDead`'s `live` default is NOT reached by `deps.alive`, so
+  // `liveConductor` runs the REAL `pidAlive` against whatever pid the beat carries. A made-up pid
+  // like 9 is a kernel process on macOS and answers EPERM, so this test would pass by accident here
+  // and flake anywhere else. The beat must name a process that is genuinely alive.
+  writeBeat(r.root, { session: 's1', pid: process.pid, now });
   assert.equal(acquire(r.root, { kind: 'conductor', session: 's2', now, deps: ALIVE }).ok, false);
   // Somebody else has the baton: the holder is gone.
-  writeBeat(r.root, { session: 's2', pid: 9, now });
+  writeBeat(r.root, { session: 's2', pid: process.pid, now });
   assert.equal(acquire(r.root, { kind: 'conductor', session: 's2', now, deps: ALIVE }).ok, true);
 });
 
@@ -1153,9 +1159,15 @@ test('an entry round-trips and is keyed on id', () => {
 test('an entry whose root no longer exists is reaped on the next write', () => {
   const gone = mkdtempSync(join(tmpdir(), 'orchestra-proj-'));
   const here = mkdtempSync(join(tmpdir(), 'orchestra-proj-'));
-  recordInstance({ id: 'gone11', name: 'G', root: gone, mode: 'offline', workers: 3 });
+  const now = Date.now();
+  // A FRESH beat on the entry that is about to be reaped, so the missing root is the ONLY reason it
+  // can go. Without it the entry is dead twice over — no beat and no pid — and the test would pass
+  // with the root still there, proving nothing about the check it is named after.
+  recordInstance({ id: 'gone11', name: 'G', root: gone, mode: 'offline', workers: 3,
+    beatAt: new Date(now).toISOString() }, { now });
+  assert.deepEqual(readInstances().map((i) => i.id), ['gone11']);   // alive while its root stands
   rmSync(gone, { recursive: true, force: true });
-  recordInstance({ id: 'here11', name: 'H', root: here, mode: 'offline', workers: 1 });
+  recordInstance({ id: 'here11', name: 'H', root: here, mode: 'offline', workers: 1 }, { now });
   assert.deepEqual(readInstances().map((i) => i.id), ['here11']);
 });
 
@@ -1618,7 +1630,7 @@ git commit -m 'feat(register): the scheduling brain, budgeted against the rest o
 
 **Files:**
 - Create: `lib/register/tick.mjs`, `lib/register/wake.mjs`
-- Modify: `lib/cli/tick.mjs`, `bin/orchestra`
+- Modify: `lib/cli/tick.mjs`, `bin/orchestra`, `lib/register/state.mjs` (`budgetResetAt`, Step 3)
 - Test: `test/tick.test.mjs`
 
 **Interfaces:**
@@ -1758,8 +1770,19 @@ this gate that loses something a user typed. The source's dynamic `await import(
 static import — it existed to survive a missing sibling in a repository where these tools arrived
 incrementally, which is not this repository's situation.
 
-Note for the implementer: `decideTick` reads `register.budgetResetAt`, so Task 10 must keep that key
-structural. It is added to `emptyState` there, and this test is what proves the two agree.
+**Add `budgetResetAt` to `emptyState` in this task, not in Task 10** — a field arrives with its
+reader, and `decideTick` is its reader. In `lib/register/state.mjs`:
+
+```js
+  conductor: { session: null, language: null, inboxSeen: null },
+  // When the account's usage budget frees up again. Read by `decideTick` (./tick.mjs), which stands
+  // the heartbeat down until then rather than spending a session on a refusal that is already
+  // certain — a slot was burned on exactly that, three hours before a reset, on 2026-08-13.
+  budgetResetAt: null,
+```
+
+Task 10 then derives `STRUCTURAL` from `emptyState`, which is what makes the key survive an archive
+pass; the two halves are checked against each other by that task's own test.
 
 - [ ] **Step 4: Port `wake.mjs`'s yield half as `lib/register/wake.mjs`**
 
@@ -1948,23 +1971,12 @@ test('a torn tail line in the archive is skipped, not fatal', () => {
 Run: `node --test test/archive.test.mjs test/state.test.mjs`
 Expected: FAIL — no `lib/register/archive.mjs`; `STRUCTURAL` is not exported.
 
-- [ ] **Step 3: Add `STRUCTURAL` and `budgetResetAt` to the state module**
+- [ ] **Step 3: Add `STRUCTURAL` to the state module**
 
-In `lib/register/state.mjs`:
+`budgetResetAt` is already there — Task 9 added it with the `decideTick` that reads it. What this
+task adds, below `emptyState`, is the one list:
 
 ```js
-export const emptyState = (root) => ({
-  version: 1,
-  root,
-  adopted: false,
-  conductor: { session: null, language: null, inboxSeen: null },
-  // When the account's usage budget frees up again. Read by `decideTick` (./tick.mjs), which stands
-  // the heartbeat down until then rather than spending a session on a refusal that is already
-  // certain — a slot was burned on exactly that, three hours before a reset, on 2026-08-13.
-  budgetResetAt: null,
-  tasks: [],
-});
-
 // The top-level keys the machinery reads. EVERYTHING ELSE at the top of the register is prose a
 // conductor wrote to itself — 43 523 bytes of it on the run this was measured from, some of it
 // actively wrong and contradicted by the skill that read it — and `lib/register/archive.mjs` moves
@@ -2156,13 +2168,19 @@ test('a surviving board keeps the montages it names', () => {
 
 test('the sweep never leaves its own directory', () => {
   const r = repo();
-  // A file in the project's own tree, named the way a worker names a screenshot, and named by a
-  // finished row. It is not orchestra's to remove.
+  // A CONTROL photograph under images/, named by the same finished row: it must be swept, which is
+  // what proves the sweep ran at all. Without it `dropped: []` below is true whatever the sweep did.
+  photo(r, 'control.png');
+  // And a file in the project's own tree, named the way a worker names a screenshot, named by that
+  // same finished row. It is not orchestra's to remove.
   mkdirSync(join(r.root, 'docs'), { recursive: true });
   writeFileSync(join(r.root, 'docs/screenshot.png'), Buffer.alloc(16));
   writeState(r.root, { ...emptyState(r.root),
-    tasks: [{ id: 'demo/D1', status: 'landed', note: 'docs/screenshot.png', pending: [] }] });
-  assert.deepEqual(sweep(r.root, { now: NOW }).dropped, []);
+    tasks: [{ id: 'demo/D1', status: 'landed', note: 'control.png and docs/screenshot.png', pending: [] }] });
+  const s = sweep(r.root, { now: NOW });
+  assert.deepEqual(s.dropped.map((p) => p.rel), ['.orchestra/images/control.png']);
+  archivePhotos(r.root, { now: NOW });
+  assert.equal(existsSync(join(imagesDir(r.root), 'control.png')), false);
   assert.ok(existsSync(join(r.root, 'docs/screenshot.png')));
 });
 ```
@@ -2333,14 +2351,17 @@ test('the fixture adopts, ticks and round-trips its register', () => {
   assert.match(readFileSync(join(p.root, '.orchestra', 'journal.jsonl'), 'utf8'), /"kind":"launch"/);
   assert.equal(p.run('inbox'), '');
 
+  // Unambiguously PAST stamps. `pendingWaiting` compares `askedAt` against the real `Date.now()`
+  // with a 30-minute floor, so a stamp dated today makes the WAITING assertion below depend on the
+  // hour the suite happens to run — green after 09:30Z, red before it.
   const s = p.state();
   Object.assign(s.tasks[0], {
     status: 'claimed', session: 'abcdef12-0000', sessionName: 'orchestra-demo-D1',
-    pending: [{ id: 'q1', kind: 'question', ask: 'Ship at 0.75 or 1.0?', askedAt: '2026-09-03T09:00:00.000Z' }],
+    pending: [{ id: 'q1', kind: 'question', ask: 'Ship at 0.75 or 1.0?', askedAt: '2026-01-01T00:00:00.000Z' }],
   });
   p.setState(s);
   writeFileSync(join(p.root, '.orchestra', 'inbox.jsonl'),
-    `${JSON.stringify({ ts: '2026-09-03T09:30:00.000Z', task: 'demo/D1', pending: 'q1', answer: '0.75' })}\n`);
+    `${JSON.stringify({ ts: '2026-01-01T00:30:00.000Z', task: 'demo/D1', pending: 'q1', answer: '0.75' })}\n`);
 
   const relayed = p.run('inbox');
   assert.match(relayed, /Ship at 0\.75 or 1\.0\?/);
@@ -2350,7 +2371,7 @@ test('the fixture adopts, ticks and round-trips its register', () => {
 
   // Stamping the cursor consumes it, and the same commands go quiet.
   const stamped = p.state();
-  stamped.conductor.inboxSeen = '2026-09-03T09:30:00.000Z';
+  stamped.conductor.inboxSeen = '2026-01-01T00:30:00.000Z';
   stamped.tasks[0].pending = [];
   p.setState(stamped);
   assert.equal(p.run('inbox'), '');
