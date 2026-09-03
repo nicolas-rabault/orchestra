@@ -153,14 +153,27 @@ const FENCED = new RegExp(`${TICK.repeat(3)}[a-z]*\\n([\\s\\S]*?)${TICK.repeat(3
 const INLINE = new RegExp(`${TICK}([^${TICK}\\n]+)${TICK}`, 'g');
 
 function invocationsIn(text) {
+  // The inline pass runs over a copy with fenced blocks blanked out first and every remaining line
+  // wrap collapsed to a single space: the SOURCE FILE hard-wraps its prose (not its code), so a
+  // backticked command that happens to fall across that wrap — `` `orchestra\n  inbox` `` — carries
+  // a literal newline INLINE's `[^`\n]+` refuses to cross, and never becomes a span at all. Fenced
+  // blocks are blanked out first so this collapse cannot fuse a fence's own triple backticks into
+  // the surrounding prose, which pairs backticks across block boundaries and manufactures spans
+  // that span thousands of characters of unrelated code and text.
+  const proseOnly = text.replace(FENCED, ' ').replace(/\n\s*/g, ' ');
   const spans = [
     ...[...text.matchAll(FENCED)].flatMap((m) => m[1].split('\n')),
-    ...[...text.matchAll(INLINE)].map((m) => m[1]),
+    ...[...proseOnly.matchAll(INLINE)].map((m) => m[1]),
   ];
   const out = [];
   for (const raw of spans) {
     const s = raw.trim().replace(/^"\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/orchestra"\s*/, 'orchestra ');
-    const m = /^orchestra\s+([a-z][a-z-]*)(?:\s+([a-z][a-z-]*))?/.exec(s);
+    // Anchored at the span's own start, OR at a quoted string's start within it: a tool call passes
+    // a command as a quoted argument — `Monitor(command: "orchestra watch-answers …")` — and that
+    // quote is the only context where a real invocation legitimately sits mid-line. Unanchoring
+    // further, to match "orchestra" anywhere at all, also catches it as a plain noun in prose (an
+    // example log line reads "orchestra has not been adopted here"), which is not an invocation.
+    const m = /(?:^|")orchestra\s+([a-z][a-z-]*)(?:\s+([a-z][a-z-]*))?/.exec(s);
     if (m) out.push(m[1] === 'roadmap' && m[2] ? ['roadmap', m[2]] : [m[1]]);
   }
   return out;
@@ -174,8 +187,13 @@ test('every command the protocol names either exists or is roll-called with its 
   const rollCall = text.slice(from, to);
   const cmds = registered();
   const verbs = roadmapVerbs();
+  const invocations = invocationsIn(text);
+  // A positive control: if the extraction regressed to matching nothing, `bad` would still be
+  // empty and this test would pass vacuously. At least 50 real invocations are expected in a
+  // document this size, so a broken sweep fails loudly instead of going quiet.
+  assert.ok(invocations.length >= 50, `expected at least 50 invocations, found ${invocations.length}`);
   const bad = [];
-  for (const [head, verb] of invocationsIn(text)) {
+  for (const [head, verb] of invocations) {
     const known = verb ? verbs.has(verb) : cmds.has(head);
     const named = verb ? `orchestra roadmap ${verb}` : `orchestra ${head}`;
     if (!known && !rollCall.includes(`\`${named}\``)) bad.push(named);

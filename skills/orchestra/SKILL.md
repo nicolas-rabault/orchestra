@@ -24,8 +24,9 @@ Run it from anywhere inside the project. If `CLAUDE_PLUGIN_ROOT` is unset, the b
 opted in: it prints the resolved configuration, marks every key that fell back to a default, and
 names the mode. If it says the project has not opted in, stop and do what it says — every other
 subcommand exits 0 and silent otherwise, on purpose, and that silence is what makes the plugin safe
-to install globally. Read off it `name`, `id`, `language`, `mainBranch`, `worktrees`, `branchTests`,
-`docs.specs`, `docs.plans`, `docs.results` and `briefExtra`, and nothing else.
+to install globally. Read off it `mode`, `name`, `id`, `language`, `mainBranch`, `worktrees`,
+`branchTests`, `docs.specs`, `docs.plans`, `docs.results`, `briefExtra` and `queue`, and nothing
+else.
 
 **Runtime state resolves to the main checkout, never to the worktree you are standing in.** Every
 subcommand does that for itself. What it cannot do for you is the register you edit **by hand**:
@@ -36,7 +37,7 @@ own `root` key names the project you think you are conducting.
 ## What is not here yet
 
 The single roll-call. An absent command is named here with its phase, in backticks, and never as
-something to type — every occurrence of it elsewhere in this document is a bug, not an instruction.
+something to type: an occurrence elsewhere names its phase again, or it is a bug.
 
 - **Phase 3, the merge gate**: `orchestra land`, `orchestra await`, `orchestra queue-list`, the
   `merge_agent` agent, and the `gates` and `ledgers` config they read. Until then **no landing
@@ -244,18 +245,21 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    applies the moment a user says anything like "I answered that on the page": open the file, do
    not argue with it.
 
-   The four-hour grace rule narrows the dangerous window — it recovers an answer to an item still
-   open in `pending[]` — but it does not cover a free remark, which targets no item at all: once
-   the cursor is past it, nothing recovers it.
+   `orchestra inbox` re-shows an answer whose `pending[]` item is still open for four hours after
+   it was written, whatever the cursor says — that grace narrows the dangerous window, but it does
+   not cover a free remark, which targets no item at all: once the cursor is past it, nothing
+   recovers it.
 
    **And stamp only once the action the answer AUTHORISES has completed** — not when you decide to
-   take it, not when you announce it. For a merge approval that means after `merge_agent` has
-   returned. Measured 2026-08-13 in planetCraft: X2's merge was approved at 13:17:20, the cursor
-   was stamped to exactly that instant, the hand-off was written in the journal — and it never
-   happened, because the conductor's session ended before merge_agent existed. The approval was
-   consumed and the action was lost; it surfaced four hours later only because a human asked what
-   had become of it. An unstamped answer costs you one repeated relay. A stamped-but-unacted
-   answer costs the user their decision, silently, and silence is the worse of the two failures.
+   take it, not when you announce it. For a merge approval that means after the landing has
+   actually happened — in this phase, after the user reports it landed; phase 3's `merge_agent` is
+   what will return in its place. Measured 2026-08-13 in planetCraft: X2's merge was approved at
+   13:17:20, the cursor was stamped to exactly that instant, the hand-off was written in the
+   journal — and it never happened, because the conductor's session ended before merge_agent
+   existed. The approval was consumed and the action was lost; it surfaced four hours later only
+   because a human asked what had become of it. An unstamped answer costs you one repeated relay.
+   A stamped-but-unacted answer costs the user their decision, silently, and silence is the worse
+   of the two failures.
 
 ## The framing pass, and the one interruption
 
@@ -424,7 +428,9 @@ started *after* the hold was issued.
    is the one check that answers rather than hints, and step 0 has already made it — what follows
    is what that check means. A beat naming a session that is not you, stamped under a minute ago,
    whose pid is still alive, IS a live conductor: journal one line and hand back, whatever
-   `conductor.session` says.
+   `conductor.session` says. There is nothing to weigh — the beat is written every two seconds by
+   a loop that dies with the session it names, so a stale one is not a slow conductor, it is an
+   absent one.
 
    **One exception, and it is the only one: a beat proves a session can be REACHED, never that it
    is conducting.** The loop is armed for the whole session, so a window left open and untouched
@@ -653,10 +659,9 @@ started *after* the hold was issued.
    `enrol` is first and costs nothing when there is nothing to do. It exists for the tasks
    `publish` cannot enrol — another developer's roadmap never passes through this machine's
    publish at all — and a task with no register row is one nothing here will ever schedule or
-   even count. It refuses a stale board rather than degrading to it: an existing row is never
-   touched, only added to — `if (!task.key || known.has(task.key)) continue;`
-   (`lib/roadmap/enrol.mjs`) — so a task the register already knows about is left exactly as this
-   machine last wrote it, however far the board's own read of it has drifted since.
+   even count. It never touches an existing row, only adds to it — `if (!task.key ||
+   known.has(task.key)) continue;` (`lib/roadmap/enrol.mjs`) — so a task the register already
+   knows about is left exactly as this machine last wrote it.
 
    `orchestra roadmap sync` is **phase 3, and online only** (see `## What is not here yet`): it
    will close what the register proves landed, move every `status:` label onto what the board
@@ -754,7 +759,7 @@ started *after* the hold was issued.
 
    Add the one line from the budget above: the plan is already capped by the machine's capacity,
    so a `HELD:` line means launch nothing and say so.
-9. **Write, release, stop.**
+9. **Release, write, stop.**
    ```sh
    orchestra lock release --kind conductor --session <your full session uuid>
    ```
@@ -923,6 +928,19 @@ A server whose directory has been removed keeps serving — which reads as a liv
 code, and is indistinguishable from a working one until someone trusts it. Servers are killed **by
 pid**, never by pattern.
 
+**Three rules `{branchTests}` — the subset gate — cannot enforce for you**, all paid for on
+2026-08-14 in planetCraft:
+
+- a branch that is a **new consumer** of a module another in-flight row has just rewritten needs
+  the full suite. A dead-code sweep on the main branch removed an export that a branch in flight
+  had just started importing; different lines, so git merged both sides happily and produced a
+  runtime `TypeError`. Neither the diff nor the dead-code gate could see it — the gate was right on
+  main and the branch was right on itself;
+- **land an unused-export sweep LAST**, after everything in flight against the same modules;
+- a `branchTests` command that selects by import graph can select exactly ONE file for a tool
+  nothing imports but its own test. When the subset looks suspiciously small, **say the number out
+  loud** and run the full suite instead of trusting it.
+
 ### The dev-server sweep
 
 **And sweep for the ones you did not start, once per tick** — killing your own on deletion is not
@@ -954,18 +972,6 @@ every hour; `$NF` is `(LISTEN)`, the address is `$9`; and `lsof -Fn` answers `p<
 **ORPHAN is the only verdict that kills.** A server in the main checkout may be the USER's, so it
 becomes a question — a note nobody reads is how one survived forty hours.
 
-**Two rules the subset gate cannot enforce for you**, both paid for on 2026-08-14 in planetCraft:
-
-- a branch that is a **new consumer** of a module another in-flight row has just rewritten needs
-  the full suite. A dead-code sweep on the main branch removed an export that a branch in flight
-  had just started importing; different lines, so git merged both sides happily and produced a
-  runtime `TypeError`. Neither the diff nor the dead-code gate could see it — the gate was right on
-  main and the branch was right on itself;
-- **land an unused-export sweep LAST**, after everything in flight against the same modules;
-- a `branchTests` command that selects by import graph can select exactly ONE file for a tool
-  nothing imports but its own test. When the subset looks suspiciously small, **say the number out
-  loud** and run the full suite instead of trusting it.
-
 ## Design→execution handoff (design tasks)
 
 A row whose `design` field is true — the roadmap's own `**Design** yes`, set by
@@ -992,8 +998,9 @@ written — not a judgment call the conductor makes at launch time.
 
 ## Worker briefs
 
-Every launch and every hand-over below fills a brief from the same nine substitutions. One table,
-read once:
+Every launch and every hand-over below fills a brief from the same nine substitutions, plus — for a
+relaunch or a hand-over only — `<the project's main branch>` (`orchestra doctor`'s `mainBranch` row)
+and `<n>`, the turn count. One table, read once:
 
 | Placeholder | Filled from |
 |---|---|
