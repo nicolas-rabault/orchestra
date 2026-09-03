@@ -82,3 +82,117 @@ test('the exit table is the interface merge_agent branches on, and it has no 14'
     ok: 0, usage: 1, conflict: 10, refused: 11, busy: 12, precondition: 13, started: 15, vanished: 16,
   });
 });
+
+test('only the configured ledger paths are committed, and they are sorted', () => {
+  // An ALLOWLIST of exact paths, never a pattern: the exemption exists because these are files the
+  // gate itself may commit, and "any .jsonl" would quietly extend that claim to a data file a
+  // branch is genuinely authoring.
+  const dirty = ['src/a.js', '.orchestra/tickets.jsonl', 'docs/notes.jsonl'];
+  assert.deepEqual(S.ledgerPathsToCommit(dirty, ['.orchestra/tickets.jsonl', 'docs/notes.jsonl']),
+    ['.orchestra/tickets.jsonl', 'docs/notes.jsonl']);
+  assert.deepEqual(S.ledgerPathsToCommit(dirty, []), []);
+});
+
+test('only a dirty file the branch also changes can clash', () => {
+  // The only thing a landing does to the main working tree is `merge --ff-only`, which writes
+  // exactly the paths the branch changed. A dirty tracked file outside that set cannot be touched.
+  assert.deepEqual(S.clashingPaths(['a', 'b', 'c'], ['c', 'a']), ['a', 'c']);
+  assert.deepEqual(S.clashingPaths(['a'], ['b']), []);
+});
+
+test('a glob matches within a segment, and ** spans segments including none', () => {
+  const m = (g, p) => S.globToRegExp(g).test(p);
+  assert.equal(m('docs/**', 'docs/a.md'), true);
+  assert.equal(m('docs/**', 'docs/x/y/z.md'), true);
+  assert.equal(m('docs/**', 'src/a.md'), false);
+  assert.equal(m('**/*.md', 'README.md'), true);           // ** matches ZERO directories
+  assert.equal(m('**/*.md', 'docs/x/a.md'), true);
+  assert.equal(m('**/*.md', 'docs/a.txt'), false);
+  assert.equal(m('tests/*.js', 'tests/a.js'), true);
+  assert.equal(m('tests/*.js', 'tests/deep/a.js'), false); // * never crosses a slash
+  assert.equal(m('package.json', 'package.json'), true);
+  assert.equal(m('package.json', 'packageXjson'), false);  // the dot is a literal, not "any char"
+});
+
+test('a gate is skipped only when EVERY changed path matches, and never on doubt', () => {
+  const gate = { name: 'visual', cmd: 'x', skipWhenAllPathsMatch: ['docs/**', '**/*.md'] };
+  assert.equal(S.gateSkipped(gate, ['docs/a.md', 'README.md']), true);
+  assert.equal(S.gateSkipped(gate, ['docs/a.md', 'src/x.js']), false);
+  // Deliberately wrong in one direction: an unreadable diff and an empty one both RUN the gate. A
+  // needless run costs minutes; a missed run lets through the defect the gate exists to catch.
+  assert.equal(S.gateSkipped(gate, null), false);
+  assert.equal(S.gateSkipped(gate, []), false);
+  // A gate that declares no globs is never skipped.
+  assert.equal(S.gateSkipped({ name: 'suite', cmd: 'x' }, ['docs/a.md']), false);
+});
+
+test('the worktree and the branch are two independent cleanups', () => {
+  // They used to be one if/else chain, so any failure on the worktree side meant `branch -d` was
+  // never ATTEMPTED and the merged branch survived as a dead ref — twice in a row on 2026-08-19 in
+  // planetCraft, both deleted by hand afterwards.
+  const calls = [];
+  const notes = S.cleanupAfterLanding({
+    branch: 'b', worktree: '/w',
+    hasUncommittedTracked: () => false,
+    untrackedFiles: () => ['scratch.txt'],
+    removeWorktree: () => { calls.push('rm'); return false; },
+    deleteBranch: () => { calls.push('del'); return true; },
+    provenMerged: () => true,
+    unsetUpstream: () => true,
+  });
+  assert.deepEqual(calls, ['rm', 'del']);
+  assert.match(notes[0], /worktree \/w kept .*scratch\.txt/);
+});
+
+test('a pinned upstream is proven past, never forced past', () => {
+  // The gate rebases, which re-hashes every commit, so `git branch -d` refuses a branch that IS the
+  // main branch, testing it against its UPSTREAM instead of HEAD. The answer is not -D: it is to
+  // prove what -D would assume, then ask the same lowercase -d again.
+  const calls = [];
+  let unpinned = false;
+  const notes = S.cleanupAfterLanding({
+    branch: 'b', worktree: '/w',
+    hasUncommittedTracked: () => false,
+    untrackedFiles: () => [],
+    removeWorktree: () => true,
+    deleteBranch: () => { calls.push('del'); return unpinned; },
+    provenMerged: () => true,
+    unsetUpstream: () => { unpinned = true; calls.push('unpin'); return true; },
+  });
+  assert.deepEqual(calls, ['del', 'unpin', 'del']);
+  assert.deepEqual(notes, []);
+});
+
+test('a branch that is not the main branch tip is reported, not forced', () => {
+  const notes = S.cleanupAfterLanding({
+    branch: 'b', worktree: '/w',
+    hasUncommittedTracked: () => false,
+    untrackedFiles: () => [],
+    removeWorktree: () => true,
+    deleteBranch: () => false,
+    provenMerged: () => false,
+    unsetUpstream: () => true,
+  });
+  assert.match(notes[0], /refused 'branch -d b' and it is not the main branch's tip/);
+});
+
+test('the recorded exit wins over liveness in both directions', () => {
+  // A finished run whose pid has been recycled onto another process must not read as alive, and one
+  // that recorded its code microseconds before dying must not read as vanished.
+  const run = { branch: 'b', pid: 5, startedAt: 100, log: '/l', exit: 11, endedAt: 160 };
+  assert.deepEqual(S.runVerdict({ run, alive: true, nowSec: 900 }),
+    { state: 'finished', exit: 11, elapsed: 60 });
+  assert.deepEqual(S.runVerdict({ run: { ...run, exit: null, endedAt: null }, alive: false, nowSec: 200 }),
+    { state: 'vanished', exit: S.EXIT.vanished, elapsed: 100 });
+  assert.deepEqual(S.runVerdict({ run: { ...run, exit: null, endedAt: null }, alive: true, nowSec: 200 }),
+    { state: 'running', exit: S.EXIT.busy, elapsed: 100 });
+  assert.deepEqual(S.runVerdict({ run: null, alive: false, nowSec: 1 }),
+    { state: 'unknown', exit: S.EXIT.usage });
+  assert.equal(S.parseRun('{ broken'), null);
+  assert.equal(S.parseRun('{"pid":1}'), null);
+});
+
+test('a run file is named so a human can recognise the branch in an ls', () => {
+  assert.equal(S.runSlug('feat/a b'), 'feat_a_b');
+  assert.equal(S.runSlug('demo/d1-first'), 'demo_d1-first');
+});
