@@ -35,8 +35,12 @@ command except `doctor` exits 0 and prints nothing, so the plugin is safe to ins
 
 ## What works today
 
-Phase 1 shipped the roadmap layer; phase 2a shipped the register and the machine budget:
+Phase 1 shipped the roadmap layer, phase 2a the register and the machine budget, phase 2b the
+protocol that drives them:
 
+- **`/orchestra`** — the conductor protocol: the nevers, the journal, the framing pass, the nine
+  steps of a tick, the playtest gate, and the worker briefs as templates a project fills from its
+  own config (`briefExtra` is where it pastes its own hard rules).
 - **`/roadmap`** — the skill: the grammar, the board, and the eight roadmap subcommands.
 - **`orchestra doctor`** — the resolved configuration, and the only command that answers in a
   project with no config.
@@ -49,10 +53,13 @@ Phase 1 shipped the roadmap layer; phase 2a shipped the register and the machine
 - **`orchestra archive|archive-images`** — move a finished run's prose out of the register, and
   sweep the photographs under `.orchestra/images/` that nothing live still names.
 
-Not yet: the conductor's protocol document and the worker briefs (2b), the merge gate (3), the
-monitoring page and `orchestra instances` (4), the guard hooks, `orchestra init`, the ticket queue
-and the heartbeat (5), and `roadmap sync`. There is **no launcher**: `ready` produces a plan, and
-nothing here spawns a session to execute it. See the spec's phase table (§15).
+A conductor launches its workers with the harness's own `claude --bg`; there is no launcher in the
+plugin, and `ready` produces a plan rather than executing one.
+
+Not yet: the merge gate and `roadmap sync` (3), the monitoring page and `orchestra instances` (4),
+the guard hooks, `orchestra init`, the ticket queue and the heartbeat (5). Until the page exists
+nothing writes `.orchestra/inbox.jsonl`, so a conductor takes its answers from the conversation. See
+the spec's phase table (§15).
 
 ---
 

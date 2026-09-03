@@ -79,10 +79,11 @@ something to type — every occurrence of it elsewhere in this document is a bug
    is absent from `claude agents --json`; no file under it has changed in 60 minutes
    (`/usr/bin/find <wt> -newermt '-60 minutes' -not -path '*/node_modules/*' -type f | head -1`);
    and its branch is behind its own last report.** Then take it over with the relaunch brief and
-   record it in a `note` — do not ask. If any of the three is unclear, ask. (Measured 2026-08-12 in
-   planetCraft: asking cost two hours forty-four minutes on evidence stricter than this, and the answer was
-   "yes, take all four", in six minutes. The probe uses the absolute `/usr/bin/find` on purpose: a
-   PATH-rewriting hook in the source project dropped `-newermt` from the bare name.)
+   record it in a `note` — do not ask. If any of the three is unclear, ask. (Measured 2026-08-12
+   in planetCraft: asking cost two hours forty-four minutes on evidence stricter than this, and
+   the answer was "yes, take all four", in six minutes. The probe uses the absolute
+   `/usr/bin/find` on purpose: a PATH-rewriting hook in the source project dropped `-newermt` from
+   the bare name.)
 4. Never start a dev server before a task reaches the playtest gate.
 5. Never trust `.orchestra/state.json` over git — for a LOCAL task; git wins there, correct the
    register. A SHARED task, online, is the opposite: another developer's landing closes its issue
@@ -286,7 +287,8 @@ orchestra journal ruling dev-loop/S3 "old cross-build curves: kept empty with th
 ```
 
 In this phase the rulings are visible in the checkpoint and in the journal — the page that would
-render a digest of them is phase 4 — so deciding alone stays visible and any of them can be broken.
+show them to a later reader is phase 4 — so deciding alone stays visible and any of them can be
+broken.
 **Exceeding the budget is not forbidden — it is recorded.** When you genuinely must ask a second
 time, say in the same breath what framing failed to anticipate; that is the input that makes the
 next framing pass better, and it is the only way this regime improves rather than drifts.
@@ -343,7 +345,8 @@ started *after* the hold was issued.
 - **Do not tell a worker to avoid heavy jobs.** It buys nothing and costs it the measurement it was
   launched to take. If the project has a `queue`, its own commands already route through it.
 - **The one thing that is yours**: a worker reporting that its measurement could not get what it
-  needed is a tooling finding — it goes to the user, not into a workaround. No amount of conductor
+  needed is a tooling finding — it goes to the user, or once phase 5's ticket queue exists, to a
+  ticket (see `## What is not here yet`), never into a workaround. No amount of conductor
   vigilance substitutes for fixing it.
 
 ## The tick
@@ -658,9 +661,10 @@ started *after* the hold was issued.
    `orchestra roadmap sync` is **phase 3, and online only** (see `## What is not here yet`): it
    will close what the register proves landed, move every `status:` label onto what the board
    derives, tick each programme's checklist, and close a finished programme — which is what makes
-   a finished roadmap leave the monitor. When it arrives it is the BACKSTOP, not the primary
-   writer: the merge gate runs the same command after every fast-forward. Offline there is
-   nowhere to write a status, so it does nothing there, and that is correct (spec §4.1).
+   a finished roadmap leave the monitor. It will be idempotent: a tick that changed nothing writes
+   nothing. When it arrives it is the BACKSTOP, not the primary writer: the merge gate runs the
+   same command after every fast-forward. Offline there is nowhere to write a status, so it does
+   nothing there, and that is correct (spec §4.1).
 
    Keep the stale-board rule as a rule of this step: **if `orchestra roadmap board` reports
    itself stale, launch nothing this tick and end here** — a cached board cannot say whether
@@ -886,7 +890,7 @@ user cannot check.
 
 When a worker reports built, first ask what the row actually ships. **If it ships no page a human
 reads and no gameplay change, there is no gate**: it lands once every configured gate is green
-(`gates`, phase 3), the `landing` line goes in the journal, and the digest carries it (never #1).
+(`gates`, phase 3), the `landing` line goes in the journal, and the checkpoint carries it (never #1).
 Seven of the sixteen rows of the dev-loop roadmap, in planetCraft, shipped nothing a human reads,
 and every one of their approvals was granted unread.
 
@@ -914,10 +918,10 @@ except the one that matters. Measured 2026-08-13 in planetCraft: an ask sent the
 path, nothing flagged it, and he lost a whole test run to it. **Any dev server with a catch-all
 route does this**, so reading the first 200 characters is the entire check.
 
-**And when a worktree is deleted, kill its dev server and any page explicitly.** A server whose
-directory has been removed keeps serving — which reads as a live page showing stale code, and is
-indistinguishable from a working one until someone trusts it. Servers are killed **by pid**, never
-by pattern.
+**And when a worktree is deleted, kill its dev server and close any page open on it, explicitly.**
+A server whose directory has been removed keeps serving — which reads as a live page showing stale
+code, and is indistinguishable from a working one until someone trusts it. Servers are killed **by
+pid**, never by pattern.
 
 ### The dev-server sweep
 
@@ -1129,8 +1133,8 @@ nothing else.
 **Order matters, and the conductor rule runs first.** The cost of a second conductor is corruption
 — two writers on one register — while the cost of a late tick is only lateness. It stands down for
 a conductor that is live **and conducting**, never merely live: the beat proves only that a session
-can be REACHED, and a window left open and untouched would otherwise silence the heartbeat for
-good.
+can be REACHED, and a window left open and untouched has already silenced the heartbeat for good
+once, not merely in theory — step 1 carries the measurement.
 
 `absent` and `unreadable` are told apart **by errno**, not guessed: the register is rewritten in
 place, so a failed read is most likely a mid-write and the tick runs; an absent register is a
@@ -1217,7 +1221,8 @@ Two things about it worth stating on their own:
   hazard is a different one — a picture a worker has just taken and nobody has cited yet — and a
   clock answers it where a lock cannot. Measured over the 22 photographs the journal named, in
   planetCraft: the gap between a file being written and the first line citing it was at most
-  1.2 hours. Seven days is 140x the worst measured gap.
+  1.2 hours, and negative for three of them (the file was rewritten after the sentence). Seven
+  days is 140x the worst measured gap.
 
 ### The answer net, and what has no net under it yet
 
