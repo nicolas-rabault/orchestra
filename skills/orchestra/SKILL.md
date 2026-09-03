@@ -543,3 +543,103 @@ started *after* the hold was issued.
    time in `state.json` (the key is `budgetResetAt`, and `orchestra tick-gate` stands the heartbeat
    down until it passes rather than spending a session on a refusal already certain), and let the
    next tick retry. Do not mark workers dead on it.
+4. **Inbox — two sources, and you must go and get the second one.**
+   ```sh
+   orchestra inbox          # what the user answered on the page
+   ```
+   **Run it on every tick.** It prints nothing when there is nothing, and what it prints when
+   there is, is a decision the user has already made and is waiting on. Phase 5's
+   `orchestra-inbox` hook, once it exists, injects the same text into an interactive conductor's
+   session — but it is structurally blind to a tick the page itself spawns: a fresh session's
+   `SessionStart` and its one `UserPromptSubmit` both fire before it can record itself in
+   `state.json`, so the gate is still reading the previous conductor's id. On 2026-08-12 in
+   planetCraft five answers reached nobody that way — G1 sat fifty minutes on a defect the user
+   had already described, and three tasks launched half an hour after the user had said to keep
+   the machine quiet. Whether the text arrives by hook or by this command, the obligation is the
+   same one: relay verbatim, clear the `pending[]` item, journal an `answer`, stamp
+   `conductor.inboxSeen` — the journal's third obligation is this same mechanic seen from the
+   cursor's side.
+
+   Then process worker messages. Classify both: *blocking* (the worker cannot continue) → relay
+   to the user immediately in the Decision Template; *non-blocking* (ready to test, an approval,
+   an FYI) → append to that row's `pending` in `state.json`.
+
+   The hook is phase 5's and the page that writes the inbox is phase 4's, so in this phase
+   `orchestra inbox` prints nothing and the answers arrive in the conversation instead — the four
+   obligations above are unchanged, minus the stamp, which has nothing to stamp past.
+5. **Checkpoint.** A checkpoint is the moment you stop trickling questions out one at a time and
+   present every pending decision to the user together, grouped and ordered, each in its Decision
+   Template — the act the journal and the framing pass both mean when they call a landing or a
+   ruling "visible in the checkpoint". You reach one when: the user addresses you; pending count
+   ≥ 3; or the ready set is empty while decisions pend. In a headless tick (`claude -p`), never
+   present — instead, **if `orchestra ready` printed a `WAITING:` line, send ONE
+   PushNotification**, ≤ 200 chars, naming the count, the oldest row and its ask:
+   ```
+   3 waiting · dev-loop/F1: integrate the fix queue?
+   ```
+   The page URL belongs on that line too, but the page is phase 4's: there is nothing to link
+   until it exists, and the URL joins the notification the day it does. **Whether or not any of
+   them is blocking**, which was the old filter and was the wrong one: on 2026-08-12/14 in
+   planetCraft the four asks that sat longest were all merge approvals, and a merge approval
+   blocks nothing you are doing. One push per tick; do not resend for an item you have already
+   pushed unless it crosses four hours.
+
+   The reason this is worth a notification at all, measured across nine stamped answers on
+   2026-08-12/14 in planetCraft: the user answered in **8 to 15 minutes** every time he knew
+   something was waiting, and in **2 to 8 hours** every time he did not — and four asks that had
+   waited between 2 h 19 and 8 h 07 were then all answered inside the same four minutes. He
+   batches. Your job is to say there is a batch, not to wait for him to come and find one.
+6. **Landings.** For every row the reconcile just moved to `landed`: tell the user at the next
+   checkpoint, and continue — the launch step below picks up whatever the landing unblocked.
+
+   **When the user approves a merge, in this phase you do not perform it.** Name the branch to
+   the user, journal the `landing` line when it lands, and re-run step 1 after. Phase 3 is what
+   brings `orchestra land <branch> --detach` / `orchestra await <branch>` and the `merge_agent`
+   agent, one branch at a time behind a lock. The shape is what it is for a reason that belongs
+   to this protocol, not to one project: landings are serialised by a lock, so a second one waits
+   for the first and rebases onto the advanced main. The queue orders landings and decides
+   nothing about them — whether a row needed the user's look at all is never the queue's
+   question.
+
+   Record the branch's commit `subjects` in the row before it lands. That is what makes landed
+   detection work: `orchestra ready` matches an exact commit **subject** against `main`, never a
+   hash, because a landing rebases.
+
+   **A REFUSED GATE IS A CLAIM, NOT A VERDICT — and it comes in two flavours you must tell apart
+   before you act.** On 2026-08-26 in planetCraft, MA4 was refused three times and only the
+   first refusal was about MA4:
+   - *a golden that moved* — never authorise a re-cut on an attribution you have not seen
+     PROVEN, and prove it by ABLATION in both directions on the branch's own worktree: revert
+     the suspect alone and re-hash, remove the real suspect alone and re-hash. The outcome that
+     time: the named file was gated on a climate the test's seed did not have, and the true
+     cause was elsewhere entirely. A re-cut taken on the plausible answer writes a false cause
+     into a test that outlives everybody who reads this. The ablation costs one run; make the
+     worker do it and make it paste both hashes. The gate itself is a project's own `gates`
+     entry (phase 3), so this rule applies to whatever gate a project configures.
+   - *a single failure on a test the branch does not touch* — check three things before
+     believing it: the branch touches neither the test nor its subject; the machine was
+     over-subscribed while the suite ran; the test passes on re-run in isolation. All three held
+     on MA4's second refusal — the branch was innocent and the gate was reading load. File the
+     missing cushion as a finding rather than carrying the suspicion into the next branch — the
+     ticket queue is phase 5, so in this phase a finding like that goes to the user.
+
+   **Drain the row's `postLanding` — the writes the BRANCH could not make.** The `ledgers`
+   config lists tracked files the main branch owns, and phase 3's gate commits them at the head
+   of every landing, so a branch that must change one writes the COMMAND down instead of running
+   it. Carry them on the row as `postLanding: [{cmd, ranAt, error}]`, lifted from the worker's
+   report, and run them in the MAIN checkout on the tick that sees the landing. On 2026-08-26 in
+   planetCraft, MA4 landed and its two closures and its one new ticket were still unwritten when
+   the run was reviewed and called green — nobody owned that other end. So this is
+   **attempt-and-record, never a blocking obligation**, unlike an undelivered relay, and the
+   difference is mechanical: a project's own ledger-writing tool can itself hold a lock and
+   refuse when it cannot get one, and the gate takes that same lock to commit those very
+   ledgers — so a tick forbidden to end with one outstanding would deadlock against the landing
+   that produced it. Record the error on the row; the next tick retries.
+
+   **A landing whose Acceptance was a MEASUREMENT owes one page under `docs.results`.** Of the
+   fifteen council lines landed 2026-08-24/26 in planetCraft, fourteen wrote a spec, a plan and
+   an evidence directory, and exactly one wrote a results page — and nothing looks in an
+   evidence directory. The page may be five lines: the acceptance question, the number it came
+   back with, and a pointer to the evidence. **Discoverability is the whole deliverable, not the
+   prose**: `docs.results` is the directory `orchestra doctor` prints, and reading it is the
+   first thing anyone does before opening new work.
