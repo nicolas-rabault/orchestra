@@ -450,3 +450,96 @@ started *after* the hold was issued.
    top of this document applies here for real: the register carries the `root` it was created for,
    and a hand-written path after a `cd` into a worktree is how another project's register gets
    written — check `state.json`'s own `root` key before you save.
+3. **Liveness — and the resume cycle, which is the ONLY thing that moves a worker.** A `--bg`
+   worker stops at the end of each turn and sits `waiting`; it does not drive itself for hours, and
+   **SendMessage does NOT wake it** — messages queue until the receiver's next turn, which never
+   comes on its own. `claude -p --resume` refuses while the session is registered as a bg agent.
+   The working cycle, measured 2026-08-10:
+   ```sh
+   claude stop <short-id>                      # unregister; the conversation is kept
+   cd <worktree> && claude -p --resume <full-uuid> --dangerously-skip-permissions \
+     "<nudge: read queued conductor messages, continue, print status or done-report>"
+   ```
+   **Run it in the FOREGROUND and wait for it**; queued messages drain on that turn. A turn can be
+   long, and backgrounding it is the obvious accommodation — it is also how the turn dies: a
+   backgrounded resume is reaped when the tick's own turn ends. Measured twice in one morning on
+   2026-08-14, on the same row, ~55 minutes lost each time. A resume you did not watch finish is a
+   resume that did not happen; if the turn really is too long for this tick, that is what the next
+   tick is for.
+
+   **The reply printed on that resume is the ONLY channel a worker has to reach you**, so treat the
+   nudge as the question you want answered, not as a poke. Measured three times on 2026-08-12: a
+   worker session could not resolve the conductor's address — the hello it sent arrived, and the
+   answer could not come back. A worker that finds this out mid-task prints its report where nobody
+   reads it: one design question and one done-report were found only by reading the worker's
+   transcript by hand. **So a resume that fails is a worker gone silent, not a worker idle** — the
+   Bash task can die (exit 144 was seen), and you must notice and re-send. Watch for the state
+   change and resume; never wait to be messaged.
+
+   So per row **that is not `landed` or `dropped`, whatever its status — `review` included**:
+   `waiting` (or stopped) → run the cycle with a continue-nudge; conversation gone entirely →
+   relaunch (same `worktrees` directory, original brief plus "read what is already committed and
+   dirty first", model re-evaluated — a done design relaunches on the execution model). To tell a
+   dead-quiet worktree from a working one, mtimes: `/usr/bin/find <worktree> -newermt '-20 minutes'
+   -not -path '*/node_modules/*' -type f | head -1` (absolute `/usr/bin/find`; a PATH-rewriting
+   hook in the source project drops `-newermt` from the bare name). That is a different question
+   from never 3's 60-minute probe, which asks whether you may write into a worktree you did not
+   launch — this probe only asks whether the worktree is alive.
+
+   **A `review` row means the USER owes an answer. It does not mean the WORKER has nothing to
+   do.** A row can be both, and dev-loop/S3 was, for eight hours and sixteen minutes on 2026-08-13:
+   it sat in `review` while carrying an unfixed blocking defect, so every tick skipped it and the
+   relay written that evening reached its worker at 04:35 the next morning. Seven consecutive ticks
+   looked at that row and wrote "nothing moved, and that is normal". Never let a status that
+   describes the USER's side of the exchange silence the WORKER's side.
+
+   **THE EXIT CODE AND THE CLI'S STATE ARE BOTH NON-EVIDENCE. The filesystem is the only
+   witness.** The same trap wore three faces in one day in planetCraft, 2026-08-25, and not one of
+   them is visible in the thing you would naturally read:
+   - `exit 0` with a short, plausible-looking output that executed NOTHING — the session ceiling
+     was hit and the refusal ("You've hit your session limit · resets 1:50pm") reads like a thin
+     report. RP6, RP7 and SK3, all three at once.
+   - status `working` in `claude agents --json` for 2 h 40 with **zero files written and zero
+     commits** — a turn eaten by that same ceiling leaves a session that declares itself busy. RP5
+     and MA2.
+   - `exit 144` with empty output — the Bash task killed outright. RP5 again, four hours later.
+
+   So: **when a resume REPORTS work — a commit, an edit, a measurement — confirm it at the
+   filesystem before you write it in the journal or act on it**, with the mtime probe above or
+   `git -C <worktree> log --oneline -1`. And a resume that reports NO work is a resume that did not
+   happen: re-send it, do not record it as a worker idling. The probe costs milliseconds; each of
+   the three faces above cost between forty minutes and two hours forty.
+
+   **TWO 600-SECOND CEILINGS, AND THEY ARE NOT THE SAME ONE.** Both were paid for on 2026-08-25 in
+   planetCraft, and confusing them sends you to the wrong fix:
+   - *the worker's own internal wait ceiling* — a worker that waits on something long (a playtest
+     bot, a bench, a served page) has its turn cut at 600 s while the thing it was waiting on
+     survives, being a separate process. RP3 lost its turn this way with both its servers still up.
+     Prefix its launch or its resume with `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` whenever the
+     brief makes it wait.
+   - *your own tool-call ceiling* — a foreground resume you are watching is YOUR Bash call, and it
+     is cut at 600 s too. MA4's worker was cut mid-turn at 05:57 on 2026-08-26. **A cut is a turn
+     boundary, not a death**: the conversation is intact and the work is in the worktree,
+     uncommitted (three dirty files, that time, and nothing lost). The next nudge must therefore
+     OPEN with "your turn was cut at the ceiling — commit what is already in your tree first, then
+     continue", or the following cut loses the same work twice.
+
+   **Writing a relay and delivering it are two acts, and only the second one counts.** Put the text
+   on the row as `relay: {text, writtenAt, deliveredAt}` and stamp `deliveredAt` only when the
+   resume cycle above has returned. `orchestra ready` prints every row still holding an undelivered
+   one, first, above everything else it has to say about what to launch:
+   ```
+   UNDELIVERED: dev-loop/S3 [review] — relay written 2026-08-13T18:35:00Z, 600 min ago
+   ```
+   Terminal rows are excluded, and status is deliberately not part of the filter: a row can owe the
+   user an answer and owe its worker a message at the same time, `review` included. A relay whose
+   `writtenAt` will not parse is still reported, with no age rather than with `NaN`.
+   **That line is an obligation for this tick, not information.** A tick may not end with one
+   outstanding. And delivering means the stop+resume cycle with the relay text inside the nudge:
+   `SendMessage` is NOT delivery — a `--bg` worker's queue drains on a turn that never comes.
+
+   **Budget refusal is not death**: a resume that prints "You've hit your session limit · resets
+   <time>" means every turn is refused until that time — leave the rows claimed, note the reset
+   time in `state.json` (the key is `budgetResetAt`, and `orchestra tick-gate` stands the heartbeat
+   down until it passes rather than spending a session on a refusal already certain), and let the
+   next tick retry. Do not mark workers dead on it.
