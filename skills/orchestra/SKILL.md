@@ -998,7 +998,7 @@ read once:
 | `{title}` | the row's title |
 | `{excerpt}` | the task's own section, verbatim: offline from the file under `roadmaps.published`, online from the issue body |
 | `{language}` | `orchestra doctor`'s `language` row |
-| `{branchTests}` | `orchestra doctor`'s `branchTests` row. **When it prints `—`, the project has configured none**: drop the clause and tell the worker to run the project's own tests for what it changed and to say which |
+| `{branchTests}` | `orchestra doctor`'s `branchTests` row. **When it prints `—`, the project has configured none**: the Hard rules clause "run {branchTests} on every iteration, never the project's full suite" becomes "run the project's own tests for what you changed, and say which" |
 | `{specsDir}` | `orchestra doctor`'s `docs.specs` row |
 | `{plansDir}` | `orchestra doctor`'s `docs.plans` row |
 | `{briefExtra}` | `orchestra doctor`'s `briefExtra` row, pasted verbatim. Empty means the paragraph is omitted entirely |
@@ -1079,8 +1079,9 @@ each other, and the whole fleet stopped for 1 h 36. Fewer tokens bought a later 
 faster turn.
 
 **Measure before you act, and act on ONE row.** The saving depends on how much a handover has to
-re-read — measured in planetCraft: 31 % at a 50 K re-acquisition, 13 % at 150 K, and below roughly
-110 turns splitting costs more than it saves. That sensitivity is exactly why this is an
+re-read, which nothing has directly measured: at a 50 K re-acquisition it works out to 31 %, at
+150 K to 13 %, and below roughly 110 turns splitting costs more than it saves. That sensitivity is
+exactly why this is an
 **EXPERIMENT**, not a settled rule: what it saves on one project's shape of task is not a promise
 about yours.
 
