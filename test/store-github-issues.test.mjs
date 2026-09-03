@@ -65,3 +65,44 @@ test('publishIssues creates the programme first, then rewrites it with the task 
   assert.equal(calls[3][0], 'updateIssue');            // then the programme is rewritten
   assert.equal(calls[3][1], 100);
 });
+
+// `publishIssues` carried its own byte-identical copy of the programme match until a review found
+// the pair; it calls `programmeForRoadmap` now, so the anchoring is pinned once for both readers.
+// A programme is found by its `- **Roadmap** <slug>` line, whole and on its own line: publishing
+// `light` must not reach the `lighting` programme, in publish exactly as in `open`/`reserve`.
+function programmeRecorder(programmes) {
+  const created = [];
+  let next = 200;
+  return {
+    created,
+    gh: {
+      ensureLabels: () => {},
+      listIssues: ({ labels = [] } = {}) => (labels.includes(LABELS.programme) ? programmes : []),
+      createIssue: (i) => { created.push(i.title); return next += 1; },
+      updateIssue: () => {},
+      reopenIssue: () => {},
+    },
+  };
+}
+
+test('publishIssues finds an existing programme by the same anchored match open/reserve use', () => {
+  const programmes = [{
+    number: 7, title: 'lighting — Lighting', state: 'open', labels: [LABELS.programme],
+    body: '- **Roadmap** lighting\n\n## Tasks\n',
+  }];
+  const lighting = { ...task, roadmap: 'lighting', key: 'lighting/D1' };
+
+  const same = programmeRecorder(programmes);
+  const res = publishIssues(same.gh, {
+    roadmap: 'lighting', title: 'Lighting', prose: 'p', tasks: [lighting],
+  });
+  assert.equal(res.programme, 7);
+  assert.deepEqual(same.created, ['lighting/D1 — First thing']);
+
+  const prefix = programmeRecorder(programmes);
+  const other = publishIssues(prefix.gh, {
+    roadmap: 'light', title: 'Light', prose: 'p', tasks: [{ ...task, roadmap: 'light', key: 'light/D1' }],
+  });
+  assert.notEqual(other.programme, 7);
+  assert.ok(prefix.created.includes('light — Light'));
+});
