@@ -294,3 +294,54 @@ next framing pass better, and it is the only way this regime improves rather tha
 What this costs, stated plainly so nobody discovers it later: a wrong solo ruling now runs until the
 next checkpoint instead of being stopped within the hour. The exposure is a fork framing did not
 anticipate and no precedent covers — which is exactly what the `ruling` lines make visible.
+
+## The machine's capacity — the budget owns it, and you do not
+
+One conductor per project is the point of a portable plugin, so several of them run on the same
+machine, and `orchestra ready` is the one command that speaks for yours. Every time you run it, it
+writes `~/.orchestra/instances.json`: your project's live worker count — every row `claimed` or
+`review` — for every other orchestra on this machine to budget against, and in the same pass it
+reaps whatever died since the last write.
+
+The cap it computes is `min(--width, maxWorkers − others)`, floored at zero: `maxWorkers` comes
+from `~/.orchestra/machine.json` and defaults to 8, `--width` itself defaults to 8, and `others` is
+what every other live project on this machine currently holds. The two lines a conductor reads,
+verbatim:
+
+```
+in flight: 2/6 (width 8, held down to 6: 2 of 8 worker(s) belong to other project(s) on this machine)
+HELD: 3 task(s) are ready and this machine has no slot for them — 8 of 8 are held elsewhere
+```
+
+**A conductor held to zero says so and does not launch anyway.**
+
+The registry is **advisory, never authority** — the truth about a project stays inside that
+project's own register and git. Its errors point one way on purpose: a conductor killed with `-9`
+leaves its worker count behind until its entry is reaped, which under-budgets every other project
+for a few minutes. Too few launches, never too many. An entry is reaped when its project's root no
+longer exists, or when neither its conductor pid is alive nor it has reported itself within six
+hours — the write stamp taken on every call, not the watch-loop beat. The beat is legitimately null
+whenever no `watch-answers` loop is armed, and reaping on it instead would make an entry read as
+dead the instant it was written, which would make every OTHER project over-launch.
+
+**It budgets sessions, not CPU.** Four projects each running one full test suite is within budget
+and can still saturate the machine. A project that needs that ordering configures the `queue` key —
+run `orchestra doctor` to see its resolved value; unset, a command runs directly.
+
+Four rules survive from the tool this replaces, because they generalise past any one project's own
+fleet, and each is paid for by the same measurement: a conductor in planetCraft spent a morning,
+2026-09-02, hand-managing load instead — reading `uptime`, telling workers to hold off benches,
+promising "a quiet window" — and got it wrong three different ways in three hours. A landing was
+refused on an innocent test at load 26; another died queued; a "quiet machine" was announced off
+the **15-minute** load average while the 1-minute figure was 11.99 and a second test run had
+started *after* the hold was issued.
+
+- **Never read a load average to decide anything.** If you must know what is running, ask the
+  budget: `orchestra ready` prints it.
+- **Never promise a worker a quiet window.** You cannot deliver one: you do not control the other
+  worktrees, the other developers, or the heartbeat.
+- **Do not tell a worker to avoid heavy jobs.** It buys nothing and costs it the measurement it was
+  launched to take. If the project has a `queue`, its own commands already route through it.
+- **The one thing that is yours**: a worker reporting that its measurement could not get what it
+  needed is a tooling finding — it goes to the user, not into a workaround. No amount of conductor
+  vigilance substitutes for fixing it.
