@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, existsSync, utimesSync, appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
-import { writeState, emptyState } from '../lib/register/state.mjs';
+import { writeState, emptyState, statePath } from '../lib/register/state.mjs';
 import { journalPath } from '../lib/register/journal.mjs';
 import { loadArchive } from '../lib/register/archive.mjs';
 import { scanImagePaths } from '../lib/register/images.mjs';
@@ -79,6 +79,35 @@ test('a register with no task list throws rather than read the silence as "nothi
   photo(r, 'x.png');
   writeState(r.root, { ...emptyState(r.root), tasks: 'not a list' });
   assert.throws(() => sweep(r.root, { now: NOW }), /refusing to read an unparsed register/);
+});
+
+test('no register at all is refused exactly like an unparsed one — not read as "nothing is cited"', () => {
+  const r = repo();
+  // The photograph is not optional: without one on disk, a sweep that bailed out BEFORE reaching
+  // the register check (e.g. on an empty `photosUnder` result) would report `dropped: []` and this
+  // test would pass whether or not the guard ever ran. A photograph forces the sweep past that.
+  photo(r, 'x.png');
+  assert.throws(() => sweep(r.root, { now: NOW }),
+    (err) => err.message === `${statePath(r.root)} has no task list — refusing to read an unparsed register as "nothing is cited"`);
+});
+
+test('a register with an ambiguous bare task id keeps its pictures rather than guess which row it means', () => {
+  const r = repo();
+  photo(r, 'ambiguous.png');
+  // Two terminal rows sharing the bare id `D1` after the slash. The ambiguity IS the point of this
+  // test — `rowLookup` must resolve `D1` to NOTHING rather than to either `alpha/D1` or `beta/D1`,
+  // so do not "fix" this fixture into an unambiguous one; that would delete the only coverage for
+  // the rule that an unresolvable task reads as LIVE, never as terminal.
+  writeState(r.root, { ...emptyState(r.root),
+    tasks: [
+      { id: 'alpha/D1', status: 'landed', pending: [] },
+      { id: 'beta/D1', status: 'dropped', pending: [] },
+    ] });
+  // Older than the freshness floor, so the sweep must fall through to the task lookup rather than
+  // keeping it on age alone.
+  appendFileSync(journalPath(r.root),
+    `${JSON.stringify({ ts: '2026-08-01T00:00:00.000Z', kind: 'note', task: 'D1', text: 'ambiguous.png' })}\n`);
+  assert.deepEqual(sweep(r.root, { now: NOW }).dropped, []);
 });
 
 test('a surviving board keeps the montages it names', () => {
