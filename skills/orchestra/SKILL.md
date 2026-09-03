@@ -665,7 +665,11 @@ started *after* the hold was issued.
    Keep the stale-board rule as a rule of this step: **if `orchestra roadmap board` reports
    itself stale, launch nothing this tick and end here** — a cached board cannot say whether
    another developer has taken a task, and starting anyway overwrites their claim. Say so in the
-   journal. Offline, a board is never served from cache, so this rule is online's.
+   journal. Offline, a board is never served from cache, so this rule is online's. **No command
+   in this phase reports a board as stale.** The rule outlives its enforcement, exactly as never
+   merging does: `guard-claim` is phase 5's, and it fails closed on a cached board deliberately,
+   rather than let an out-of-date read authorise a claim it cannot vouch for. Until then the rule
+   stands on its own reasoning, not on an alarm.
 8. **Launch, and the names.** Launch each row `orchestra ready` places in `launches` — already
    width-capped by "The machine's capacity" above. **Claim first, always**, for your own
    roadmaps too, now that every roadmap is published:
