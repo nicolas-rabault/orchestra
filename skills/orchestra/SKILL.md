@@ -796,8 +796,8 @@ may name a bare sibling id or a `<roadmap>/<ID>` cross-file one, and `reconcile(
 **a register row's `id` IS the board row's `key`, and a register row's `deps` IS the board row's
 `deps`, byte-for-byte** — a register row is a direct copy, nothing to resolve on the way in. **A
 register row's `roadmap` is the slug in both modes, never a file path — the path form is what
-forced that very rule in the project this protocol was ported from, and it left the field pointing
-at a draft `publish` had already deleted; the slug is what both stores already key on.**
+forced that very rule in planetCraft, and it left the field pointing at a draft `publish` had
+already deleted; the slug is what both stores already key on.**
 
 `orchestra ready` (`lib/register/ready.mjs`'s `computeReadySet`) trusts this and does no
 resolution of its own: it matches `deps` against `id` byte-for-byte, and throws — naming the

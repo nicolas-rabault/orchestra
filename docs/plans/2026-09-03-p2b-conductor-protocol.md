@@ -1431,8 +1431,10 @@ Port source 616–647. Substitutions and one inversion:
   rows**, and keep the cost: treating adoption as the way a new roadmap gets in left 22 tasks out on
   2026-08-19, 15 on 08-25 and 28 on 09-02, each caught by a human reading the board.
 - Read-only. Build the task table from `orchestra roadmap board --json`, which returns one row per
-  task with `key`, `order`, `deps`, `touches`, `lane`, `branch`, `design`, `visibility`, derived
-  `status` and `ref`. Keep **the board emits both `key` and already-resolved `deps`**, with the
+  task with `key`, `order`, `deps`, `touches`, `lane`, `branch`, `design`, derived `status` and
+  `issue` (not `ref` — `ref` is the Store interface's own field name, which `board.mjs` renames to
+  `issue` on the row it emits; `visibility` is dropped, it appears nowhere in `lib/`). Keep **the
+  board emits both `key` and already-resolved `deps`**, with the
   reason: a task's own `Deps` may name a bare sibling id or a `<roadmap>/<ID>` cross-file one, and
   the board resolves either into a qualified key before it ever leaves the board. So **a register
   row's `id` IS the board row's `key`, and a register row's `deps` IS the board row's `deps`,
