@@ -74,7 +74,7 @@ test('the overlay reports status, owner and openness — and it is NOT empty', (
   const o = store.overlay();
   assert.equal(o.size, 1);
   assert.deepEqual(o.get('demo/D1'), {
-    status: 'claimed', ref: 5, owner: 'nico', open: false, mine: true,
+    status: 'claimed', ref: 5, owner: 'nico', open: false, mine: true, claimedByMe: true,
     programme: 1, programmeState: 'open',
   });
 });

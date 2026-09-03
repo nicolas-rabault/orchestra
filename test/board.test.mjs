@@ -95,6 +95,24 @@ test('offline can never produce a "not ours" line, because the overlay is empty'
   assert.deepEqual(b.notMine, []);
 });
 
+// `claimedByMe` has two producers, one per mode, and `startVerdict` refuses the worktree without
+// it. Offline there is no overlay entry at all, so the local derivation answers: one machine and one
+// register mean a branch ref here is MY claim. Online the store computed it from `gh.me()` and the
+// assignees, and its word is the one that counts — a claim held by a colleague on my own roadmap is
+// `claimed` and not mine.
+test('claimedByMe comes from the overlay entry when there is one, and from the local claim when there is not', () => {
+  const git = { refs: new Set(['demo/d1-first-thing']), mainSubjects: new Set() };
+  assert.equal(reconcile({ tasks, git, register: [], overlay: new Map() }).rows[0].claimedByMe, true);
+  assert.equal(reconcile({ tasks, git: noGit, register: [], overlay: new Map() }).rows[0].claimedByMe, false);
+
+  const held = new Map([['demo/D1', {
+    status: 'claimed', ref: 5, owner: 'me', open: false, mine: true, claimedByMe: false,
+  }]]);
+  const b = reconcile({ tasks, git: noGit, register: [], overlay: held });
+  assert.equal(b.rows[0].status, 'claimed');
+  assert.equal(b.rows[0].claimedByMe, false);
+});
+
 test('deps are OVERWRITTEN with the qualified form and drive depsMet', () => {
   const two = parseRoadmap(ROADMAP.replace('- **Deps** —', '- **Deps** D0')).tasks;
   const b = reconcile({ tasks: two, git: noGit, register: [], overlay: new Map() });

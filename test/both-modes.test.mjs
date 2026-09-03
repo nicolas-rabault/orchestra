@@ -10,6 +10,7 @@ import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
 import { loadConfig } from '../lib/config.mjs';
 import { makeStore } from '../lib/store/index.mjs';
 import { reconcile, gatherGit } from '../lib/roadmap/board.mjs';
+import { startVerdict } from '../lib/roadmap/policy.mjs';
 import { enrol } from '../lib/roadmap/enrol.mjs';
 import { LABELS, taskTitle } from '../lib/store/github/issues.mjs';
 import { parseRoadmap } from '../lib/roadmap/parse.mjs';
@@ -56,6 +57,15 @@ function seedPublished(p, { filename, text }) {
   const draft = join(p.r.root, p.cfg.roadmaps.drafts, filename);
   writeFileSync(draft, text);
   p.store.publish(draft);
+}
+
+// A claim, by the route each mode has. Online a claim is the issue's assignee and `store.claim`
+// writes one. Offline `store.claim` is a deliberate no-op — one machine and one register mean the
+// branch ref and the register row ARE the claim record (files.mjs says so where it returns
+// `{ ok: true }`) — so the branch is what has to exist for the board to derive `claimed`.
+function claimHere(p, branch) {
+  assert.equal(p.store.claim('demo/D1', p.store.whoami()).ok, true);
+  if (p.cfg.mode === 'offline') p.r.git('branch', branch);
 }
 
 function project(mode) {
@@ -187,6 +197,27 @@ for (const mode of ['offline', 'online']) {
     assert.deepEqual(betaRow.blockedBy, ['alpha/D1']);
     assert.equal(betaRow.depsMet, false);
     assert.equal(b.rows.find((r) => r.key === 'alpha/D1').depsMet, true);
+  });
+
+  // `claimedByMe` was read by `board.mjs` and by `policy.mjs` and produced by nothing, so
+  // `startVerdict` — the decision the worktree guard enforces — could never say yes to a claimed
+  // row built from a real board row. It fell through to `unclaimed`, which would refuse the
+  // worktree for the very task the user had just claimed. Each store answers for itself: online it
+  // knows `gh.me()` and the assignees, offline there is no overlay and one machine, so a locally
+  // derived `claimed` IS mine.
+  test(`[${mode}] a task claimed here reads claimed BY ME, and startVerdict lets work start on it`, () => {
+    const p = project(mode);
+    p.store.publish(p.draftPath);
+    claimHere(p, 'demo/d1-first-thing');
+    const b = reconcile({
+      tasks: p.store.list(),
+      git: gatherGit(p.r.root, { mainBranch: p.cfg.mainBranch }),
+      register: [],
+      overlay: p.store.overlay(),
+    });
+    assert.equal(b.rows[0].status, 'claimed');
+    assert.equal(b.rows[0].claimedByMe, true);
+    assert.deepEqual(startVerdict(b.rows[0]), { ok: true });
   });
 }
 
