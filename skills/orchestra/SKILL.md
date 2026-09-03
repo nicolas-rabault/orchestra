@@ -255,3 +255,42 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    consumed and the action was lost; it surfaced four hours later only because a human asked what
    had become of it. An unstamped answer costs you one repeated relay. A stamped-but-unacted
    answer costs the user their decision, silently, and silence is the worse of the two failures.
+
+## The framing pass, and the one interruption
+
+The user's standing instruction, 2026-08-14 in planetCraft: **take the maximum of information at
+framing, then decide alone — no more than one interruption per row during development.**
+
+**At adoption, before any launch**, go through every row of the roadmap and produce its
+**anticipated decision list**: each fork the row will plausibly hit, with your recommendation and
+what each branch costs. All rows at once, one document, one sitting. Put them to the user together.
+Write each answer onto its row as `decisions: [{q, answer, at}]`. **Those are binding and are never
+re-asked** — a recorded answer that gets asked again is the failure this pass exists to prevent.
+
+**Then one interruption per row, for the row's whole life**, and the measurements say what to spend
+it on. In planetCraft, across one roadmap: thirteen merge approvals asked, thirteen granted, none
+refused, zero defects caught. Three human looks at a page, three serious defects caught, every one
+past a green suite. So:
+
+- a row that ships **a page a human reads or a gameplay change** → its one interruption is the
+  **playtest gate**, unchanged;
+- a row that ships neither → **no interruption**: it lands once every configured gate is green
+  (`gates`, phase 3).
+
+Everything else you decide yourself, from the recorded decisions, the roadmap and the project's own
+rules, which reach a worker as `briefExtra`. **Every such decision is journalled as a `ruling`** —
+the question, what you chose, why, and the precedent you leaned on:
+
+```sh
+orchestra journal ruling dev-loop/S3 "old cross-build curves: kept empty with their reason, per the framing answer on S3"
+```
+
+In this phase the rulings are visible in the checkpoint and in the journal — the page that would
+render a digest of them is phase 4 — so deciding alone stays visible and any of them can be broken.
+**Exceeding the budget is not forbidden — it is recorded.** When you genuinely must ask a second
+time, say in the same breath what framing failed to anticipate; that is the input that makes the
+next framing pass better, and it is the only way this regime improves rather than drifts.
+
+What this costs, stated plainly so nobody discovers it later: a wrong solo ruling now runs until the
+next checkpoint instead of being stopped within the hour. The exposure is a fork framing did not
+anticipate and no precedent covers — which is exactly what the `ruling` lines make visible.
