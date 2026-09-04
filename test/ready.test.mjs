@@ -1,5 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
 import { reconcileTasks, computeReadySet, planLaunches, undeliveredRelays, pendingWaiting, gatherGit }
   from '../lib/register/ready.mjs';
@@ -96,4 +97,21 @@ test('gatherGit answers about THIS checkout and excludes main', () => {
   const git = gatherGit(r.root);
   assert.deepEqual(git.branches, ['demo/d1']);
   assert.ok(git.mainSubjects.includes('initial'));
+});
+
+test('gatherGit reconciles against the configured main branch, not the literal main', () => {
+  const r = repo();
+  r.git('branch', '-m', 'main', 'master');
+  r.git('worktree', 'add', '-q', '-b', 'feat/x', join(r.root, 'wt'), 'master');
+  const git = gatherGit(r.root, { mainBranch: 'master' });
+  // The main branch is not one of the branches to reconcile against itself...
+  assert.deepEqual(git.branches, ['feat/x']);
+  // ...and its subjects are the landing oracle.
+  assert.ok(git.mainSubjects.includes('initial'));
+});
+
+test('an unborn main branch is a project with no landed history, not a crash', () => {
+  const r = repo();
+  const git = gatherGit(r.root, { mainBranch: 'trunk' });
+  assert.deepEqual(git.mainSubjects, []);
 });
