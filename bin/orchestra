@@ -7,7 +7,7 @@ import { roadmapCommand } from '../lib/cli/roadmap.mjs';
 import { journalCommand, inboxCommand, beatCommand, watchAnswersCommand, lockCommand } from '../lib/cli/register.mjs';
 import { readyCommand, tickGateCommand, yieldCheckCommand } from '../lib/cli/tick.mjs';
 import { archiveCommand, archiveImagesCommand } from '../lib/cli/archive.mjs';
-import { landCommand } from '../lib/cli/gate.mjs';
+import { landCommand, awaitCommand, queueListCommand } from '../lib/cli/gate.mjs';
 
 register('doctor', { machine: true, run: ({ cfg }) => doctor(cfg) });
 register('roadmap', { run: roadmapCommand });
@@ -22,6 +22,8 @@ register('yield-check', { run: yieldCheckCommand });
 register('archive', { run: archiveCommand });
 register('archive-images', { run: archiveImagesCommand });
 register('land', { run: landCommand });
+register('await', { run: awaitCommand });
+register('queue-list', { run: queueListCommand });
 
 const [name, ...rest] = process.argv.slice(2);
 

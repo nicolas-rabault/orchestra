@@ -188,3 +188,57 @@ test('a dirty configured ledger is committed alone; something else staged in the
   const status = r.git('status', '--porcelain', '--', 'unrelated.txt');
   assert.match(status, /^M {2}unrelated\.txt/);
 });
+
+test('land --detach returns 15 at once, and await collects the real code and the gate name', () => {
+  const r = project([
+    { name: 'slow', cmd: 'sleep 1; echo SLOW-RAN' },
+    { name: 'suite', cmd: 'echo "1 test failed" >&2; exit 1' },
+  ]);
+  const { branch } = branchWith(r);
+
+  const started = run(r.root, 'land', branch, '--detach');
+  assert.equal(started.code, 15, started.out);
+  assert.match(started.out, /detached — pid \d+/);
+  // The caller's own turn is over in milliseconds; the landing is not.
+  const waited = run(r.root, 'await', branch, '--for=60');
+  assert.equal(waited.code, 11, waited.out);
+  assert.match(waited.out, /gate "suite" refused/);   // the queue note, in await's own report
+  assert.match(waited.out, /1 test failed/);          // the tail of the log it never watched
+  assert.match(waited.out, /full log: .*\.orchestra\/gate\/logs\//);
+});
+
+test('await on a branch with no record says how to start one', () => {
+  const r = project([{ name: 'green', cmd: 'true' }]);
+  branchWith(r);
+  const { code, out } = run(r.root, 'await', 'demo/d1', '--for=1');
+  assert.equal(code, 1, out);
+  assert.match(out, /no detached landing on record/);
+  assert.match(out, /land demo\/d1 --detach/);
+});
+
+test('a second --detach on a running landing does not start a second one', () => {
+  const r = project([{ name: 'slow', cmd: 'sleep 3' }]);
+  const { branch } = branchWith(r);
+  assert.equal(run(r.root, 'land', branch, '--detach').code, 15);
+  const again = run(r.root, 'land', branch, '--detach');
+  assert.equal(again.code, 15, again.out);
+  assert.match(again.out, /already landing — pid \d+/);
+  run(r.root, 'await', branch, '--for=60');
+});
+
+test('queue-list prints a held entry with its note, and reaps an entry whose branch is gone', () => {
+  const r = project([{ name: 'suite', cmd: 'exit 1' }]);
+  const { branch } = branchWith(r);
+  assert.equal(run(r.root, 'land', branch).code, 11);
+
+  const held = run(r.root, 'queue-list');
+  assert.equal(held.code, 0, held.out);
+  assert.match(held.out, /held\s+.*demo\/d1.*gate "suite" refused/);
+
+  // The branch goes; so does the entry — the same liveness argument the lock already makes, and the
+  // reason there is no `drop` verb (spec §2's list has three).
+  r.git('worktree', 'remove', '--force', join(r.root, '.orchestra', 'worktrees', 'd1'));
+  r.git('branch', '-D', branch);
+  const after = run(r.root, 'queue-list');
+  assert.match(after.out, /merge queue: empty/);
+});
