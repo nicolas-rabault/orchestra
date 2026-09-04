@@ -226,3 +226,29 @@ test('ownsRun: a null pid is claimable by anyone, a set pid only by itself', () 
   assert.equal(S.ownsRun({ pid: 999 }, 123), false);
   assert.equal(S.ownsRun(null, 123), false);
 });
+
+// Branch review, cost of Ruling 8: reading every null-pid record as `running` FOREVER traded a
+// self-healing coincidence for a permanent wedge. If the parent dies between the seed write and the
+// pid stamp, the record must eventually stop reading as `running` with no liveness check possible —
+// or `land --detach` is blocked for that branch until a human deletes the run file by hand.
+test('a pre-fork seed within the grace still reads as running; past it, it reads as vanished again', () => {
+  const seed = { branch: 'b', pid: null, startedAt: 100, log: '/l', exit: null, endedAt: null };
+  // One tick under the grace: unaffected by this fix, exactly like the sliver test above.
+  assert.deepEqual(
+    S.runVerdict({ run: seed, alive: false, nowSec: 100 + S.PRE_FORK_GRACE_SEC - 1 }),
+    { state: 'running', exit: S.EXIT.busy, elapsed: S.PRE_FORK_GRACE_SEC - 1 },
+  );
+  // At the grace: the parent has had three orders of margin over an ordinary spawn (milliseconds)
+  // to stamp a real pid. A seed still unstamped at this age almost certainly means the parent died
+  // in between, so this reads as `vanished` again — as it did before Ruling 8 — rather than wedging
+  // `land --detach` on this branch forever.
+  assert.deepEqual(
+    S.runVerdict({ run: seed, alive: false, nowSec: 100 + S.PRE_FORK_GRACE_SEC }),
+    { state: 'vanished', exit: S.EXIT.vanished, elapsed: S.PRE_FORK_GRACE_SEC },
+  );
+  // Liveness is irrelevant either side of the grace: a pid that does not exist yet has no honest
+  // liveness answer, so this must not depend on what the caller happened to pass for `alive`.
+  assert.equal(
+    S.runVerdict({ run: seed, alive: true, nowSec: 100 + S.PRE_FORK_GRACE_SEC }).state, 'vanished',
+  );
+});

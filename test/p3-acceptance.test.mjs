@@ -8,7 +8,10 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
@@ -30,9 +33,11 @@ function project(gates, extra = {}) {
   return r;
 }
 
-// A branch with a worktree and one commit — the shape a worker leaves behind.
-function branchWith(r, { branch = 'demo/d1', file = 'src/a.js', body = 'one\n' } = {}) {
-  const wt = join(r.root, '.orchestra', 'worktrees', 'd1');
+// A branch with a worktree and one commit — the shape a worker leaves behind. `slug` names the
+// worktree directory separately from `branch`, so a test that needs two branches at once (the lock
+// contention test below) does not collide both worktrees on the same default path.
+function branchWith(r, { branch = 'demo/d1', slug = 'd1', file = 'src/a.js', body = 'one\n' } = {}) {
+  const wt = join(r.root, '.orchestra', 'worktrees', slug);
   r.git('worktree', 'add', '-q', '-b', branch, wt, 'main');
   mkdirSync(dirname(join(wt, file)), { recursive: true });
   writeFileSync(join(wt, file), body);
@@ -45,6 +50,31 @@ function branchWith(r, { branch = 'demo/d1', file = 'src/a.js', body = 'one\n' }
 const log = (r, n = 5) => r.git('log', '--format=%s', `-${n}`, 'main').trim().split('\n');
 const branches = (r) => r.git('for-each-ref', '--format=%(refname:short)', 'refs/heads')
   .trim().split('\n');
+
+// A register row naming `branch`, in the shape a landing reads it — shared by every test below that
+// needs `recordLandedSubjects` to match and, in online mode, `syncLandedIssue` to fire.
+function seedRegisterRow(r, branch) {
+  writeFileSync(join(r.root, '.orchestra', 'state.json'), `${JSON.stringify({
+    version: 1, root: r.root, adopted: true,
+    conductor: { session: null, language: null, inboxSeen: null },
+    budgetResetAt: null,
+    tasks: [{ id: 'demo/D1', branch, subjects: [], status: 'review' }],
+  }, null, 2)}\n`);
+}
+
+// A `gh` on PATH that always answers `[]`, so a store's `listIssues` calls succeed with nothing to
+// reconcile against — a controlled SUCCESS for `orchestra roadmap sync`'s real subprocess, the
+// counterpart to the ordinary case (no fake `gh`) where that subprocess fails for a real reason
+// ("no git remotes found" in a repo with none configured). Restores PATH itself, so a failure inside
+// `fn` does not leak the fake binary into a later test.
+function withFakeGh(fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'fake-gh-'));
+  writeFileSync(join(dir, 'gh'), '#!/bin/sh\necho \'[]\'\n');
+  chmodSync(join(dir, 'gh'), 0o755);
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${dir}:${savedPath}`;
+  try { return fn(); } finally { process.env.PATH = savedPath; rmSync(dir, { recursive: true, force: true }); }
+}
 
 test('a branch lands through two green gates, in the order they are configured', () => {
   const r = project([
@@ -232,12 +262,7 @@ test('a landing records its commit subjects on the register row that named the b
   // exited 0 while the register was never written, for two days and every landing.
   const r = project([{ name: 'green', cmd: 'true' }]);
   const { branch } = branchWith(r);
-  writeFileSync(join(r.root, '.orchestra', 'state.json'), `${JSON.stringify({
-    version: 1, root: r.root, adopted: true,
-    conductor: { session: null, language: null, inboxSeen: null },
-    budgetResetAt: null,
-    tasks: [{ id: 'demo/D1', branch, subjects: [], status: 'review' }],
-  }, null, 2)}\n`);
+  seedRegisterRow(r, branch);
 
   assert.equal(run(r.root, 'land', branch).code, 0);
   const state = JSON.parse(readFileSync(join(r.root, '.orchestra', 'state.json'), 'utf8'));
@@ -270,4 +295,89 @@ test('queue-list prints a held entry with its note, and reaps an entry whose bra
   r.git('branch', '-D', branch);
   const after = run(r.root, 'queue-list');
   assert.match(after.out, /merge queue: empty/);
+});
+
+// Branch review, I4: acceptance row 4 — "a second `land` on a held branch is refused by the lock,
+// not by running twice" — had no assertion, on the stated theory that a single-process test cannot
+// observe contention. It can: two branches, one detached landing holding the lock behind a slow
+// gate, and a second FOREGROUND `land` with a short `--wait` that must time out against the lock
+// itself, not against a second run of anything.
+test('a second land on a held branch is refused by the LOCK, not by running twice', () => {
+  const r = project([{ name: 'slow', cmd: 'sleep 5' }]);
+  const { branch: holder } = branchWith(r, { branch: 'demo/d1', slug: 'd1', file: 'src/a.js' });
+  const { branch: waiter } = branchWith(r, { branch: 'demo/d2', slug: 'd2', file: 'src/b.js' });
+
+  const started = run(r.root, 'land', holder, '--detach');
+  assert.equal(started.code, 15, started.out);
+
+  const { code, out } = run(r.root, 'land', waiter, '--wait=2');
+  assert.equal(code, 12, out);
+  // `mayTake`'s own reason string, printed once by `acquire` — this is the LOCK speaking, not a
+  // second `land` colliding with a queue record.
+  assert.match(out, /waiting — landing demo\/d1/);
+  assert.match(out, /still waiting after 2s — run land again/);
+  // The waiter never touched the branch it could not get a turn for.
+  assert.ok(branches(r).includes(waiter));
+
+  run(r.root, 'await', holder, '--for=60');
+});
+
+// Branch review, item 2: a worktree git's OWN registry still names, but whose directory is gone —
+// deleted by hand rather than through `git worktree remove` — used to reach an unguarded
+// `git -C <gone path> …` a few steps later and crash with an undocumented exit 1 and a raw `fatal:
+// cannot change to …`, leaving the queue entry `landing` with no live process to reap it.
+test('a worktree registered but missing on disk is a precondition, not a crash', () => {
+  const r = project([{ name: 'green', cmd: 'true' }]);
+  const { branch, wt } = branchWith(r);
+  rmSync(wt, { recursive: true, force: true });
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 13, out);
+  assert.match(out, /registered but its directory is gone/);
+  assert.doesNotMatch(out, /fatal: cannot change to/);
+});
+
+// Branch review, item 9: a gate killed by a signal with no `gate.timeout` configured used to blame a
+// timeout that was never set — `gate "x" refused (killed after undefineds)` — because the real
+// timeout case (`ETIMEDOUT`) and a plain signal death shared one branch.
+test('a gate killed by a signal with no timeout configured names the signal, not "undefined"', () => {
+  const r = project([{ name: 'suicide', cmd: 'kill -TERM $$' }]);
+  const { branch } = branchWith(r);
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 11, out);
+  // The "why" travels in the queue note (mark's third argument), not in `land`'s own printed
+  // line — same place the red-gate acceptance test above reads it from.
+  const queue = JSON.parse(readFileSync(join(r.root, '.orchestra', 'gate', 'queue.json'), 'utf8'));
+  assert.match(queue.entries[0].note, /gate "suicide" refused \(killed by SIGTERM\)/);
+  assert.doesNotMatch(queue.entries[0].note, /undefined/);
+});
+
+// Branch review, item 6: the positive control for the shared-channel write, mirroring "an
+// unwritable register does not stop a landing" above — both best-effort writes after the
+// fast-forward must never change the exit code. No fake `gh` on PATH, so the real `gh` fails for a
+// real reason (a scratch repository has no remote), exercising the actual failure path rather than
+// an inspection of it.
+test('online: a landing whose sync could not reach gh still exits 0, and says so', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { mode: 'online' });
+  const { branch } = branchWith(r);
+  seedRegisterRow(r, branch);
+
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+  assert.match(out, /landed, but the shared channel was not synced/);
+  assert.deepEqual(branches(r), ['main']);
+});
+
+// Branch review, item 10: a no-op sync ("sync: nothing to do") and a real one ("sync: closed …")
+// used to print the SAME generic "synced the shared channel" line — indistinguishable successes.
+// The child's own report is captured (spawnSync pipes by default) and was thrown away; this proves
+// it now reaches the line the parent prints.
+test("online: a successful sync echoes the child's own report, not a generic message", () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { mode: 'online' });
+  const { branch } = branchWith(r);
+  seedRegisterRow(r, branch);
+
+  const { code, out } = withFakeGh(() => run(r.root, 'land', branch));
+  assert.equal(code, 0, out);
+  assert.match(out,
+    /synced the shared channel for 'demo\/D1' — sync: closed nothing; 0 label change\(s\); 0 programme\(s\) updated/);
 });

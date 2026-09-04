@@ -3,9 +3,12 @@
 // network — `test/helpers/gh.mjs` is the one GitHub simulation every suite here shares.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tickChecklist, planLabels, planProgrammes, planSync } from '../lib/store/github/sync.mjs';
+import {
+  tickChecklist, planLabels, planProgrammes, planSync, applySync,
+} from '../lib/store/github/sync.mjs';
 import { LABELS } from '../lib/store/github/issues.mjs';
 import { UNVERIFIED } from '../lib/roadmap/board.mjs';
+import { makeFakeGh } from './helpers/gh.mjs';
 
 test('the checklist ticks and UNTICKS from what actually closed', () => {
   // Two-way on purpose: a reopened issue unticks. A checklist that could only ever advance would
@@ -90,4 +93,18 @@ test("a row with no issue is not the shared channel's business", () => {
   });
   assert.deepEqual(plan.close, []);
   assert.deepEqual(plan.labels, []);
+});
+
+// `applySync`'s close body was never asserted anywhere: `planSync` (above) only ever checks the
+// PLAN, and the shared recorder used to drop `closeIssue`'s second argument, so no suite could see
+// what actually reached the shared channel. This is the only durable record of what landed —
+// `applySync` writes "Landed as:\n- <subject>" as the close's own comment — and it is worth one
+// assertion through the real function, not just the plan it acts on.
+test('applySync closes an issue with the landed subjects as its own comment', () => {
+  const gh = makeFakeGh({ issues: [{ number: 11, title: 'demo — D1', state: 'open' }] });
+  const plan = { close: [{ issue: 11, key: 'demo/D1', subjects: ['feat: one', 'fix: two'] }], labels: [], programmes: [] };
+  applySync(gh, plan);
+  assert.equal(gh.state.find((i) => i.number === 11).state, 'closed');
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'close'),
+    ['close', 11, 'Landed as:\n- feat: one\n- fix: two']);
 });

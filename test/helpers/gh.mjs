@@ -50,7 +50,10 @@ export function makeFakeGh({ issues = [], me = 'nico' } = {}) {
       for (const l of addLabels) if (!issue.labels.includes(l)) issue.labels.push(l);
     },
     reopenIssue: (n) => { calls.push(['reopen', n]); find(n).state = 'open'; },
-    closeIssue: (n) => { calls.push(['close', n]); find(n).state = 'closed'; },
+    // `body` recorded on the call, not just the fact of closing: `sync.mjs`'s `applySync` writes
+    // "Landed as:\n- <subject>" as the close's own comment — the only durable record on the shared
+    // channel of what actually landed — and nothing could assert it while this dropped the argument.
+    closeIssue: (n, body) => { calls.push(['close', n, body]); find(n).state = 'closed'; },
     addLabel: (n, l) => { const i = find(n); if (!i.labels.includes(l)) i.labels.push(l); },
     // Real removals, not no-ops: `reserve` and `release` are read back by later assertions, and a
     // stub that always succeeds silently is how their own bugs went untested.
