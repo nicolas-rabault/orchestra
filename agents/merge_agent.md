@@ -59,12 +59,14 @@ Then act on the exit code `await` gives you:
 | Code | Meaning | What you do |
 |---|---|---|
 | 0 | landed; the worktree and the ref are normally deleted, but a `landed; …` note in the log means one survived | report it |
+| 1 | usage: `await` found no detached record for this branch (its own message names the fix — `land --detach` first), or a command was given a bad flag | fix the argument, or start a landing before awaiting one |
 | 10 | conflict; the rebase was aborted and the conflicted paths are named | resolve (below), then run `land` again |
 | 11 | **a gate refused**; the main branch is untouched | STOP. Report **which gate** and what it printed. Do not retry, do not fix the branch — that is its author's call |
 | 12 | still queued, or still landing | run the same `await` again |
 | 13 | a precondition failed (dirty tree, missing branch, no worktree, refused cleanup) | report exactly what it named |
 | 15 | `land --detach` started it | run `await` |
 | 16 | killed, and no outcome was recorded | see below |
+| anything else | **the process crashed or was killed before it could choose one of the codes above** — a stack trace instead of one of this table's messages, or `130` from the signal handlers (a killed shell, a machine put to sleep). Exit 1 is ambiguous on its own: it is ALSO the ordinary usage code above, so tell the two apart by the message, not the number | read the log tail printed above (or the log named in the last `queue-list` note), then treat it as 16: check whether the branch landed before deciding what to do next |
 
 **Exit 11 always names a gate**, in `await`'s own report and in `orchestra queue-list`. That name is
 the whole verdict: this plugin does not know whether your project's `suite` is vitest or `cargo
@@ -109,3 +111,12 @@ Per branch: landed or held? If held, which code, **which gate**, and what it sai
 printed a `landed; …` note, relay it too — name what was kept and why, since the note itself carries
 the reason. If you resolved a conflict, which files and how you resolved each one — never just
 "resolved".
+
+If the log also carries `landed, but the register was not updated` or `landed, but the shared
+channel was not synced`, relay those too, separately from the `landed; …` note above. Both are a
+SECOND kind of after-the-fact failure: the branch landed, the main branch moved, and one of the two
+best-effort writes the gate makes right after — recording the commit subjects on the project's
+register row, or telling the shared channel a task closed — did not happen. Neither changes the exit
+code, so a report that only relays "landed" hides them. Name which one failed and what it said; both
+messages name the fix (update the register row by hand, or re-run `orchestra roadmap sync` once the
+channel is reachable).

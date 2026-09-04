@@ -51,6 +51,14 @@ Gates run in the order written — cheapest first is the project's own call, not
 enforces — and `skipWhenAllPathsMatch` skips a gate only when every changed path matches one of its
 globs; an unreadable or empty diff runs the gate rather than skip it.
 
+**Gitignore the plugin's own runtime state.** `orchestra init` (phase 5) will write
+`.orchestra/.gitignore` for you; until then, add this line by hand so a project does not commit the
+merge gate's queue record, its landing logs and its run records:
+
+```
+.orchestra/gate/
+```
+
 ## What works today
 
 Phase 1 shipped the roadmap layer, phase 2a the register and the machine budget, phase 2b the

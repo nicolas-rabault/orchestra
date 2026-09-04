@@ -251,8 +251,11 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
 
    **And stamp only once the action the answer AUTHORISES has completed** — not when you decide to
    take it, not when you announce it. For a merge approval that means after `orchestra await` has
-   returned 0. Measured 2026-08-13 in planetCraft: X2's merge was approved at 13:17:20, the cursor
-   was stamped to exactly that instant, the hand-off was written in the journal — and it never
+   returned 0 — or, on the hand-off path (step 6 below), after `merge_agent`'s own report names the
+   branch landed: you never run `await` yourself on that path, so its report is the completion
+   event to wait on, not an `await` exit code you never saw. Measured 2026-08-13 in planetCraft:
+   X2's merge was approved at 13:17:20, the cursor was stamped to exactly that instant, the
+   hand-off was written in the journal — and it never
    happened, because the conductor's session ended before merge_agent existed. The approval was
    consumed and the action was lost; it surfaced four hours later only because a human asked what
    had become of it. That measurement is now the argument FOR waiting on `await`'s own exit code
@@ -600,8 +603,8 @@ started *after* the hold was issued.
 6. **Landings.** For every row the reconcile just moved to `landed`: tell the user at the next
    checkpoint, and continue — the launch step below picks up whatever the landing unblocked.
 
-   **When the user approves a merge, this is the hand-off — and you still never merge: that rule
-   outlives its enforcement, and phase 5's hooks are what will hold it.**
+   **When the user approves a merge, this is the hand-off — and you still never merge BY HAND: that
+   rule outlives its enforcement, and phase 5's hooks are what will hold it.**
 
    ```sh
    orchestra land <branch> --detach     # returns at once, exit 15
@@ -651,9 +654,12 @@ started *after* the hold was issued.
    the run was reviewed and called green — nobody owned that other end. So this is
    **attempt-and-record, never a blocking obligation**, unlike an undelivered relay, and the
    difference is mechanical: a project's own ledger-writing tool can itself hold a lock and
-   refuse when it cannot get one, and the gate takes that same lock to commit those very
-   ledgers — so a tick forbidden to end with one outstanding would deadlock against the landing
-   that produced it. Record the error on the row; the next tick retries.
+   refuse when it cannot get one, but the gate's own commit takes NO cross-process lock of its
+   own — a limitation, not an absence, exactly like `ledgers` being empty above: `lib/gate/land.mjs`
+   names the gap in its own comment, and it is phase 5's to add. So a tick forbidden to end with one
+   outstanding would not deadlock against the landing that produced it; it would race an
+   unserialised writer for nothing, which is reason enough on its own. Record the error on the row;
+   the next tick retries.
 
    **A landing whose Acceptance was a MEASUREMENT owes one page under `docs.results`.** Of the
    fifteen council lines landed 2026-08-24/26 in planetCraft, fourteen wrote a spec, a plan and
