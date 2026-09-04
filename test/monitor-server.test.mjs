@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfigOrThrow } from '../lib/config.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
-import { createHandler, serve, PUBLIC_DIR } from '../lib/monitor/server.mjs';
+import { createHandler, serve, PUBLIC_DIR, SHARED_MODULES } from '../lib/monitor/server.mjs';
 import { makeRepo } from './helpers/fixture.mjs';
 import { fakeReq, fakeRes } from './helpers/fakeHttp.mjs';
 
@@ -32,7 +32,8 @@ function fixture(name = 'served') {
   const r = makeRepo({ name });
   repos.push(r);
   const cfg = loadConfigOrThrow(r.root);
-  return { ...r, cfg, handler: createHandler({ cfg, port: FAKE_PORT, publicDir: PUBLIC_DIR }) };
+  const project = { id: cfg.id, name: cfg.name, root: r.root, mode: cfg.mode, cfg };
+  return { ...r, cfg, handler: createHandler({ projects: () => [project], port: FAKE_PORT, publicDir: PUBLIC_DIR }) };
 }
 
 const ask = async (f, method, url, opts) => {
@@ -40,6 +41,12 @@ const ask = async (f, method, url, opts) => {
   await f.handler(fakeReq(method, url, opts), res);
   return res;
 };
+
+// The plural shape `createHandler` now takes, and a handler over any number of `fixture()`s —
+// beside `fixture`/`ask` because every test below that needs more than one project uses these two
+// rather than repeating the projection inline.
+const ctx = (p) => ({ id: p.cfg.id, name: p.cfg.name, root: p.root, mode: p.cfg.mode, cfg: p.cfg });
+const handlerFor = (...ps) => createHandler({ projects: () => ps.map(ctx), port: FAKE_PORT, publicDir: PUBLIC_DIR });
 
 // ---- ported from the source project's own handler suite -----------------------------------------
 
@@ -65,8 +72,8 @@ test('still serves the model of a repository with nothing in it', async () => {
   const res = await ask(fixture(), 'GET', '/api/model');
   assert.equal(res.code, 200);
   const model = JSON.parse(res.body);
-  assert.deepEqual(model.nodes, []);
-  assert.deepEqual(model.rail, []);
+  assert.deepEqual(model.projects[0].nodes, []);
+  assert.deepEqual(model.projects[0].rail, []);
 });
 
 // A screenshot is hundreds of kilobytes and the page polls every two seconds: the etag is the
@@ -98,20 +105,6 @@ test('refuses a malformed answer with a 400 rather than a crash, and writes noth
 
 // ---- new here ------------------------------------------------------------------------------------
 
-// `replaceAll`'s replacement STRING expands `$&`, `$'` and friends. Passing the escaped name as a
-// string would splice the remainder of the file in after the title — `<script src="/app.js">` tag
-// included — straight past the escaping. A replacer function's return value is inserted verbatim.
-test('a project whose name contains $ patterns does not splice the file into its own title', async () => {
-  const f = fixture("x$'y$&z");
-  const html = String((await ask(f, 'GET', '/')).body);
-  // `&` is an entity by the time it reaches the title; the `$` sequences are not, and must survive
-  // verbatim rather than expanding into the file around them.
-  assert.match(html, /<title>x\$'y\$&amp;z — orchestra<\/title>/);
-  // The tell of the bug: `$'` inserts everything AFTER the match, so the rest of the page would
-  // appear a second time and the file would carry two <main> elements.
-  assert.equal(html.split('<main>').length - 1, 1);
-});
-
 test('an answer larger than the 1 MB cap is refused as too large, not as "not JSON" — and the socket is destroyed', async () => {
   const f = fixture();
   const huge = JSON.stringify({ task: null, pending: null, answer: 'x'.repeat(1_100_000) });
@@ -124,16 +117,6 @@ test('an answer larger than the 1 MB cap is refused as too large, not as "not JS
   // something calls destroy(), which is what actually bounds memory. A test that checked only the
   // status code would stay green even if `req.destroy()` were deleted from `readBody`.
   assert.equal(req.destroyed, true);
-});
-
-test('the page carries the project name, as TEXT: a project called <script> names a tab, it does not run', async () => {
-  const f = fixture('<script>alert(1)</script>');
-  const res = await ask(f, 'GET', '/');
-  assert.equal(res.code, 200);
-  const html = String(res.body);
-  assert.match(html, /<title>&lt;script&gt;alert\(1\)&lt;\/script&gt; — orchestra<\/title>/);
-  assert.equal(html.includes('{{project}}'), false);
-  assert.equal(html.includes('<script>alert(1)'), false);
 });
 
 test('the page and its two assets are served from publicDir', async () => {
@@ -245,8 +228,7 @@ test('the dev-server list is probed once for two model builds, and again when th
 // `serve` binds and nothing else: no browser, no registry write, no process of any kind. Those are
 // `lib/cli/monitor.mjs`'s, and the acceptance drives them through `orchestra monitor`.
 test('serve binds, and the bound server carries an error listener of its own', async () => {
-  const f = fixture();
-  const { server, port, url } = await serve(f.cfg);
+  const { server, port, url } = await serve();
   try {
     assert.ok(server.listening);
     assert.equal(url, `http://127.0.0.1:${port}`);
@@ -265,4 +247,90 @@ test('serve binds, and the bound server carries an error listener of its own', a
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// ---- the handler goes plural ----------------------------------------------------------------------
+
+test('the model carries the machine port and one entry per project, in name order', async () => {
+  const a = fixture('alpha');
+  const b = fixture('beta');
+  const res = fakeRes();
+  await handlerFor(b, a)(fakeReq('GET', '/api/model'), res);
+  assert.equal(res.code, 200);
+  const m = JSON.parse(res.body);
+  assert.equal(m.machine.port, FAKE_PORT);
+  assert.deepEqual(m.projects.map((p) => p.project.name), ['alpha', 'beta']);
+  // Each entry is exactly today's model, unchanged.
+  assert.equal(m.projects[0].project.root, a.root);
+  assert.equal(m.projects[0].project.mode, 'offline');
+  assert.equal(m.projects[0].project.branch, 'main');
+  assert.ok(Array.isArray(m.projects[0].nodes));
+  assert.ok(Array.isArray(m.projects[0].rail));
+  // The per-project `port` field is gone: there is one page and it is named once, above.
+  assert.equal(m.projects[0].project.port, undefined);
+});
+
+test('the etag covers every project, so one project changing busts it', async () => {
+  const a = fixture('alpha');
+  const b = fixture('beta');
+  const handler = handlerFor(a, b);
+
+  const first = fakeRes();
+  await handler(fakeReq('GET', '/api/model'), first);
+  const etag = first.headers.etag;
+
+  const again = fakeRes();
+  await handler(fakeReq('GET', '/api/model', { headers: { 'if-none-match': etag } }), again);
+  assert.equal(again.code, 304);
+
+  writeFileSync(join(b.root, '.orchestra', 'journal.jsonl'),
+    `${JSON.stringify({ ts: '2026-01-01T00:00:00.000Z', kind: 'note', task: null, text: 'moved' })}\n`);
+  const third = fakeRes();
+  await handler(fakeReq('GET', '/api/model', { headers: { 'if-none-match': etag } }), third);
+  assert.equal(third.code, 200);
+});
+
+test('a project that leaves between two requests drops out without a 500', async () => {
+  const a = fixture('alpha');
+  const b = fixture('beta');
+  let set = [a, b];
+  const handler = createHandler({ projects: () => set.map(ctx), port: FAKE_PORT, publicDir: PUBLIC_DIR });
+
+  const before = fakeRes();
+  await handler(fakeReq('GET', '/api/model'), before);
+  assert.equal(JSON.parse(before.body).projects.length, 2);
+
+  set = [a];
+  const after = fakeRes();
+  await handler(fakeReq('GET', '/api/model'), after);
+  assert.equal(after.code, 200);
+  assert.deepEqual(JSON.parse(after.body).projects.map((p) => p.project.name), ['alpha']);
+});
+
+test('no projects at all is an empty array and a 200, not an error', async () => {
+  const res = fakeRes();
+  await createHandler({ projects: () => [], port: FAKE_PORT, publicDir: PUBLIC_DIR })(fakeReq('GET', '/api/model'), res);
+  assert.equal(res.code, 200);
+  assert.deepEqual(JSON.parse(res.body), { machine: { port: FAKE_PORT }, projects: [] });
+});
+
+test('the served page no longer substitutes a project name, and names the tool alone', async () => {
+  const res = fakeRes();
+  await handlerFor(fixture('alpha'))(fakeReq('GET', '/'), res);
+  assert.equal(res.code, 200);
+  assert.match(String(res.body), /<title>orchestra<\/title>/);
+  assert.doesNotMatch(String(res.body), /\{\{project\}\}/);
+});
+
+test('/projects.mjs is served, and a module that is not on the list is not', async () => {
+  const handler = handlerFor(fixture('alpha'));
+  for (const path of SHARED_MODULES) {
+    const res = fakeRes();
+    await handler(fakeReq('GET', path), res);
+    assert.equal(res.code, 200, `${path} should be served`);
+  }
+  assert.ok(SHARED_MODULES.includes('/projects.mjs'));
+  const nope = fakeRes();
+  await handler(fakeReq('GET', '/discover.mjs'), nope);
+  assert.equal(nope.code, 404);
 });

@@ -120,7 +120,10 @@ const stopMonitor = (m) => new Promise((resolve) => {
 // outside the 4380-4479 band all the same, so nothing in this file can be read as claiming a port a
 // real orchestra on this machine might be serving.
 const FAKE_PORT = 59999;
-const handlerFor = (p) => createHandler({ cfg: p.cfg(), port: FAKE_PORT, publicDir: PUBLIC_DIR });
+const handlerFor = (p) => createHandler({
+  projects: () => [{ id: p.cfg().id, name: p.cfg().name, root: p.root, mode: p.cfg().mode, cfg: p.cfg() }],
+  port: FAKE_PORT, publicDir: PUBLIC_DIR,
+});
 
 // ---- row 1 -------------------------------------------------------------------------------------
 test('two projects serve at once on different ports, and the registry records the port each BOUND', async () => {
