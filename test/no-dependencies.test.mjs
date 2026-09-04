@@ -38,41 +38,22 @@ function* files(dir) {
   }
 }
 
-// Extract all offending package imports from source code.
-// Catches: static imports (single/multi-line), side-effect imports, dynamic imports, export-from.
-// Returns: array of specifiers that are not node: builtins or relative paths.
-function packageImports(source) {
-  const offenders = new Set();
-
-  // Match import/export with from clause (handles multi-line)
-  const fromPattern = /(?:import|export)[^;]*?from\s*['"]([^'"]+)['"]/g;
-  for (const match of source.matchAll(fromPattern)) {
-    const spec = match[1];
-    if (!spec.startsWith('node:') && !spec.startsWith('./') && !spec.startsWith('../')) {
-      offenders.add(spec);
-    }
-  }
-
-  // Match side-effect imports: import 'package'
-  const sideEffectPattern = /import\s+['"]([^'"]+)['"]/g;
-  for (const match of source.matchAll(sideEffectPattern)) {
-    const spec = match[1];
-    if (!spec.startsWith('node:') && !spec.startsWith('./') && !spec.startsWith('../')) {
-      offenders.add(spec);
-    }
-  }
-
-  // Match dynamic imports: import(...) with optional await
-  const dynamicPattern = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-  for (const match of source.matchAll(dynamicPattern)) {
-    const spec = match[1];
-    if (!spec.startsWith('node:') && !spec.startsWith('./') && !spec.startsWith('../')) {
-      offenders.add(spec);
-    }
-  }
-
-  return Array.from(offenders);
+// Every import specifier in source code, package or relative or node: builtin alike. Catches:
+// static imports (single/multi-line), side-effect imports, dynamic imports, export-from.
+function allImportSpecifiers(source) {
+  const specs = new Set();
+  const patterns = [
+    /(?:import|export)[^;]*?from\s*['"]([^'"]+)['"]/g, // static import/export ... from '...'
+    /import\s+['"]([^'"]+)['"]/g, // side-effect: import '...'
+    /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g, // dynamic: import('...')
+  ];
+  for (const pattern of patterns) for (const match of source.matchAll(pattern)) specs.add(match[1]);
+  return Array.from(specs);
 }
+
+// The offending subset: not a node: builtin and not a relative path.
+const packageImports = (source) =>
+  allImportSpecifiers(source).filter((spec) => !spec.startsWith('node:') && !spec.startsWith('./') && !spec.startsWith('../'));
 
 test('packageImports() catches all import forms', () => {
   // Multi-line static import
@@ -168,6 +149,28 @@ test('every "/"-rooted import in a browser asset is a path the monitor actually 
   // A positive control: an empty set would pass the subset assertion below without proving anything.
   assert.ok(asked.size > 0, 'the page imports at least one shared module');
   assert.deepEqual([...asked].sort().filter((s) => !SHARED_MODULES.includes(s)), []);
+});
+
+// The walk above is ONE hop deep: `app.js`'s own five `/`-rooted imports. But `layout.mjs` and
+// `tabs.mjs` — both on SHARED_MODULES — each `import { tally } from './progress.mjs'`, a RELATIVE
+// specifier that the browser resolves against the importing module's own served URL
+// (`/layout.mjs` → `/progress.mjs`), never against a package. That happens to already be on the
+// list, on luck rather than by test: a relative import added to any served module pointing
+// anywhere else (`./keys.mjs`, say — a real file in this directory, NOT served) would be a silent
+// 404 that breaks the page with every suite still green, which is exactly the failure the previous
+// test's own header claims to close, one hop short of where it actually needs to reach.
+test('every relative import inside a SHARED_MODULES file resolves to a path the monitor actually serves', () => {
+  const resolved = new Set();
+  for (const served of SHARED_MODULES) {
+    const src = readFileSync(join(repo, 'lib', 'monitor', served.slice(1)), 'utf8');
+    for (const spec of allImportSpecifiers(src)) {
+      if (spec.startsWith('.')) resolved.add(new URL(spec, `http://monitor${served}`).pathname);
+    }
+  }
+  // A positive control: an empty set would pass the subset assertion below without proving
+  // anything — `layout.mjs` and `tabs.mjs` are known to import `./progress.mjs` today.
+  assert.ok(resolved.size > 0, 'at least one SHARED_MODULES file imports another by a relative specifier');
+  assert.deepEqual([...resolved].sort().filter((s) => !SHARED_MODULES.includes(s)), []);
 });
 
 test('package.json declares no dependencies', () => {

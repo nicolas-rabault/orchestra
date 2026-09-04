@@ -15,7 +15,7 @@ import {
   UNFILED, registerKey, parseOptions, itemOptions, splitAsk,
 } from '../lib/monitor/keys.mjs';
 import {
-  SERVERS_TTL_MS, readState, readJournal, readInbox, readBoard,
+  SERVERS_TTL_MS, BOARD_SUCCESS_TTL_MS, readState, readJournal, readInbox, readBoard,
   worktreePaths, currentBranch, imageFinder, resolveImageRequest, listServers, sourceStamp,
 } from '../lib/monitor/sources.mjs';
 import { imagesIn } from '../lib/register/images.mjs';
@@ -179,9 +179,9 @@ test('readBoard serves the last good board as stale on a later failure, and does
   assert.equal(calls(), 1);
 
   // Past the success TTL, so the next call actually asks the child again rather than replaying the
-  // 5s success cache.
+  // 30s success cache.
   setMode('fail');
-  const t1 = t0 + SERVERS_TTL_MS + 1;
+  const t1 = t0 + BOARD_SUCCESS_TTL_MS + 1;
   const failed = readBoard(root, { bin, timeoutMs: 500 }, t1);
   assert.equal(failed.status, 'stale');
   assert.deepEqual(failed.rows, good.rows);
@@ -239,7 +239,7 @@ test('worktreePaths and currentBranch degrade to empty/null for a directory that
 // exactly this reason (its own header comment says why): the production default is 2000ms, and a
 // test that waited for the real value would cost 2s on every run of this file, forever. 50ms against
 // a fake `git` that sleeps 300ms proves the identical mechanism — `execFileSync`'s `timeout` killing
-// a still-running child — with an order of magnitude of headroom against a loaded machine.
+// a still-running child — with six times the headroom against a loaded machine.
 test('worktreePaths does not hang past its own timeout on a stuck git, and degrades to no worktrees', () => {
   withFakeBin('git', '#!/bin/sh\nsleep 0.3\n', () => {
     const start = Date.now();
@@ -389,8 +389,8 @@ test('listServers with no ports named asks lsof nothing', () => {
 // be able to hang the way an unbounded `readBoard` once could (see its own header comment) —
 // proved here against a REAL hung child, not assumed from reading the `timeout` option. At a
 // millisecond budget, the same way: 50ms against a fake `lsof` that sleeps 300ms costs a tenth of a
-// second instead of two, and is still an order of magnitude of headroom against a loaded machine —
-// a 2000ms budget against a real production timeout is a test that can fail for load, not for code.
+// second instead of two, and is still six times the headroom against a loaded machine — a 2000ms
+// budget against a real production timeout is a test that can fail for load, not for code.
 test('listServers does not hang past its own timeout on a stuck lsof, and reports it honestly', () => {
   withFakeLsof('#!/bin/sh\nsleep 0.3\n', () => {
     const start = Date.now();

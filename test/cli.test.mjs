@@ -104,8 +104,10 @@ test('doctor reports a pinned monitor.port already held by another live project,
 
 // "auto" never conflicts, by construction (§8.3) — the candidate is a pure function of the
 // project's own id, so it cannot be "stolen". The collision built here is REAL — the other
-// instance's recorded port IS `mine`'s own auto candidate — so this proves the "auto" guard itself
-// is what suppresses the error, not that the two numbers merely happened not to match.
+// instance's recorded port IS `mine`'s own auto candidate. This proves only that "auto" prints no
+// error, not that `pinConflict`'s own early-return guard is what suppresses it: `cfg.monitor.port`
+// is the string `'auto'` and `e.port` a number, so the `find`'s `===` cannot match either way —
+// this collision would print nothing even with the guard deleted.
 test('doctor prints no error for an "auto" monitor.port, even given a same-port collision on file', () => {
   const other = repo({ name: 'other-project' });
   const mine = repo({ mode: 'offline' });   // monitor.port defaults to "auto"

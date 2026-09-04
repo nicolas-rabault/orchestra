@@ -23,10 +23,18 @@ export const fakeRes = () => {
 // `destroy` is not padding: the handler's 1 MB cap calls it to actually stop the stream, and a fake
 // without one turns that cap into a TypeError the test then reads as a plain refusal — measured
 // here, it answered 400 "body is not JSON" for a body that was perfectly good JSON and merely too
-// large.
+// large. `destroyed` records that the call happened, so a test can pin the load-bearing half of
+// that fix — rejecting the promise alone stops nothing; the socket keeps delivering chunks until
+// something calls destroy() — rather than only the status code destroy() leads to.
+//
+// `setEncoding` is a no-op: this fake always delivers one whole body in one `data` event, so there
+// is no chunk boundary for the real one to reassemble a multi-byte character across. It exists here
+// only so `readBody`'s own `req.setEncoding('utf8')` call has a method to find.
 export const fakeReq = (method, url, { body = null, headers = {} } = {}) => ({
   method, url, headers,
-  destroy() {},
+  destroyed: false,
+  destroy() { this.destroyed = true; },
+  setEncoding() {},
   on(event, fn) {
     if (event === 'data' && body !== null) fn(body);
     if (event === 'end') fn();

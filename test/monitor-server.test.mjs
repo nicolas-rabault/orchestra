@@ -112,12 +112,18 @@ test('a project whose name contains $ patterns does not splice the file into its
   assert.equal(html.split('<main>').length - 1, 1);
 });
 
-test('an answer larger than the 1 MB cap is refused as too large, not as "not JSON"', async () => {
+test('an answer larger than the 1 MB cap is refused as too large, not as "not JSON" — and the socket is destroyed', async () => {
   const f = fixture();
   const huge = JSON.stringify({ task: null, pending: null, answer: 'x'.repeat(1_100_000) });
-  const res = await ask(f, 'POST', '/api/answer', { body: huge });
+  const req = fakeReq('POST', '/api/answer', { body: huge });
+  const res = fakeRes();
+  await f.handler(req, res);
   assert.equal(res.code, 413);
   assert.match(JSON.parse(res.body).error, /larger than 1 MB/);
+  // The refusal alone stops nothing: the socket keeps delivering chunks to the same listener until
+  // something calls destroy(), which is what actually bounds memory. A test that checked only the
+  // status code would stay green even if `req.destroy()` were deleted from `readBody`.
+  assert.equal(req.destroyed, true);
 });
 
 test('the page carries the project name, as TEXT: a project called <script> names a tab, it does not run', async () => {

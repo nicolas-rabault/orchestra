@@ -394,9 +394,9 @@ started *after* the hold was issued.
    bound** is what gets recorded.
 
    ```sh
-   orchestra instances                                   # this project's row: its URL, listening or not
-   lsof -nP -iTCP:<the port in that URL> -sTCP:LISTEN    # the same question, asked directly
-   nohup orchestra monitor --no-open >/dev/null 2>&1 &   # start it — read the paragraph below first
+   orchestra instances                                          # this project's row: its URL, listening or not
+   lsof -nP -iTCP:<the port in that URL> -sTCP:LISTEN           # the same question, asked directly
+   nohup orchestra monitor --no-open >/dev/null 2>.orchestra/monitor.err &   # start it — read below first
    ```
 
    **`orchestra monitor` serves in the foreground and never returns** — the listening socket is
@@ -408,12 +408,21 @@ started *after* the hold was issued.
    must never do. Run in a project whose page is already up, it prints that URL and exits 0 rather
    than binding a second port — one page per project.
 
+   **stderr goes to a file under `.orchestra/`, never to `/dev/null`.** A pinned `monitor.port`
+   already held by another live instance is refused loudly (`monitor.port N is already in use —
+   free it, or set monitor.port to "auto"`, `lib/monitor/port.mjs`) — sent to `/dev/null`, that
+   refusal vanishes, the process exits, and the only thing left to read is `orchestra instances`
+   printing `no listener` with no cause. The file says why.
+
    Two rules were measured against the page in planetCraft, and both still hold. **Probe with
    `lsof`, never with `curl`** — measured 2026-08-12, `curl` from the conductor's shell could not
    reach a localhost server that `lsof` proved was listening and a browser was using, so the
    `curl` form hung forever and the `||` never fired. `orchestra instances` asks `lsof` for you and
-   prints `listening`, `no listener`, or `cannot tell` when `lsof` could not answer at all — that
-   third one is this machine saying it does not know, and it is not a no. **And a page that accepts
+   prints one of four states: `listening`; `no listener`; `cannot tell` when `lsof` could not
+   answer at all, which is this machine saying it does not know and is not a no; or `no page yet`
+   for a row `orchestra ready` recorded before any page has bound — no port to ask `lsof` about at
+   all. That last one is the state of a first run, so a conductor following this section meets it
+   immediately, before ever starting the page below. **And a page that accepts
    the connection and never replies is not a wedged process** — restarting it changes nothing,
    because a fresh one does the same; it is blocked on something it fetches synchronously per
    request, and that was GitHub being unreachable, through the board read, for nine hours on

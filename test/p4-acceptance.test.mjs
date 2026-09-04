@@ -29,6 +29,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfigOrThrow } from '../lib/config.mjs';
+import { writeBeat } from '../lib/register/beat.mjs';
 import { candidatePort } from '../lib/monitor/port.mjs';
 import { createHandler, PUBLIC_DIR } from '../lib/monitor/server.mjs';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
@@ -259,7 +260,23 @@ test('`orchestra instances` lists both projects, and says which is listening', a
     assert.match(row, new RegExp(`\\b${s.port}\\b`));
     assert.match(row, /offline/);
     assert.match(row, /\blistening\b/);
+    // Neither project has run `orchestra ready` yet, so no conductor has ever beaten: both
+    // columns are a dash, never a blank cell (spec §8.2, branch review item 3).
+    assert.match(row, /—\s+—/);
   }
+
+  // `conductorSession` and `beatAt` (spec §8.2): filled by `orchestra ready`, printed here as a
+  // truncated session id and a relative beat age — the pair that turns "which page is which" into
+  // "which conductor is which". Armed for `a` only, so `b`'s row still reads dash/dash.
+  writeBeat(a.root, { session: 'abcdef12-conductor', pid: process.pid, now: Date.now() });
+  a.run('ready');
+  const out2 = execFileSync(process.execPath, [BIN, 'instances'],
+    { cwd: a.root, encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
+  const rowA = out2.split('\n').find((l) => l.includes(a.root));
+  const rowB = out2.split('\n').find((l) => l.includes(b.root));
+  assert.match(rowA, /\babcdef12\b/, `expected a's truncated session id in:\n${rowA}`);
+  assert.match(rowA, /\b(just now|\d+m ago|\d+h ago)\b/, `expected a relative beat age in:\n${rowA}`);
+  assert.match(rowB, /—\s+—/, `expected b's session and beat columns to stay dashes in:\n${rowB}`);
 
   await stopMonitor(ma);
   await stopMonitor(mb);
