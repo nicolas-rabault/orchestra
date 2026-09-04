@@ -20,13 +20,14 @@ Run it from anywhere inside the project. If `CLAUDE_PLUGIN_ROOT` is unset, the b
 `bin/orchestra` at the root of this plugin's own directory. From here on, this document writes
 `orchestra <subcommand>` and means that.
 
-**`orchestra doctor` first, always.** It is the only command that answers in a project that has not
-opted in: it prints the resolved configuration, marks every key that fell back to a default, and
-names the mode. If it says the project has not opted in, stop and do what it says — every other
-subcommand exits 0 and silent otherwise, on purpose, and that silence is what makes the plugin safe
-to install globally. Read off it `mode`, `name`, `id`, `language`, `mainBranch`, `worktrees`,
-`branchTests`, `docs.specs`, `docs.plans`, `docs.results`, `briefExtra` and `queue`, and nothing
-else.
+**`orchestra doctor` first, always.** It prints the resolved configuration, marks every key that
+fell back to a default, and names the mode. If it says the project has not opted in, stop and do
+what it says — every subcommand but two exits 0 and silent otherwise, on purpose, and that silence
+is what makes the plugin safe to install globally. The two exceptions are `doctor` itself and
+`orchestra instances`, which answers about the MACHINE rather than about a project and so has no
+project config to be missing. Read off it `mode`, `name`, `id`, `language`, `mainBranch`,
+`worktrees`, `branchTests`, `docs.specs`, `docs.plans`, `docs.results`, `briefExtra` and `queue`,
+and nothing else.
 
 **Runtime state resolves to the main checkout, never to the worktree you are standing in.** Every
 subcommand does that for itself. What it cannot do for you is the register you edit **by hand**:
@@ -45,13 +46,24 @@ something to type: an occurrence elsewhere names its phase again, or it is a bug
   ticket queue. The gate commits what that key lists at the head of every landing; with nothing
   listed it commits nothing, and a conductor's `postLanding` remains the way a branch gets a
   main-branch ledger written.
-- **Phase 4, the monitoring page**: `orchestra monitor`, `orchestra instances`, the allocated port.
-  **The page is also the only writer of `.orchestra/inbox.jsonl`**, so until it exists `orchestra
-  inbox` prints nothing and the user answers in the conversation. The journal is still written, and
-  `pending[]` is still load-bearing: `orchestra ready` reports it, `orchestra tick-gate` honours it,
-  and `orchestra archive` never moves it.
-- **Phase 5**: the guard hooks, `orchestra init`, the ticket queue (`orchestra tickets`) and the
-  heartbeat (`orchestra install-heartbeat`). **Never propose a cron entry for the heartbeat**: a
+- **A limitation, not an absence: the monitoring page sees only the ports orchestra recorded.** It
+  asks `lsof` about the `port` written on a register row and on each `pending[]` item, and about
+  nothing else — a band of the machine's ports was one project's own toolchain and does not travel
+  to a project whose dev server lives somewhere else entirely. So a dev server on a port no
+  register row names is invisible to the page. That question is answered by the dev-server sweep
+  below, which is a shell procedure and not the page's job.
+- **A limitation, not an absence: an answer posted on the page REACHES a conductor, and never
+  creates one.** When a beat under a minute old belongs to a live pid, the page says so and that
+  session's `orchestra watch-answers` loop hands it the answer within seconds; otherwise the page
+  says the answer is in the inbox and the next tick will read it, and it starts nothing. An answer
+  typed while nobody is beating therefore waits for the next tick — the whole cost, and deliberate:
+  wiring the delivery of an answer to CREATE a conductor instead of to REACH the live one cost six
+  conductor identities in half an hour on 2026-08-13 in planetCraft, two `merge_agent` runs twelve
+  seconds apart on one branch, and three answers left unread because the register kept naming a
+  reader that had already died.
+- **Phase 5**: the guard hooks — `orchestra-inbox`, the one that injects an answer into a live
+  interactive session, among them — `orchestra init`, the ticket queue (`orchestra tickets`) and
+  the heartbeat (`orchestra install-heartbeat`). **Never propose a cron entry for the heartbeat**: a
   cron job runs outside the login session and cannot read the login keychain, so every tick dies on
   `Not logged in` — eight consecutive ticks did, and seven hours were lost, on the night of
   2026-08-12/13 in planetCraft. A launchd agent or a systemd user timer is the shape that works.
@@ -110,8 +122,8 @@ You learn that language by being spoken to, and you **write it down the first ti
 `conductor.language` in `.orchestra/state.json`, a plain name (`français`, `English`). That write is
 the whole mechanism, and it is not bookkeeping: most journal lines are written by a headless tick
 that has no user message to infer anything from, so a language only ever deduced is a language lost
-on every tick the heartbeat and the page start. Absent from the register, write English and keep
-watching for a message that settles it.
+on every tick that has no user in it — and phase 5's heartbeat will start one an hour. Absent from
+the register, write English and keep watching for a message that settles it.
 
 It applies to what a worker sends you, too — the briefs below ask for it — and to a roadmap you
 draft (`roadmaps.drafts`). It does NOT apply to a published roadmap (`roadmaps.published`) or to any
@@ -120,15 +132,15 @@ names are English in every channel, and `orchestra roadmap lint` fails if they a
 
 ## The journal (three mechanical obligations, no decision)
 
-A monitoring page reads three files; you write two of them and it writes the third. Never read
+The monitoring page reads three files; you write two of them and it writes the third. Never read
 the page's state as authority — `state.json` and git remain the truth. **The journal costs one
 `orchestra journal` call per event, always** — that is the price of the page having a history the
 first time it is opened, whether or not it ever is. **The inbox side costs nothing until someone
 has answered from the page** — no `id`, no stamp, no hook read, before that first answer exists.
 
 1. **Append one line to `.orchestra/journal.jsonl` per event** — that file, and never
-   `inbox.jsonl`, which is the page's file (phase 4) and the one thing you never write. One writer
-   per file is what makes this lock-free; two writers is the only way it can corrupt. Create
+   `inbox.jsonl`, which is the page's file and the one thing you never write. One writer per file
+   is what makes this lock-free; two writers is the only way it can corrupt. Create
    `journal.jsonl` on your first event — the command does that itself — do not wait for it to
    exist.
 
@@ -147,8 +159,8 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    lines were also truncated mid-JSON by two conductors appending at once; the command writes one
    complete line per append, and repairs a missing trailing newline before the next one.
 
-   **Those four keys, copied exactly — `ts`, `kind`, `task`, `text` — and no others.** Phase 4's
-   page reads them by name and shows nothing else. Written 2026-08-12 in planetCraft, into
+   **Those four keys, copied exactly — `ts`, `kind`, `task`, `text` — and no others.** The page
+   reads them by name and shows nothing else. Written 2026-08-12 in planetCraft, into
    `inbox.jsonl`, by a conductor that meant well:
    `{"kind":"answer","at":…,"task":"C2","item":…,"answer":…,"action":…}` — wrong file, and
    `at`/`item`/`action`/`answer` are not keys the page knows, so the line was read as the USER's
@@ -216,12 +228,12 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    the item at 17:56 would have prevented all of it. When a chat answer arrives, clear the item it
    answers in the same write.
 
-   Two additions the plugin's code earns: the page is phase 4, and `pending[]` is already read
-   **today**, before the page exists — by `orchestra ready` (its `WAITING:` line, which reports
-   unanswered items older than thirty minutes, oldest first) and by `orchestra tick-gate` (an open
-   item on any row keeps the heartbeat awake, whatever that row's status). And an item written
-   with no `askedAt` is reported **with no age rather than dropped**, so an old row never silently
-   disappears from the very report that exists to find the longest wait.
+   Two additions the plugin's code earns: `pending[]` is read by **more than the page** — by
+   `orchestra ready` (its `WAITING:` line, which reports unanswered items older than thirty
+   minutes, oldest first) and by `orchestra tick-gate` (an open item on any row keeps the heartbeat
+   awake, whatever that row's status), so an item is load-bearing whether or not a page is open.
+   And an item written with no `askedAt` is reported **with no age rather than dropped**, so an old
+   row never silently disappears from the very report that exists to find the longest wait.
 
 3. **When answers reach you — by phase 5's `orchestra-inbox` hook, once it exists, or by
    `orchestra inbox` — stamp `conductor.inboxSeen`** with the newest timestamp you were shown, in
@@ -292,9 +304,9 @@ the question, what you chose, why, and the precedent you leaned on:
 orchestra journal ruling dev-loop/S3 "old cross-build curves: kept empty with their reason, per the framing answer on S3"
 ```
 
-In this phase the rulings are visible in the checkpoint and in the journal — the page that would
-show them to a later reader is phase 4 — so deciding alone stays visible and any of them can be
-broken.
+The rulings are visible in the checkpoint, in the journal, and on the page, whose rail carries a
+`ruling` line like every other journalled line — so deciding alone stays visible to a later reader
+and any of them can be broken.
 **Exceeding the budget is not forbidden — it is recorded.** When you genuinely must ask a second
 time, say in the same breath what framing failed to anticipate; that is the input that makes the
 next framing pass better, and it is the only way this regime improves rather than drifts.
@@ -373,15 +385,44 @@ started *after* the hold was issued.
    a signal-0.
 1. **Rehydrate.**
 
-   **The page.** There is no monitoring page yet — `orchestra monitor` is phase 4. Two rules were
-   measured against it in planetCraft and are recorded here for whichever session builds that
-   phase, so they are not paid for twice: probe with `lsof`, never with `curl` — measured
-   2026-08-12, `curl` from the conductor's shell could not reach a localhost server that `lsof`
-   proved was listening and a browser was using, so the `curl` form hung forever and the `||`
-   never fired. And a page that accepts the connection and never replies is not a wedged process —
-   restarting it changes nothing, because a fresh one does the same; it is blocked on something it
-   fetches synchronously per request, and that was GitHub being unreachable, through the board
-   read, for nine hours on 2026-08-12. The page is never required.
+   **The page.** `orchestra instances` lists every orchestra registered on this machine — name,
+   id, mode, root, URL, whether anything is listening there, worker count, and how long since it
+   reported itself. With `doctor` it is one of the two subcommands that answer without a project
+   config, so it answers from anywhere. This project's row is where its port comes from, and that
+   port is stable across restarts: `monitor.port` defaults to `"auto"`, which is `4380 + (the
+   project's six-hex id, mod 100)`, probed upward until one is free, and the port **actually
+   bound** is what gets recorded.
+
+   ```sh
+   orchestra instances                                   # this project's row: its URL, listening or not
+   lsof -nP -iTCP:<the port in that URL> -sTCP:LISTEN    # the same question, asked directly
+   nohup orchestra monitor --no-open >/dev/null 2>&1 &   # start it — read the paragraph below first
+   ```
+
+   **`orchestra monitor` serves in the foreground and never returns** — the listening socket is
+   what keeps that process alive — so start it detached, or the call that started it waits out its
+   own timeout and takes the page down with it. Run `orchestra instances` again afterwards for the
+   URL it bound. `--no-open` is its only flag, and there is
+   deliberately no `--port`: the port has exactly one source of truth, `monitor.port` in
+   `.orchestra/config.json`. Without `--no-open` it also opens a browser, which a headless tick
+   must never do. Run in a project whose page is already up, it prints that URL and exits 0 rather
+   than binding a second port — one page per project.
+
+   Two rules were measured against the page in planetCraft, and both still hold. **Probe with
+   `lsof`, never with `curl`** — measured 2026-08-12, `curl` from the conductor's shell could not
+   reach a localhost server that `lsof` proved was listening and a browser was using, so the
+   `curl` form hung forever and the `||` never fired. `orchestra instances` asks `lsof` for you and
+   prints `listening`, `no listener`, or `cannot tell` when `lsof` could not answer at all — that
+   third one is this machine saying it does not know, and it is not a no. **And a page that accepts
+   the connection and never replies is not a wedged process** — restarting it changes nothing,
+   because a fresh one does the same; it is blocked on something it fetches synchronously per
+   request, and that was GitHub being unreachable, through the board read, for nine hours on
+   2026-08-12. That measurement is now this plugin's own rule rather than a warning you have to
+   remember: `readBoard` (in `lib/monitor/sources.mjs`) bounds its board read at 10 s, remembers a
+   failure for 60 s, and keeps serving the last board that answered, said plainly as stale.
+
+   **The page is never required.** Everything it shows it reads out of `state.json`, the journal,
+   the inbox and git, and the whole tick runs with no page open at all.
 
    **Then arm the answer watch, once, before anything else in this tick.** It is what turns an
    answer's worst case from a whole heartbeat interval into seconds:
@@ -396,9 +437,8 @@ started *after* the hold was issued.
    file changing to the event arriving. And it writes `.orchestra/conductor.beat.json`, which is
    the only evidence anywhere that a conductor is ALIVE — the loop lives exactly as long as this
    session, so a beat under a minute old whose pid answers signal 0 is a live conductor, where a
-   register naming one is not. Until phase 4 there is no page writing answers, so this loop's
-   announcements are empty and it is armed for the beat alone — which the lock and phase 5's
-   heartbeat both read.
+   register naming one is not. Both halves earn their keep now: the page writes the answers this
+   loop announces, and the beat is what the lock and phase 5's heartbeat both read.
    Arm exactly one: a second watch on the same session announces everything twice. **A headless
    tick arms none** — the loop would die with the tick, and its beat would spend the next minute
    naming a conductor that is already gone.
@@ -561,12 +601,14 @@ started *after* the hold was issued.
    **Run it on every tick.** It prints nothing when there is nothing, and what it prints when
    there is, is a decision the user has already made and is waiting on. Phase 5's
    `orchestra-inbox` hook, once it exists, injects the same text into an interactive conductor's
-   session — but it is structurally blind to a tick the page itself spawns: a fresh session's
-   `SessionStart` and its one `UserPromptSubmit` both fire before it can record itself in
-   `state.json`, so the gate is still reading the previous conductor's id. On 2026-08-12 in
-   planetCraft five answers reached nobody that way — G1 sat fifty minutes on a defect the user
-   had already described, and three tasks launched half an hour after the user had said to keep
-   the machine quiet. Whether the text arrives by hook or by this command, the obligation is the
+   session — but it is structurally blind to a session that has only just started: a fresh
+   session's `SessionStart` and its one `UserPromptSubmit` both fire before it can record itself in
+   `state.json`, so the gate is still reading the previous conductor's id. In planetCraft, where
+   the page spawned a tick of its own from its reply button — this plugin's page deliberately
+   spawns none — five answers reached nobody that way on 2026-08-12: G1 sat fifty minutes on a
+   defect the user had already described, and three tasks launched half an hour after the user had
+   said to keep the machine quiet. Here the fresh session that will meet that same gate is phase
+   5's heartbeat tick. Whether the text arrives by hook or by this command, the obligation is the
    same one: relay verbatim, clear the `pending[]` item, journal an `answer`, stamp
    `conductor.inboxSeen` — the journal's third obligation is this same mechanic seen from the
    cursor's side.
@@ -575,9 +617,12 @@ started *after* the hold was issued.
    to the user immediately in the Decision Template; *non-blocking* (ready to test, an approval,
    an FYI) → append to that row's `pending` in `state.json`.
 
-   The hook is phase 5's and the page that writes the inbox is phase 4's, so in this phase
-   `orchestra inbox` prints nothing and the answers arrive in the conversation instead — the four
-   obligations above are unchanged, minus the stamp, which has nothing to stamp past.
+   The page is the writer of `.orchestra/inbox.jsonl`, so this command now has something to print:
+   the oldest answers nobody has taken yet, whether they answer a `pending[]` item or are a free
+   remark. The hook is still phase 5's, so in this phase that text reaches you two ways and no
+   third — this command on every tick, and step 1's answer watch in between — and all four
+   obligations above stand, the stamp included. An answer posted while nobody was beating started
+   nothing and is simply sitting there; this read is what collects it.
 5. **Checkpoint.** A checkpoint is the moment you stop trickling questions out one at a time and
    present every pending decision to the user together, grouped and ordered, each in its Decision
    Template — the act the journal and the framing pass both mean when they call a landing or a
@@ -586,11 +631,12 @@ started *after* the hold was issued.
    present — instead, **if `orchestra ready` printed a `WAITING:` line, send ONE
    PushNotification**, ≤ 200 chars, naming the count, the oldest row and its ask:
    ```
-   3 waiting · dev-loop/F1: integrate the fix queue?
+   3 waiting · dev-loop/F1: integrate the fix queue? · http://127.0.0.1:4412
    ```
-   The page URL belongs on that line too, but the page is phase 4's: there is nothing to link
-   until it exists, and the URL joins the notification the day it does. **Whether or not any of
-   them is blocking**, which was the old filter and was the wrong one: on 2026-08-12/14 in
+   **The page's URL goes on that line**, read off this project's row in `orchestra instances` and
+   the same across restarts. It is where the user answers, and a notification that names a batch
+   without saying where to answer it spends the interruption and saves nothing. **Whether or not
+   any of them is blocking**, which was the old filter and was the wrong one: on 2026-08-12/14 in
    planetCraft the four asks that sat longest were all merge approvals, and a merge approval
    blocks nothing you are doing. One push per tick; do not resend for an item you have already
    pushed unless it crosses four hours.
@@ -792,8 +838,8 @@ started *after* the hold was issued.
    tick that skips the write reads as ninety minutes of silence at the next heartbeat slot.
 
    Stopping is no longer going deaf. Three things wake you, each named with its phase where it
-   has one: the answer watch armed in step 1 hands you each new answer within seconds — and
-   until phase 4 there is no page to write one, so the beat is what it is really doing; worker
+   has one: the answer watch armed in step 1 hands you each new answer within seconds — the page
+   writes them and that loop is what turns one into an event here, whatever you are doing; worker
    turns you resumed notify you as their Bash tasks complete — a landing dispatched to
    `merge_agent` wakes you the very same way, its turn ending being no different from a worker's;
    a landing you run yourself needs no wake at all, since `await` blocks in bounded chunks inside
@@ -898,9 +944,9 @@ You have no way to show the user an image and they have no way to open one you o
 question like "which of these two arms reads better?" is unanswerable unless the file itself is on
 screen. **Name every screenshot the question is about by its repo-relative path, in the `<sub>`
 footer** — `.orchestra/images/c1-altitude-branch.png`, `.orchestra/images/s1-dossier-home.png`. The
-page (phase 4) reads those paths out of the ask, resolves them against the checkout, the worker's
-worktree and `.orchestra/images/`, and draws each one as a thumbnail beside the question, one click
-from full size. Nothing else is required of you: there is no field to fill and no upload.
+page reads those paths out of the ask, resolves them against the checkout, the worker's worktree
+and `.orchestra/images/`, and draws each one as a thumbnail beside the question, one click from
+full size. Nothing else is required of you: there is no field to fill and no upload.
 `.orchestra/images/` is also the one directory `orchestra archive-images` sweeps.
 
 The footer is where they belong precisely because the body stays free of paths — a path in the body
@@ -984,9 +1030,10 @@ done
 ```
 
 Three details, each one a wrong answer the first drafts gave: **skip your own page** — this
-plugin's monitoring page (phase 4) runs from the main checkout and, in planetCraft, had been up
-eight days, so without that `case` the sweep reports the conductor's own instrument as a suspect
-every hour; `$NF` is `(LISTEN)`, the address is `$9`; and `lsof -Fn` answers `p<pid>`/`f<fd>`/
+plugin's own monitoring page runs from the main checkout and, in planetCraft, had been up eight
+days, so without that `case` the sweep reports the conductor's own instrument as a suspect every
+hour, and `orchestra instances` is the second way to recognise it, by the port its row for this
+project names; `$NF` is `(LISTEN)`, the address is `$9`; and `lsof -Fn` answers `p<pid>`/`f<fd>`/
 `n<path>`, so take the first `n` line, not the second line.
 
 **ORPHAN is the only verdict that kills.** A server in the main checkout may be the USER's, so it
@@ -1168,9 +1215,11 @@ place, so a failed read is most likely a mid-write and the tick runs; an absent 
 machine where nobody has ever typed `/orchestra`, and firing a session at it hourly buys nothing.
 
 Four things override the stand-down, each a way orchestra could otherwise go permanently deaf: an
-unconsumed answer in the inbox — **the one that matters most**, because a monitoring page that
-spawns a tick from its own reply button would, if the gate ignored this, swallow the answer the
-user had just typed, in silence; a `pending[]` item on any row, whatever that row's status; an
+unconsumed answer in the inbox — **the one that matters most**, and more so here than in the
+project this was extracted from, whose page spawned a tick from its own reply button: this page
+starts nothing, so an answer typed while nobody is beating waits for a tick, and a gate that
+ignored the inbox would stand that tick down and swallow, in silence, the answer the user had just
+typed; a `pending[]` item on any row, whatever that row's status; an
 undelivered relay; and any row not yet terminal — this last one is what prints `hold-awake`.
 
 **It holds the machine awake while work is in flight.** `hold-awake` is the word the gate's line
@@ -1254,7 +1303,9 @@ Two things about it worth stating on their own:
 ### The answer net, and what has no net under it yet
 
 An answer normally reaches a conductor through none of this: the two-second watch armed at step 1
-hands it over in seconds, and phase 4's page starts nothing while that beat is live.
+hands it over in seconds. The page starts nothing either way — it reaches the conductor whose beat
+is live and never creates one — so an answer typed while nobody is beating sits in the inbox until
+the next tick reads it.
 
 What the watch cannot cover, in the code's own words: an answer **already sitting when the watch
 was armed** — its first round announces nothing and only remembers what is already there — and one
