@@ -76,6 +76,34 @@ function withFakeGh(fn) {
   try { return fn(); } finally { process.env.PATH = savedPath; rmSync(dir, { recursive: true, force: true }); }
 }
 
+// A synchronous sleep for a synchronous test file — the same mechanism lib/gate/land.mjs's own
+// `sleepMs` uses, reimplemented here rather than imported: it is one line, and importing production
+// code into a test for a busy-wait would be an odd first dependency to add.
+const sleepMs = (ms) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
+
+// `land --detach` returns as soon as the PARENT has spawned the child and re-stamped the run
+// record's pid — not once the child has booted node, run its own `precheck` (which shells out to
+// git), and reached `acquire()` to actually become the lock holder. A test that races the foreground
+// call immediately after that return is racing a few milliseconds of the parent's own bookkeeping
+// against tens of milliseconds of node-boot variance, which a loaded machine can and does lose:
+// reproduced under artificial CPU oversubscription at 2 failures in 6 runs, the foreground process
+// winning the lock and landing outright. Poll `.orchestra/gate/holder` — the same file `mayTake`
+// reads — until it names `branch`, or fail loudly rather than silently restore the race.
+function waitUntilHolder(r, branch, { timeoutMs = 5000, intervalMs = 20 } = {}) {
+  const path = join(r.root, '.orchestra', 'gate', 'holder');
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    let text = '';
+    try { text = readFileSync(path, 'utf8'); } catch { /* not written yet */ }
+    if (text.split('|')[1] === branch) return;
+    if (Date.now() >= deadline) {
+      throw new Error(`'${branch}' never became the lock holder within ${timeoutMs}ms`
+        + ` (holder file: ${JSON.stringify(text)})`);
+    }
+    sleepMs(intervalMs);
+  }
+}
+
 test('a branch lands through two green gates, in the order they are configured', () => {
   const r = project([
     { name: 'first', cmd: 'echo FIRST-RAN' },
@@ -309,6 +337,8 @@ test('a second land on a held branch is refused by the LOCK, not by running twic
 
   const started = run(r.root, 'land', holder, '--detach');
   assert.equal(started.code, 15, started.out);
+  // Do not race the foreground call against the detached child's own boot — see waitUntilHolder.
+  waitUntilHolder(r, holder);
 
   const { code, out } = run(r.root, 'land', waiter, '--wait=2');
   assert.equal(code, 12, out);
