@@ -376,8 +376,10 @@ test('buildModel attaches a listening port to the node that holds it', () => {
 });
 
 // New: `serverFor` matches on port ALONE (Task 2's `listServers` probes only the ports the
-// register names, so there is no `cwd` to match against) — asserted on the FULL server entry, not
-// just its port, so a regression back to a `cwd`/basename label would be caught here.
+// register names, so there is no `cwd` to match against). Neither server entry below carries a
+// `cwd`, so this pair alone would pass unchanged under the source's cwd-fallback implementation
+// too (its OR-branch never fires with no `cwd` to compare) — the two tests after these are the
+// ones that actually distinguish the two implementations.
 test('buildModel labels a matched server by its port, ignoring a server on some other port', () => {
   const m = buildModel({ ...base, servers: [{ port: 5307, pid: 1 }, { port: 9999, pid: 2 }] });
   assert.deepEqual(m.nodes[0].servers, [{ port: 5307, label: '5307' }]);
@@ -386,6 +388,24 @@ test('buildModel labels a matched server by its port, ignoring a server on some 
 test('buildModel gives an empty server list to a node whose port nothing listens on', () => {
   const m = buildModel({ ...base, register: [regRow({ port: 6000 })], servers: [{ port: 5307, pid: 1 }] });
   assert.deepEqual(m.nodes[0].servers, []);
+});
+
+// The match half of the delta, made to actually fail under the source: a server on a DIFFERENT
+// port than the node's own (5307, from `base`'s `regRow`), but whose `cwd` equals
+// `worktrees.get(node.branch)` (`base`'s worktrees map, `lod/c2-derived-switch` -> the same
+// path) — exactly the shape the source's `s.port === node.port || (path && s.cwd === path)`
+// matched on the OR-branch alone. Port-only matching must not return it.
+test('buildModel does not match a server by its worktree cwd, only by port', () => {
+  const m = buildModel({ ...base, servers: [{ port: 9999, pid: 1, cwd: '/x/c2-derived-switch' }] });
+  assert.deepEqual(m.nodes[0].servers, []);
+});
+
+// The label half, made to actually fail under the source: a server that DOES match on port, but
+// also carries a `cwd` — the source labelled a cwd-bearing entry `cwd.split('/').pop()`
+// (`'c2-derived-switch'`), never the port.
+test('buildModel labels a matched server by its port, never by its cwd\'s basename', () => {
+  const m = buildModel({ ...base, servers: [{ port: 5307, pid: 1, cwd: '/x/c2-derived-switch' }] });
+  assert.deepEqual(m.nodes[0].servers, [{ port: 5307, label: '5307' }]);
 });
 
 test('buildModel passes the board failure through, so the page can say what is missing', () => {
