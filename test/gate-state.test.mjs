@@ -196,3 +196,33 @@ test('a run file is named so a human can recognise the branch in an ls', () => {
   assert.equal(S.runSlug('feat/a b'), 'feat_a_b');
   assert.equal(S.runSlug('demo/d1-first'), 'demo_d1-first');
 });
+
+// Fix round 1, Finding 1: the seed `detach` writes BEFORE the fork has `pid: null` — the sliver
+// between that write and the one that stamps the child's real pid. Without this case, `alive(null)`
+// (computed by the caller, not this function) is false, so a seed fell into the `!alive` branch
+// below and read as `vanished` — a landing that had not even spawned yet was reported as killed.
+test("a pre-fork seed (pid null) reads as running, whatever liveness the caller computed for it", () => {
+  const seed = { branch: 'b', pid: null, startedAt: 100, log: '/l', exit: null, endedAt: null };
+  // The caller cannot get a true liveness answer for a pid that does not exist yet — `alive(null)`
+  // throws and is caught as `false` — so this asserts the decision holds even if a caller somehow
+  // passed `true`: the pid check must come before `alive` is consulted at all, not merely produce
+  // the same answer as `!alive` would have.
+  assert.deepEqual(S.runVerdict({ run: seed, alive: false, nowSec: 100 }),
+    { state: 'running', exit: S.EXIT.busy, elapsed: 0 });
+  assert.deepEqual(S.runVerdict({ run: seed, alive: true, nowSec: 100 }),
+    { state: 'running', exit: S.EXIT.busy, elapsed: 0 });
+  // A real, dead pid is unaffected: `vanished` still fires exactly as it did before this fix.
+  const real = { ...seed, pid: 5 };
+  assert.deepEqual(S.runVerdict({ run: real, alive: false, nowSec: 100 }),
+    { state: 'vanished', exit: S.EXIT.vanished, elapsed: 0 });
+});
+
+// Fix round 1, rider: `ownsRun` moved here from lib/gate/run.mjs, where it was a pure decision
+// sitting in an effects file. Three cases, no race: the pre-fork sliver (pid null), the caller's own
+// claim, and a claim already held by somebody else.
+test('ownsRun: a null pid is claimable by anyone, a set pid only by itself', () => {
+  assert.equal(S.ownsRun({ pid: null }, 123), true);
+  assert.equal(S.ownsRun({ pid: 123 }, 123), true);
+  assert.equal(S.ownsRun({ pid: 999 }, 123), false);
+  assert.equal(S.ownsRun(null, 123), false);
+});
