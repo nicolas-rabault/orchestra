@@ -154,3 +154,37 @@ test('an uncommitted tracked file in the worktree stops the landing before anyth
   assert.match(out, /uncommitted changes/);
   assert.ok(branches(r).includes(branch));
 });
+
+// Fix round 1, Ruling 5: `commitLedgers` used to `git commit` with no pathspec, so anything else
+// staged in the main checkout at the time — an agent's own `git add` that never got committed, say
+// — was swept into a commit whose message names only the ledgers. `--only` is what makes the
+// function's own claim (it commits only the paths it owns) true.
+test('a dirty configured ledger is committed alone; something else staged in the main checkout is not swept in', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { ledgers: ['reports/x.jsonl'] });
+  // A tracked ledger the project's own tooling writes, and an unrelated tracked file with a staged
+  // change nobody committed — both dirty in the main checkout before `land` runs.
+  mkdirSync(join(r.root, 'reports'), { recursive: true });
+  writeFileSync(join(r.root, 'reports', 'x.jsonl'), '{"a":1}\n');
+  writeFileSync(join(r.root, 'unrelated.txt'), 'before\n');
+  r.git('add', '-A');
+  r.git('commit', '-q', '-m', 'chore: seed the ledger and an unrelated file');
+
+  writeFileSync(join(r.root, 'reports', 'x.jsonl'), '{"a":1}\n{"a":2}\n');
+  writeFileSync(join(r.root, 'unrelated.txt'), 'staged by hand, never committed\n');
+  r.git('add', '-A');
+
+  const { branch } = branchWith(r);
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+  assert.match(out, /committed 1 ledger file\(s\)/);
+
+  const ledgerSha = r.git('log', '--format=%H', '--grep=ledger', '-1', 'main').trim();
+  assert.ok(ledgerSha, `no ledger commit found in:\n${r.git('log', '--oneline', 'main')}`);
+  const ledgerFiles = r.git('show', '--name-only', '--format=', ledgerSha).trim().split('\n');
+  assert.deepEqual(ledgerFiles, ['reports/x.jsonl']);
+
+  // The unrelated file is still staged, exactly as it was left — the ledger commit did not reach
+  // past its own pathspec to sweep it in.
+  const status = r.git('status', '--porcelain', '--', 'unrelated.txt');
+  assert.match(status, /^M {2}unrelated\.txt/);
+});
