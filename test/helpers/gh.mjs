@@ -35,7 +35,20 @@ export function makeFakeGh({ issues = [], me = 'nico' } = {}) {
       calls.push(['create', i.title]);
       return next;
     },
-    updateIssue: (n, i) => { calls.push(['update', n]); Object.assign(find(n), i); },
+    // Mirrors the real adapter's shape (lib/store/github/gh.mjs): `addLabels`/`removeLabels` and
+    // their assignee counterparts are DIFFS against the issue's current arrays, never a raw
+    // `Object.assign` of the field named `labels` — `sync` is the first caller to pass them, and a
+    // stub that stored the diff arrays as literal properties instead of applying them would leave a
+    // stale `status:todo` on a closed issue and call it stripped.
+    updateIssue: (n, { addLabels = [], removeLabels = [], addAssignees = [], removeAssignees = [], ...rest }) => {
+      calls.push(['update', n]);
+      const issue = find(n);
+      Object.assign(issue, rest);
+      if (removeLabels.length) issue.labels = issue.labels.filter((l) => !removeLabels.includes(l));
+      for (const l of addLabels) if (!issue.labels.includes(l)) issue.labels.push(l);
+      if (removeAssignees.length) issue.assignees = issue.assignees.filter((a) => !removeAssignees.includes(a));
+      for (const a of addAssignees) if (!issue.assignees.includes(a)) issue.assignees.push(a);
+    },
     reopenIssue: (n) => { calls.push(['reopen', n]); find(n).state = 'open'; },
     closeIssue: (n) => { calls.push(['close', n]); find(n).state = 'closed'; },
     addLabel: (n, l) => { const i = find(n); if (!i.labels.includes(l)) i.labels.push(l); },

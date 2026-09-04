@@ -211,3 +211,43 @@ test('a headingless draft still publishes, titled by its own slug', () => {
   const programme = f.state.find((i) => i.labels?.includes(LABELS.programme));
   assert.equal(programme.title, 'demo — demo');
 });
+
+test('store.sync closes the landed issue, strips its stale label and ticks the programme', () => {
+  // The whole reconciler, end to end through the recorder — one code path, and the same one a
+  // landing runs after its fast-forward.
+  const f = makeFakeGh({
+    issues: [
+      { number: 1, title: 'demo — Demo roadmap', labels: [LABELS.programme],
+        body: '- **Roadmap** demo\n\n## Tasks\n- [ ] #5 D1 — First thing\n' },
+      { number: 5, title: taskTitle(task), labels: [LABELS.task, LABELS.todo],
+        body: 'Programme: #1\n' },
+    ],
+  });
+  const { store } = online(f);
+
+  const res = store.sync([{
+    key: 'demo/D1', issue: 5, status: 'landed', landedHere: true, subjects: ['feat: one'],
+  }]);
+
+  assert.deepEqual(res.closed, ['demo/D1']);
+  assert.equal(f.state.find((i) => i.number === 5).state, 'closed');
+  // A landed task wants NO status label: done is the issue being closed, and `status:todo` on a
+  // closed issue is a second and weaker way to say it — one that now reads as a lie.
+  assert.deepEqual(f.state.find((i) => i.number === 5).labels, [LABELS.task]);
+  // The programme's checklist is ticked from what closed. It does NOT close in the same pass: the
+  // plan was computed against the task states as they were, and a roadmap that ends a minute late
+  // is a cosmetic lag while one that ends on a close that then failed is a lie.
+  assert.match(f.state.find((i) => i.number === 1).body, /- \[ \] #5 D1/);
+  assert.equal(f.state.find((i) => i.number === 1).state, 'open');
+  assert.equal(res.programmes, 0);
+
+  // Idempotent: a second run against the state it just produced closes the programme and nothing
+  // else — which is what makes it safe on every landing and every tick.
+  const again = store.sync([{
+    key: 'demo/D1', issue: 5, status: 'landed', landedHere: true, subjects: ['feat: one'],
+  }]);
+  assert.deepEqual(again.closed, []);
+  assert.equal(again.labels, 0);
+  assert.equal(f.state.find((i) => i.number === 1).state, 'closed');
+  assert.match(f.state.find((i) => i.number === 1).body, /- \[x\] #5 D1/);
+});

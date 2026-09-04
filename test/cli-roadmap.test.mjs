@@ -213,9 +213,9 @@ test('lint on a clean draft says how many files it checked and that they are cle
   assert.match(text, /lint: 1 file checked, clean/);
 });
 
-test('an unknown subcommand throws naming the eight that exist', () => {
+test('an unknown subcommand throws naming the nine that exist', () => {
   const { cfg } = offlineProject();
-  const known = ['lint', 'board', 'publish', 'claim', 'release', 'open', 'reserve', 'enrol'];
+  const known = ['lint', 'board', 'publish', 'claim', 'release', 'open', 'reserve', 'enrol', 'sync'];
   assert.throws(
     () => roadmapCommand({ cfg, args: ['bogus'] }),
     (e) => /unknown subcommand "bogus"/.test(e.message) && known.every((verb) => e.message.includes(verb)),
