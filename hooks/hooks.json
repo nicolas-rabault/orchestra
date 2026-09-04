@@ -1,0 +1,27 @@
+{
+  "description": "Guards that keep an opted-in project's main branch integrate-only.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-main-edit.mjs\"",
+            "statusMessage": "Checking the main-is-integrate-only guard"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-main-commit.mjs\"",
+            "statusMessage": "Checking the main-is-integrate-only commit guard"
+          }
+        ]
+      }
+    ]
+  }
+}
