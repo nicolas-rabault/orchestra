@@ -43,22 +43,22 @@ still going: **run the same `await` again**, as many times as it takes.
 
 This shape exists because the old one could not work, and the reason is worth knowing so you do not
 "simplify" it back. A landing is one process from the lock to the fast-forward, and the gates inside
-it are minutes — a full test suite in planetCraft, the project this gate's design was ported from,
-measured 262 s on a quiet machine and 1652 s under load — against a 600-second ceiling on your Bash
-call. The rule that measurement pays for is general, not planetCraft's alone: a landing can outrun
-an agent's Bash-call ceiling on any project whose gates are slow enough. Foreground therefore loses
-whenever the machine is busy. But backgrounding is worse: **you have no tool with which to wait on a
-background job** — no Monitor, no TaskOutput — so your only move is to end your turn, and a subagent
-that ends its turn is over. The landing then outlives the only process that knew its exit code. That
-is not a risk, it is what happened, repeatedly. With `--detach`/`await` nothing needs a notification,
-so nothing can miss one: the outcome is on disk, and any session can read it, including one that
-starts after you are gone.
+it are minutes. Measured 2026-08-14 in planetCraft, the project this gate's design was ported from: a
+full test suite measured 262 s on a quiet machine and 1652 s under load — against a 600-second
+ceiling on your Bash call. The rule that measurement pays for is general, not planetCraft's alone: a
+landing can outrun an agent's Bash-call ceiling on any project whose gates are slow enough. Foreground
+therefore loses whenever the machine is busy. But backgrounding is worse: **you have no tool with
+which to wait on a background job** — no Monitor, no TaskOutput — so your only move is to end your
+turn, and a subagent that ends its turn is over. The landing then outlives the only process that knew
+its exit code. That is not a risk, it is what happened, repeatedly. With `--detach`/`await` nothing
+needs a notification, so nothing can miss one: the outcome is on disk, and any session can read it,
+including one that starts after you are gone.
 
 Then act on the exit code `await` gives you:
 
 | Code | Meaning | What you do |
 |---|---|---|
-| 0 | landed; the worktree and the ref are deleted | report it |
+| 0 | landed; the worktree and the ref are normally deleted, but a `kept —` note in the log means one survived | report it |
 | 10 | conflict; the rebase was aborted and the conflicted paths are named | resolve (below), then run `land` again |
 | 11 | **a gate refused**; the main branch is untouched | STOP. Report **which gate** and what it printed. Do not retry, do not fix the branch — that is its author's call |
 | 12 | still queued, or still landing | run the same `await` again |
@@ -105,5 +105,7 @@ Interactive git (`-i`) is unavailable here; script the resolution.
 
 ## Reporting
 
-Per branch: landed or held? If held, which code, **which gate**, and what it said. If you resolved a
-conflict, which files and how you resolved each one — never just "resolved".
+Per branch: landed or held? If held, which code, **which gate**, and what it said. If a landing
+printed a `kept —` note, relay it too — name what was kept and why, since the note itself carries the
+reason. If you resolved a conflict, which files and how you resolved each one — never just
+"resolved".
