@@ -92,7 +92,7 @@ and says so when a file is clean.
 
 ## 3. The commands that exist
 
-Eight subcommands, and this list is exhaustive — **there is no `sync`, no `new` and no `bug`.**
+Nine subcommands, and this list is exhaustive — **there is no `new` and no `bug`.**
 
 - **`lint [path…]`** — checks the grammar of the given files, or every draft if none are given.
 - **`board [--json]`** — prints the derived state of every task, reconciled against git and the
@@ -111,6 +111,10 @@ Eight subcommands, and this list is exhaustive — **there is no `sync`, no `new
   holds needs `--force`; without it the command names the holder and refuses.
 - **`open <roadmap>`** / **`reserve <roadmap>`** — hands a roadmap's tasks to everyone, or takes that
   back. Online this is one label on the programme issue. Offline both print why they did nothing.
+- **`sync`** — reconciles the shared channel with what actually landed. Online: closes every issue
+  the derivation proves landed, moves each task's `status:` label onto what the board derives, ticks
+  every programme's checklist against its own closed tasks, and closes a programme once all of it
+  has. Offline it does nothing, and that is correct: there is nowhere to write a status.
 
 A command that cannot apply in the current mode says so rather than pretending to succeed. Relay
 that sentence to the user instead of treating it as an error.
