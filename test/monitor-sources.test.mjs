@@ -8,9 +8,9 @@
 // `lsof`, and the sibling-directory containment case).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import {
   UNFILED, registerKey, parseOptions, itemOptions, splitAsk,
 } from '../lib/monitor/keys.mjs';
@@ -43,8 +43,8 @@ test('registerKey frames a bare id by the roadmap slug the row names, keeping un
 });
 
 // A half-written row is the exact condition this module exists to survive: `registerKey` used to
-// throw on one, and because the request handler an async arrow, the rejection would kill the whole
-// server, answer channel included.
+// throw on one, and because the request handler is an async arrow, the rejection would kill the
+// whole server, answer channel included.
 test('registerKey gives a row with no usable id a key instead of throwing', () => {
   assert.equal(registerKey({}), `${UNFILED}/(unnamed)`);
   assert.equal(registerKey({ id: null, roadmap: 'lighting' }), 'lighting/(unnamed)');
@@ -209,7 +209,10 @@ test('readBoard serves the last good board as stale on a later failure, and does
 
 test('worktreePaths maps a live worktree\'s branch to its path, and currentBranch names each checkout\'s own', () => {
   const r = makeRepo({ name: 'wt-fixture' });
-  const side = join(dirname(r.root), `wt-fixture-side-${process.pid}`);
+  // Nested under `r.root`, not a sibling `mkdtemp` of its own: `r.cleanup()` already removes
+  // `r.root` recursively, so this needs no `finally` of its own — a hard kill that skips it leaves
+  // nothing behind that is not already inside a directory something else owns and (usually) cleans.
+  const side = join(r.root, '.worktree-side');
   try {
     r.git('branch', 'demo/d1');
     r.git('worktree', 'add', side, 'demo/d1');
@@ -218,7 +221,6 @@ test('worktreePaths maps a live worktree\'s branch to its path, and currentBranc
     assert.equal(currentBranch(r.root), 'main');
     assert.equal(currentBranch(side), 'demo/d1');
   } finally {
-    rmSync(side, { recursive: true, force: true });
     r.cleanup();
   }
 });
@@ -227,6 +229,20 @@ test('worktreePaths and currentBranch degrade to empty/null for a directory that
   const dir = tmp();
   assert.deepEqual(worktreePaths(dir), new Map());
   assert.equal(currentBranch(dir), null);
+});
+
+// This server is single-threaded, and `git worktree list` is an ordinary, fast call — but a stuck
+// one would block every other reader exactly the way the nine-hour 2026-08-12 GitHub incident
+// blocked the whole page through `readBoard` (see that reader's own header comment), just through a
+// different door. Proved here against a REAL hung child, not assumed from reading the `timeout`
+// option.
+test('worktreePaths does not hang past its own timeout on a stuck git, and degrades to no worktrees', () => {
+  withFakeBin('git', '#!/bin/sh\nsleep 30\n', () => {
+    const start = Date.now();
+    const map = worktreePaths('/whatever');
+    assert.ok(Date.now() - start < 3000, `took ${Date.now() - start}ms — the 2s timeout did not bound it`);
+    assert.deepEqual(map, new Map());
+  });
 });
 
 test('currentBranch reads the branch name out of .git/HEAD directly, without shelling to git', () => {
@@ -330,17 +346,18 @@ test('resolveImageRequest refuses a climb out, a non-image file, an empty path, 
 // sources.mjs: listServers — probing the ports the register named, not a port band
 // ---------------------------------------------------------------------------------------------
 
-function withFakeLsof(scriptBody, fn) {
+function withFakeBin(name, scriptBody, fn) {
   const dir = tmp();
-  writeFileSync(join(dir, 'lsof'), scriptBody, { mode: 0o755 });
+  writeFileSync(join(dir, name), scriptBody, { mode: 0o755 });
   const oldPath = process.env.PATH;
   process.env.PATH = `${dir}:${oldPath}`;
   try { fn(); } finally { process.env.PATH = oldPath; }
 }
+const withFakeLsof = (scriptBody, fn) => withFakeBin('lsof', scriptBody, fn);
 
 test('listServers reports a port the caller named that lsof finds listening', () => {
   withFakeLsof('#!/bin/sh\necho "p4242"\necho "n*:5210"\n', () => {
-    assert.deepEqual(listServers('/whatever', [5210, 5307]), { ok: true, list: [{ port: 5210, pid: 4242 }] });
+    assert.deepEqual(listServers([5210, 5307]), { ok: true, list: [{ port: 5210, pid: 4242 }] });
   });
 });
 
@@ -348,20 +365,32 @@ test('listServers reports a port the caller named that lsof finds listening', ()
 // with `status: null` and `code: 'ENOENT'`.
 test('listServers is honest about "nothing running" versus "cannot tell"', () => {
   withFakeLsof('#!/bin/sh\nexit 1\n', () => {
-    assert.deepEqual(listServers('/whatever', [5210]), { ok: true, list: [] });
+    assert.deepEqual(listServers([5210]), { ok: true, list: [] });
   });
   const emptyDir = tmp();
   const oldPath = process.env.PATH;
   process.env.PATH = emptyDir;
   try {
-    assert.deepEqual(listServers('/whatever', [5210]), { ok: false, list: [] });
+    assert.deepEqual(listServers([5210]), { ok: false, list: [] });
   } finally {
     process.env.PATH = oldPath;
   }
 });
 
 test('listServers with no ports named asks lsof nothing', () => {
-  assert.deepEqual(listServers('/whatever', []), { ok: true, list: [] });
+  assert.deepEqual(listServers([]), { ok: true, list: [] });
+});
+
+// `lsof` is the canonical binary that hangs on a stale network mount, and this reader must never
+// be able to hang the way an unbounded `readBoard` once could (see its own header comment) —
+// proved here against a REAL hung child, not assumed from reading the `timeout` option.
+test('listServers does not hang past its own timeout on a stuck lsof, and reports it honestly', () => {
+  withFakeLsof('#!/bin/sh\nsleep 30\n', () => {
+    const start = Date.now();
+    const r = listServers([5210]);
+    assert.ok(Date.now() - start < 3000, `took ${Date.now() - start}ms — the 2s timeout did not bound it`);
+    assert.deepEqual(r, { ok: false, list: [] });
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
