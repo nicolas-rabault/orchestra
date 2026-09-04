@@ -58,7 +58,7 @@ Then act on the exit code `await` gives you:
 
 | Code | Meaning | What you do |
 |---|---|---|
-| 0 | landed; the worktree and the ref are normally deleted, but a `kept —` note in the log means one survived | report it |
+| 0 | landed; the worktree and the ref are normally deleted, but a `landed; …` note in the log means one survived | report it |
 | 10 | conflict; the rebase was aborted and the conflicted paths are named | resolve (below), then run `land` again |
 | 11 | **a gate refused**; the main branch is untouched | STOP. Report **which gate** and what it printed. Do not retry, do not fix the branch — that is its author's call |
 | 12 | still queued, or still landing | run the same `await` again |
@@ -106,6 +106,6 @@ Interactive git (`-i`) is unavailable here; script the resolution.
 ## Reporting
 
 Per branch: landed or held? If held, which code, **which gate**, and what it said. If a landing
-printed a `kept —` note, relay it too — name what was kept and why, since the note itself carries the
-reason. If you resolved a conflict, which files and how you resolved each one — never just
+printed a `landed; …` note, relay it too — name what was kept and why, since the note itself carries
+the reason. If you resolved a conflict, which files and how you resolved each one — never just
 "resolved".
