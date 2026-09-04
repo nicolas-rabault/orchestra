@@ -15,6 +15,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
+import { loadConfig } from '../lib/config.mjs';
+import { commitLedgers } from '../lib/gate/land.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 const repos = [];
@@ -245,6 +247,58 @@ test('a dirty configured ledger is committed alone; something else staged in the
   // past its own pathspec to sweep it in.
   const status = r.git('status', '--porcelain', '--', 'unrelated.txt');
   assert.match(status, /^M {2}unrelated\.txt/);
+});
+
+// The lock `commitLedgers` was missing (task 2 of P5): a torn write between another writer's
+// `git add` and its own read-modify-write of the ledger file. This is the genuine-contention test
+// the brief asked for: it proves `commitLedgers` really does take `lib/tickets/lock.mjs`'s lock,
+// not merely that a landing succeeds while an unrelated directory happens to exist. A version of
+// `commitLedgers` that forgot to call `withQueueLock` would let this run straight through with no
+// error at all, so an assertion that it throws — and that it genuinely WAITED for the deadline
+// rather than refusing on sight — is what tells the two apart.
+test('commitLedgers takes the ticket queue lock, and throws at ITS OWN deadline when another process holds it', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { ledgers: ['reports/x.jsonl'] });
+  const cfg = loadConfig(r.root);
+  const lockDir = join(r.root, 'reports', '.queue.lock');
+  mkdirSync(lockDir, { recursive: true });
+  // This test's own process: guaranteed alive for as long as the assertion runs, so the lock
+  // cannot be broken as a dead holder's — the only path that would let this call through early.
+  writeFileSync(join(lockDir, 'pid'), String(process.pid));
+
+  const start = Date.now();
+  assert.throws(
+    () => commitLedgers(cfg, { waitMs: 200 }),
+    (e) => new RegExp(`held by pid ${process.pid}`).test(e.message),
+  );
+  assert.ok(Date.now() - start >= 200, 'commitLedgers must wait out its own deadline, not refuse on sight');
+  rmSync(lockDir, { recursive: true, force: true });
+});
+
+// The companion path: the lock IS held elsewhere when a landing starts — by a process that has
+// since died — and the landing must still succeed, because a dead holder is broken automatically
+// (the same rule `lib/tickets/lock.mjs`'s own unit test proves in isolation). This is the
+// end-to-end wiring: a landing that commits a ledger while its lock is held by a pid nobody can
+// still `kill -0`.
+test('a landing commits its ledger even though the lock is held elsewhere by a now-dead pid', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { ledgers: ['reports/x.jsonl'] });
+  mkdirSync(join(r.root, 'reports'), { recursive: true });
+  writeFileSync(join(r.root, 'reports', 'x.jsonl'), '{"a":1}\n');
+  r.git('add', '-A');
+  r.git('commit', '-q', '-m', 'chore: seed the ledger');
+  writeFileSync(join(r.root, 'reports', 'x.jsonl'), '{"a":1}\n{"a":2}\n');
+
+  const lockDir = join(r.root, 'reports', '.queue.lock');
+  mkdirSync(lockDir, { recursive: true });
+  // A pid no process on this machine can hold: dead on arrival, so the lock is broken and taken
+  // rather than waited out.
+  writeFileSync(join(lockDir, 'pid'), '999999999');
+
+  const { branch } = branchWith(r);
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+  assert.match(out, /committed 1 ledger file\(s\)/);
+  const ledgerSha = r.git('log', '--format=%H', '--grep=ledger', '-1', 'main').trim();
+  assert.ok(ledgerSha, `no ledger commit found in:\n${r.git('log', '--oneline', 'main')}`);
 });
 
 test('land --detach returns 15 at once, and await collects the real code and the gate name', () => {
