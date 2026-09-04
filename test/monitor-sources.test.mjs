@@ -235,12 +235,16 @@ test('worktreePaths and currentBranch degrade to empty/null for a directory that
 // one would block every other reader exactly the way the nine-hour 2026-08-12 GitHub incident
 // blocked the whole page through `readBoard` (see that reader's own header comment), just through a
 // different door. Proved here against a REAL hung child, not assumed from reading the `timeout`
-// option.
+// option — but at a millisecond budget, via the same injectable `timeoutMs` `readBoard` exposes for
+// exactly this reason (its own header comment says why): the production default is 2000ms, and a
+// test that waited for the real value would cost 2s on every run of this file, forever. 50ms against
+// a fake `git` that sleeps 300ms proves the identical mechanism — `execFileSync`'s `timeout` killing
+// a still-running child — with an order of magnitude of headroom against a loaded machine.
 test('worktreePaths does not hang past its own timeout on a stuck git, and degrades to no worktrees', () => {
-  withFakeBin('git', '#!/bin/sh\nsleep 30\n', () => {
+  withFakeBin('git', '#!/bin/sh\nsleep 0.3\n', () => {
     const start = Date.now();
-    const map = worktreePaths('/whatever');
-    assert.ok(Date.now() - start < 3000, `took ${Date.now() - start}ms — the 2s timeout did not bound it`);
+    const map = worktreePaths('/whatever', 50);
+    assert.ok(Date.now() - start < 300, `took ${Date.now() - start}ms — the timeout did not bound it`);
     assert.deepEqual(map, new Map());
   });
 });
@@ -383,12 +387,15 @@ test('listServers with no ports named asks lsof nothing', () => {
 
 // `lsof` is the canonical binary that hangs on a stale network mount, and this reader must never
 // be able to hang the way an unbounded `readBoard` once could (see its own header comment) —
-// proved here against a REAL hung child, not assumed from reading the `timeout` option.
+// proved here against a REAL hung child, not assumed from reading the `timeout` option. At a
+// millisecond budget, the same way: 50ms against a fake `lsof` that sleeps 300ms costs a tenth of a
+// second instead of two, and is still an order of magnitude of headroom against a loaded machine —
+// a 2000ms budget against a real production timeout is a test that can fail for load, not for code.
 test('listServers does not hang past its own timeout on a stuck lsof, and reports it honestly', () => {
-  withFakeLsof('#!/bin/sh\nsleep 30\n', () => {
+  withFakeLsof('#!/bin/sh\nsleep 0.3\n', () => {
     const start = Date.now();
-    const r = listServers([5210]);
-    assert.ok(Date.now() - start < 3000, `took ${Date.now() - start}ms — the 2s timeout did not bound it`);
+    const r = listServers([5210], 50);
+    assert.ok(Date.now() - start < 300, `took ${Date.now() - start}ms — the timeout did not bound it`);
     assert.deepEqual(r, { ok: false, list: [] });
   });
 });
