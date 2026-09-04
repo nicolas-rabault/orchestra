@@ -39,13 +39,12 @@ own `root` key names the project you think you are conducting.
 The single roll-call. An absent command is named here with its phase, in backticks, and never as
 something to type: an occurrence elsewhere names its phase again, or it is a bug.
 
-- **Phase 3, the merge gate**: `orchestra land`, `orchestra await`, `orchestra queue-list`, the
-  `merge_agent` agent, and the `gates` and `ledgers` config they read. Until then **no landing
-  happens through this protocol**: an approved branch is named to the user, in the journal and in
-  the checkpoint, and it is the user's to land. You never merge — that rule outlives its
-  enforcement, and phase 5's hooks are what will hold it.
-- **Phase 3, online only**: `orchestra roadmap sync`. Offline there is nowhere to write a status, so
-  it will never exist there, and that is correct (spec §4.1).
+- **A limitation, not an absence: `orchestra roadmap sync`.** It exists (see The tick, step 7);
+  offline it does nothing, and that is correct (spec §4.1) — there is nowhere to write a status.
+- **A limitation, not an absence: `ledgers` is empty in every project until phase 5** brings the
+  ticket queue. The gate commits what that key lists at the head of every landing; with nothing
+  listed it commits nothing, and a conductor's `postLanding` remains the way a branch gets a
+  main-branch ledger written.
 - **Phase 4, the monitoring page**: `orchestra monitor`, `orchestra instances`, the allocated port.
   **The page is also the only writer of `.orchestra/inbox.jsonl`**, so until it exists `orchestra
   inbox` prints nothing and the user answers in the conversation. The journal is still written, and
@@ -69,8 +68,8 @@ something to type: an occurrence elsewhere names its phase again, or it is a bug
    having looked at it. That look is the one interruption the row is allowed (see The framing
    pass), and it is not a formality: in planetCraft, on 2026-08-12/14, three serious defects were
    caught by exactly that look and by nothing else, every one of them past a green 4 900-test
-   suite. **Any other row lands once every configured gate is green, without asking** (`gates`,
-   phase 3) — thirteen merge approvals were asked on that roadmap and thirteen were granted, none
+   suite. **Any other row lands once every configured gate is green, without asking** (`gates`) —
+   thirteen merge approvals were asked on that roadmap and thirteen were granted, none
    refused, at a cost of hours each. What you may never do is land in SILENCE: the landing goes in
    the journal and in the checkpoint, and the user keeps a veto by revert.
 2. Never answer a design question in the user's place. One bounded exception: at the
@@ -251,15 +250,15 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    recovers it.
 
    **And stamp only once the action the answer AUTHORISES has completed** — not when you decide to
-   take it, not when you announce it. For a merge approval that means after the landing has
-   actually happened — in this phase, after the user reports it landed; phase 3's `merge_agent` is
-   what will return in its place. Measured 2026-08-13 in planetCraft: X2's merge was approved at
-   13:17:20, the cursor was stamped to exactly that instant, the hand-off was written in the
-   journal — and it never happened, because the conductor's session ended before merge_agent
-   existed. The approval was consumed and the action was lost; it surfaced four hours later only
-   because a human asked what had become of it. An unstamped answer costs you one repeated relay.
-   A stamped-but-unacted answer costs the user their decision, silently, and silence is the worse
-   of the two failures.
+   take it, not when you announce it. For a merge approval that means after `orchestra await` has
+   returned 0. Measured 2026-08-13 in planetCraft: X2's merge was approved at 13:17:20, the cursor
+   was stamped to exactly that instant, the hand-off was written in the journal — and it never
+   happened, because the conductor's session ended before merge_agent existed. The approval was
+   consumed and the action was lost; it surfaced four hours later only because a human asked what
+   had become of it. That measurement is now the argument FOR waiting on `await`'s own exit code
+   rather than a human report, not a promise about one: an unstamped answer costs you one repeated
+   relay, and a stamped-but-unacted answer costs the user their decision, silently — the worse of
+   the two failures.
 
 ## The framing pass, and the one interruption
 
@@ -280,7 +279,7 @@ past a green suite. So:
 - a row that ships **a page a human reads or a gameplay change** → its one interruption is the
   **playtest gate**, unchanged;
 - a row that ships neither → **no interruption**: it lands once every configured gate is green
-  (`gates`, phase 3).
+  (`gates`).
 
 Everything else you decide yourself, from the recorded decisions, the roadmap and the project's own
 rules, which reach a worker as `briefExtra`. **Every such decision is journalled as a `ruling`** —
@@ -601,18 +600,26 @@ started *after* the hold was issued.
 6. **Landings.** For every row the reconcile just moved to `landed`: tell the user at the next
    checkpoint, and continue — the launch step below picks up whatever the landing unblocked.
 
-   **When the user approves a merge, in this phase you do not perform it.** Name the branch to
-   the user, journal the `landing` line when it lands, and re-run step 1 after. Phase 3 is what
-   brings `orchestra land <branch> --detach` / `orchestra await <branch>` and the `merge_agent`
-   agent, one branch at a time behind a lock. The shape is what it is for a reason that belongs
-   to this protocol, not to one project: landings are serialised by a lock, so a second one waits
-   for the first and rebases onto the advanced main. The queue orders landings and decides
-   nothing about them — whether a row needed the user's look at all is never the queue's
-   question.
+   **When the user approves a merge, this is the hand-off — and you still never merge.**
 
-   Record the branch's commit `subjects` in the row before it lands. That is what makes landed
-   detection work: `orchestra ready` matches an exact commit **subject** against `main`, never a
-   hash, because a landing rebases.
+   ```sh
+   orchestra land <branch> --detach     # returns at once, exit 15
+   orchestra await <branch> --for=540   # exit 0 landed, 11 a gate refused, 12 run it again
+   ```
+
+   or hand the branch to the `merge_agent` agent — a different actor running the same two
+   commands with the conflict judgement attached. **Never background either call.** One branch
+   lands at a time behind a lock: landings are serialised, so a second one waits for the first
+   and rebases onto the advanced main. The queue orders landings and decides nothing about them
+   — whether a row needed the user's look at all is never the queue's question. Then: journal
+   the `landing` line, carry it in the checkpoint (never #1), and re-run step 1 — the launch step
+   picks up whatever the landing unblocked.
+
+   Record the branch's commit `subjects` in the row before it lands, even though the gate
+   records them too: the gate writes them from the one process that knows both halves, and the
+   conductor's own copy is what keeps the row readable if the gate's best-effort write fails.
+   That is what makes landed detection work: `orchestra ready` matches an exact commit
+   **subject** against `main`, never a hash, because a landing rebases.
 
    **A REFUSED GATE IS A CLAIM, NOT A VERDICT — and it comes in two flavours you must tell apart
    before you act.** On 2026-08-26 in planetCraft, MA4 was refused three times and only the
@@ -624,7 +631,7 @@ started *after* the hold was issued.
      cause was elsewhere entirely. A re-cut taken on the plausible answer writes a false cause
      into a test that outlives everybody who reads this. The ablation costs one run; make the
      worker do it and make it paste both hashes. The gate itself is a project's own `gates`
-     entry (phase 3), so this rule applies to whatever gate a project configures.
+     entry, so this rule applies to whatever gate a project configures.
    - *a single failure on a test the branch does not touch* — check three things before
      believing it: the branch touches neither the test nor its subject; the machine was
      over-subscribed while the suite ran; the test passes on re-run in isolation. All three held
@@ -633,7 +640,7 @@ started *after* the hold was issued.
      ticket queue is phase 5, so in this phase a finding like that goes to the user.
 
    **Drain the row's `postLanding` — the writes the BRANCH could not make.** The `ledgers`
-   config lists tracked files the main branch owns, and phase 3's gate commits them at the head
+   config lists tracked files the main branch owns, and the gate commits them at the head
    of every landing, so a branch that must change one writes the COMMAND down instead of running
    it. Carry them on the row as `postLanding: [{cmd, ranAt, error}]`, lifted from the worker's
    report, and run them in the MAIN checkout on the tick that sees the landing. On 2026-08-26 in
@@ -663,13 +670,12 @@ started *after* the hold was issued.
    known.has(task.key)) continue;` (`lib/roadmap/enrol.mjs`) — so a task the register already
    knows about is left exactly as this machine last wrote it.
 
-   `orchestra roadmap sync` is **phase 3, and online only** (see `## What is not here yet`): it
-   will close what the register proves landed, move every `status:` label onto what the board
-   derives, tick each programme's checklist, and close a finished programme — which is what makes
-   a finished roadmap leave the monitor. It will be idempotent: a tick that changed nothing writes
-   nothing. When it arrives it is the BACKSTOP, not the primary writer: the merge gate runs the
-   same command after every fast-forward. Offline there is nowhere to write a status, so it does
-   nothing there, and that is correct (spec §4.1).
+   `orchestra roadmap sync` exists. It closes what the register proves landed, moves every
+   `status:` label onto what the board derives, ticks each programme's checklist, and closes a
+   finished programme — which is what makes a finished roadmap leave the board. It is idempotent:
+   a tick that changed nothing writes nothing. **It is the BACKSTOP, not the primary writer**: the
+   merge gate runs the same command after every fast-forward, online only. Offline it does
+   nothing, and that is correct (spec §4.1) — there is nowhere to write a status.
 
    Keep the stale-board rule as a rule of this step: **if `orchestra roadmap board` reports
    itself stale, launch nothing this tick and end here** — a cached board cannot say whether
@@ -777,8 +783,8 @@ started *after* the hold was issued.
    Stopping is no longer going deaf. Four things wake you, each named with its phase where it
    has one: the answer watch armed in step 1 hands you each new answer within seconds — and
    until phase 4 there is no page to write one, so the beat is what it is really doing; worker
-   turns you resumed notify you as their Bash tasks complete; the landing re-invokes you once
-   phase 3 brings it; and phase 5's heartbeat guarantees a tick every hour whatever happens to
+   turns you resumed notify you as their Bash tasks complete; the landing re-invokes you, now,
+   when `await` returns; and phase 5's heartbeat guarantees a tick every hour whatever happens to
    you, standing down while you are alive so it cannot become a second conductor beside you.
 
    An interactive conductor may additionally arm one Monitor polling `claude agents --json` for
@@ -895,7 +901,7 @@ user cannot check.
 
 When a worker reports built, first ask what the row actually ships. **If it ships no page a human
 reads and no gameplay change, there is no gate**: it lands once every configured gate is green
-(`gates`, phase 3), the `landing` line goes in the journal, and the checkpoint carries it (never #1).
+(`gates`), the `landing` line goes in the journal, and the checkpoint carries it (never #1).
 Seven of the sixteen rows of the dev-loop roadmap, in planetCraft, shipped nothing a human reads,
 and every one of their approvals was granted unread.
 
@@ -906,8 +912,8 @@ Template's own `server :<port>`). **The user's validation of the page IS the app
 then ask a second time for the merge; that second question is the one this roadmap paid for
 thirteen times over, in planetCraft (see The framing pass, and the one interruption). What follows
 validation is step 6's business (see The tick): record the branch's commit `subjects` in the row
-BEFORE the hand-off — that is what makes landed detection work. The hand-off itself is phase 3's,
-and a landing deletes the worktree and the ref.
+BEFORE the hand-off — that is what makes landed detection work. The hand-off is the two commands
+above, and a landing deletes the worktree and the ref.
 
 **Never hand out a URL you have not fetched AND READ.** Not `curl` — it cannot reach a localhost
 server this shell can see listening. Fetch it and look at the body:
