@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { at, after, unconsumed, openPendingIds, PENDING_GRACE_MS } from '../lib/register/inbox.mjs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { at, after, unconsumed, openPendingIds, appendAnswer, readJsonl, PENDING_GRACE_MS } from '../lib/register/inbox.mjs';
 import { pendingId } from '../lib/register/pending.mjs';
 
 const state = (seen, pending = []) => ({ conductor: { inboxSeen: seen }, tasks: [{ id: 'demo/D1', pending }] });
@@ -39,4 +42,41 @@ test('openPendingIds keys on the row id the register carries', () => {
 
 test('an explicit item id wins over the hash', () => {
   assert.equal(pendingId('demo/D1', { id: 'chosen', kind: 'question', ask: 'x' }), 'chosen');
+});
+
+// P4's own write: `appendAnswer` is what makes `.orchestra/inbox.jsonl` exist at all. The round
+// trip that matters is not "the line is on disk" but "the SAME reader that consumes every other
+// entry consumes this one too" — a second idea of what an answer looks like would drift from
+// `unconsumed` silently.
+test('an entry appendAnswer writes round-trips through readJsonl and unconsumed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'orchestra-inbox-'));
+  const path = join(dir, 'inbox.jsonl');
+  try {
+    const item = { kind: 'question', ask: 'ship at 0.75 or 1.0?' };
+    const entry = {
+      ts: '2026-09-04T10:00:00.123Z', task: 'demo/D1',
+      pending: pendingId('demo/D1', item), answer: '0.75', from: 'monitor',
+    };
+    appendAnswer(path, entry);
+
+    const { entries, skipped } = readJsonl(path);
+    assert.deepEqual(entries, [entry]);
+    assert.equal(skipped, 0);
+
+    // Unconsumed against an empty cursor — nothing has stamped past it yet.
+    assert.equal(unconsumed(entries, state('', [item])).length, 1);
+    // Not after `inboxSeen` is stamped past the entry's own timestamp AND the item it answers is no
+    // longer open — the same two facts p2a's own acceptance test stamps together once a relay has
+    // actually delivered an answer. `inboxSeen` alone is not enough: the OR in `unconsumed` still
+    // re-delivers a recent answer while ITS OWN item is still open, on purpose (a free remark has no
+    // item to close), so consuming a targeted answer means both.
+    assert.equal(unconsumed(entries, state('2026-09-04T10:00:01.000Z', [])).length, 0);
+
+    // Append-only: a second write is a second line, never a rewrite of the first.
+    const second = { ...entry, ts: '2026-09-04T10:00:05.000Z', answer: '1.0' };
+    appendAnswer(path, second);
+    assert.deepEqual(readJsonl(path).entries, [entry, second]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
