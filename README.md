@@ -59,10 +59,10 @@ protocol that drives them, phase 3 the merge gate and `roadmap sync`:
 - **`/orchestra`** — the conductor protocol: the nevers, the journal, the framing pass, the nine
   steps of a tick, the playtest gate, and the worker briefs as templates a project fills from its
   own config (`briefExtra` is where it pastes its own hard rules).
-- **`/roadmap`** — the skill: the grammar, the board, and the eight roadmap subcommands.
+- **`/roadmap`** — the skill: the grammar, the board, and the nine roadmap subcommands.
 - **`orchestra doctor`** — the resolved configuration, and the only command that answers in a
   project with no config.
-- **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve>`**.
+- **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve|sync>`**.
 - **`orchestra journal|inbox|beat|lock|watch-answers`** — the register: one line with a measured
   clock, the answers a user posted on the page, who holds the baton, and one conductor at a time.
 - **`orchestra ready|tick-gate|yield-check`** — the launch plan, whether a heartbeat should tick at
