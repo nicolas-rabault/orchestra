@@ -118,6 +118,7 @@ test('recordInstance merges a monitor-shaped write onto a conductor-shaped one, 
   const now = Date.now();
   recordInstance({ id: 'aaa111', name: 'A', root, mode: 'offline', workers: 2,
     conductorSession: 's1', conductorPid: 4242 }, { now });
+  const firstWorkersAt = readInstances()[0].workersAt;
   recordInstance({ id: 'aaa111', name: 'A', root, mode: 'offline', port: 4390, monitorPid: 5151 },
     { now: now + 1000 });
   const all = readInstances();
@@ -127,6 +128,13 @@ test('recordInstance merges a monitor-shaped write onto a conductor-shaped one, 
   assert.equal(all[0].conductorPid, 4242);
   assert.equal(all[0].port, 4390);
   assert.equal(all[0].monitorPid, 5151);
+  // The write side of the `workersAt` rule: a write that carries no `workers` (the monitor-shaped
+  // one here) must NOT restamp it. `recordInstance`'s `if ('workers' in entry)` guard is the whole
+  // fix — deleting that condition (stamping `workersAt` unconditionally) would make `workersAt`
+  // track `updatedAt` exactly, which is the bug `otherWorkers`'s own staleness check exists to
+  // prevent: a monitor keepalive would then refresh a dead conductor's `workersAt` right along with
+  // `updatedAt`, and the staleness check below would never trigger.
+  assert.equal(all[0].workersAt, firstWorkersAt);
 });
 
 // `updatedAt` doubles as "does this entry still exist" (isLive) — the monitor's own 5-minute
@@ -155,6 +163,27 @@ test('otherWorkers only trusts workers while workersAt is fresh, falling back to
 
   // 0 from the stale entry (workersAt too old) + 3 from the legacy one (falls back to updatedAt).
   assert.equal(otherWorkers('mine11', { now }), 3);
+});
+
+// The staleness check above is not the whole rule: a LIVE conductor pid counts its workers
+// regardless of how stale `workersAt`/`updatedAt` are — exactly like `isLive` already treats a live
+// `conductorPid` as proof of life on its own. A watch loop armed overnight on a long-running task,
+// with no `ready` tick in between, is exactly this shape: alive, but hours past `SEEN_STALE_MS` on
+// both stamps. Without the OR, its workers would silently read as 0 and every OTHER project on the
+// machine would budget as if it held nothing — too MANY launches, the direction `machine.mjs`'s own
+// header (line 11) forbids.
+test('otherWorkers still counts a live conductor\'s workers, however stale workersAt and updatedAt are', () => {
+  const root = projectRoot();
+  const now = Date.now();
+  const stale = new Date(now - 6 * 60 * 60 * 1000 - 1).toISOString();   // one ms past SEEN_STALE_MS
+
+  mkdirSync(machineDir(), { recursive: true });
+  writeFileSync(instancesPath(), `${JSON.stringify({ version: 1, instances: [
+    { id: 'armed1', name: 'A', root, mode: 'offline', workers: 6, conductorPid: 4242,
+      updatedAt: stale, workersAt: stale },
+  ] }, null, 2)}\n`);
+
+  assert.equal(otherWorkers('mine11', { now, alive: (pid) => pid === 4242 }), 6);
 });
 
 // The read half of the same liveness rule, for `orchestra instances` and `doctor` — a dead entry on

@@ -53,16 +53,31 @@ test('pinConflict is null for "auto" by construction, even given a same-port col
 test('pinConflict names the other live project holding a pinned port', () => {
   const cfg = { id: 'mine11', monitor: { port: 45123 } };
   const instances = [
-    { id: 'mine11', name: 'Mine', root: '/mine', port: 45123 },   // my own entry: never my own conflict
-    { id: 'other1', name: 'Other', root: '/other', port: 45123 },
+    // my own entry: never my own conflict
+    { id: 'mine11', name: 'Mine', root: '/mine', port: 45123, monitorPid: process.pid },
+    { id: 'other1', name: 'Other', root: '/other', port: 45123, monitorPid: process.pid },
   ];
   assert.deepEqual(pinConflict(cfg, instances), { name: 'Other', root: '/other', port: 45123 });
 });
 
 test('pinConflict is null when no other live instance holds the pinned port', () => {
   const cfg = { id: 'mine11', monitor: { port: 45123 } };
-  const instances = [{ id: 'other1', name: 'Other', root: '/other', port: 9999 }];
+  const instances = [{ id: 'other1', name: 'Other', root: '/other', port: 9999, monitorPid: process.pid }];
   assert.equal(pinConflict(cfg, instances), null);
+});
+
+// A `port` claim outlives the monitor process that made it: nothing ever restamps it the way
+// `workersAt` gets restamped, and `ready`'s own periodic writes keep the entry's general liveness
+// (`isLive`, via `updatedAt`) fresh forever regardless of whether the monitor that claimed the port
+// is still running. So `pinConflict` checks `monitorPid` itself, right now — not the `instances`
+// array's own already-computed liveness — or a `doctor` error would become permanent and
+// unclearable the moment a monitor exits without a later write ever clearing `port`.
+test('pinConflict reports a conflict only for a live monitor pid, not a dead one still on file', () => {
+  const cfg = { id: 'mine11', monitor: { port: 45123 } };
+  const instances = [{ id: 'other1', name: 'Other', root: '/other', port: 45123, monitorPid: 999999 }];
+  assert.deepEqual(pinConflict(cfg, instances, { alive: (pid) => pid === 999999 }),
+    { name: 'Other', root: '/other', port: 45123 });
+  assert.equal(pinConflict(cfg, instances, { alive: () => false }), null);
 });
 
 const closeServer = (server) => new Promise((resolve) => server.close(() => resolve()));

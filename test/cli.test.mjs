@@ -9,6 +9,7 @@ import { makeRepo } from './helpers/fixture.mjs';
 import { writeState, emptyState } from '../lib/register/state.mjs';
 import { recordInstance } from '../lib/machine.mjs';
 import { projectId } from '../lib/paths.mjs';
+import { candidatePort } from '../lib/monitor/port.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 const repos = [];
@@ -86,7 +87,8 @@ test('doctor does not say it in online mode', () => {
 // §8.3 / plan scope answer 4: a pinned `monitor.port` already held by another LIVE registered
 // project is an error, not a warning — it will refuse to start, not silently move. `run()` throws
 // on a non-zero exit (`execFileSync`), so this catches the throw and reads the error's own
-// `stdout`/`status` rather than a returned string.
+// `stderr`/`status` rather than a returned string — every other CLI error path in this file writes
+// to stderr, and `doctor`'s error follows the same convention.
 test('doctor reports a pinned monitor.port already held by another live project, and exits 1', () => {
   const other = repo({ name: 'other-project' });
   const mine = repo({ mode: 'offline', config: { monitor: { port: 45123 } } });
@@ -96,17 +98,19 @@ test('doctor reports a pinned monitor.port already held by another live project,
   assert.throws(
     () => execFileSync('node', [BIN, 'doctor'], { cwd: mine.root, encoding: 'utf8', stdio: 'pipe' }),
     (e) => e.status === 1
-      && e.stdout.includes(`error: monitor.port 45123 is pinned here but already held by other-project (${other.root})`),
+      && e.stderr.includes(`error: monitor.port 45123 is pinned here but already held by other-project (${other.root})`),
   );
 });
 
 // "auto" never conflicts, by construction (§8.3) — the candidate is a pure function of the
-// project's own id, so it cannot be "stolen": no error, whatever the registry holds.
+// project's own id, so it cannot be "stolen". The collision built here is REAL — the other
+// instance's recorded port IS `mine`'s own auto candidate — so this proves the "auto" guard itself
+// is what suppresses the error, not that the two numbers merely happened not to match.
 test('doctor prints no error for an "auto" monitor.port, even given a same-port collision on file', () => {
   const other = repo({ name: 'other-project' });
   const mine = repo({ mode: 'offline' });   // monitor.port defaults to "auto"
   recordInstance({ id: projectId(other.root), name: 'other-project', root: other.root,
-    mode: 'offline', port: 12345, monitorPid: process.pid });
+    mode: 'offline', port: candidatePort(projectId(mine.root)), monitorPid: process.pid });
 
   const out = run(mine.root, 'doctor');
   assert.doesNotMatch(out, /error:/);
