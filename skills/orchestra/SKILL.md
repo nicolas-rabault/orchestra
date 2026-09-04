@@ -600,20 +600,23 @@ started *after* the hold was issued.
 6. **Landings.** For every row the reconcile just moved to `landed`: tell the user at the next
    checkpoint, and continue — the launch step below picks up whatever the landing unblocked.
 
-   **When the user approves a merge, this is the hand-off — and you still never merge.**
+   **When the user approves a merge, this is the hand-off — and you still never merge: that rule
+   outlives its enforcement, and phase 5's hooks are what will hold it.**
 
    ```sh
    orchestra land <branch> --detach     # returns at once, exit 15
-   orchestra await <branch> --for=540   # exit 0 landed, 11 a gate refused, 12 run it again
+   orchestra await <branch> --for=540   # exit 0 landed, 11 a gate refused, 12 run await again
    ```
 
    or hand the branch to the `merge_agent` agent — a different actor running the same two
-   commands with the conflict judgement attached. **Never background either call.** One branch
-   lands at a time behind a lock: landings are serialised, so a second one waits for the first
-   and rebases onto the advanced main. The queue orders landings and decides nothing about them
-   — whether a row needed the user's look at all is never the queue's question. Then: journal
-   the `landing` line, carry it in the checkpoint (never #1), and re-run step 1 — the launch step
-   picks up whatever the landing unblocked.
+   commands with the conflict judgement attached, and the one to hand off to on any other code
+   too: 10 (conflict), 13 (a precondition failed), 16 (killed, no outcome recorded). **Never
+   background either call.** One branch lands at a time behind a lock: landings are serialised,
+   so a second one waits for the first and rebases onto the advanced main. The queue orders
+   landings and decides nothing about them — whether a row needed the user's look at all is never
+   the queue's question; `orchestra queue-list` shows what is queued or landing right now, for
+   when one seems stuck. Then: journal the `landing` line, carry it in the checkpoint (never #1),
+   and re-run step 1 — the launch step picks up whatever the landing unblocked.
 
    Record the branch's commit `subjects` in the row before it lands, even though the gate
    records them too: the gate writes them from the one process that knows both halves, and the
@@ -672,7 +675,9 @@ started *after* the hold was issued.
 
    `orchestra roadmap sync` exists. It closes what the register proves landed, moves every
    `status:` label onto what the board derives, ticks each programme's checklist, and closes a
-   finished programme — which is what makes a finished roadmap leave the board. It is idempotent:
+   finished programme — which drops it from the shared channel's open-issue view, not from
+   `orchestra roadmap board`: that command's own listing keeps every closed task forever, by
+   design (`state: 'all'`). It is idempotent:
    a tick that changed nothing writes nothing. **It is the BACKSTOP, not the primary writer**: the
    merge gate runs the same command after every fast-forward, online only. Offline it does
    nothing, and that is correct (spec §4.1) — there is nowhere to write a status.
@@ -783,8 +788,11 @@ started *after* the hold was issued.
    Stopping is no longer going deaf. Four things wake you, each named with its phase where it
    has one: the answer watch armed in step 1 hands you each new answer within seconds — and
    until phase 4 there is no page to write one, so the beat is what it is really doing; worker
-   turns you resumed notify you as their Bash tasks complete; the landing re-invokes you, now,
-   when `await` returns; and phase 5's heartbeat guarantees a tick every hour whatever happens to
+   turns you resumed notify you as their Bash tasks complete — a landing dispatched to
+   `merge_agent` wakes you the very same way, its turn ending being no different from a worker's;
+   a landing you run yourself needs no wake at all, since `await` blocks in bounded chunks inside
+   your own turn and re-running it is always correct; and phase 5's heartbeat guarantees a tick
+   every hour whatever happens to
    you, standing down while you are alive so it cannot become a second conductor beside you.
 
    An interactive conductor may additionally arm one Monitor polling `claude agents --json` for
