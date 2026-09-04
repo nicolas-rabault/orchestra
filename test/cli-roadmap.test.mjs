@@ -18,7 +18,9 @@ import {
   readState, writeState, emptyState, registerRow,
 } from '../lib/register/state.mjs';
 import { parseRoadmap } from '../lib/roadmap/parse.mjs';
-import { LABELS, taskTitle } from '../lib/store/github/issues.mjs';
+import {
+  LABELS, taskTitle, renderTaskIssue, renderProgrammeIssue,
+} from '../lib/store/github/issues.mjs';
 import { roadmapCommand } from '../lib/cli/roadmap.mjs';
 
 const repos = [];
@@ -220,6 +222,40 @@ test('an unknown subcommand throws naming the nine that exist', () => {
     () => roadmapCommand({ cfg, args: ['bogus'] }),
     (e) => /unknown subcommand "bogus"/.test(e.message) && known.every((verb) => e.message.includes(verb)),
   );
+});
+
+// `cmdSync` is the layer the merge gate spawns after every fast-forward, and until this test
+// existed neither of its two output lines had ever been printed by anything.
+test('sync offline says there is nowhere to write a status, and exits 0', () => {
+  const { cfg } = offlineProject();
+  const { text, exitCode } = capture(() => roadmapCommand({ cfg, args: ['sync'] }));
+  assert.equal(exitCode, undefined);
+  assert.match(text, /sync: nothing to do — .*nowhere/);
+});
+
+test('sync online closes a landed task, strips its stale label, and reports the summary line', () => {
+  const { r, cfg, gh } = onlineProject('nico');
+  const task = parseRoadmap(ROADMAP).tasks[0];
+  const taskIssue = renderTaskIssue(task, 1);
+  const programmeIssue = renderProgrammeIssue({
+    roadmap: 'demo', title: 'Demo roadmap', prose: '', tasks: [task], numbers: { 'demo/D1': 5 },
+  });
+  gh.state.push(
+    { number: 1, title: programmeIssue.title, state: 'open', labels: programmeIssue.labels, author: 'nico', body: programmeIssue.body },
+    { number: 5, title: taskIssue.title, state: 'open', labels: taskIssue.labels, body: taskIssue.body },
+  );
+
+  // A commit whose subject the register will record as demo/D1's landing, on THIS machine's main —
+  // the fact `landedHere` reads.
+  r.git('commit', '--allow-empty', '-q', '-m', 'feat: land demo/D1');
+  const state = emptyState(cfg.root);
+  state.tasks = [{ ...registerRow(task, { roadmapSlug: 'demo', status: 'landed' }), subjects: ['feat: land demo/D1'] }];
+  writeState(cfg.root, state);
+
+  const { text } = capture(() => roadmapCommand({ cfg, args: ['sync'], deps: { gh } }));
+  assert.match(text, /sync: closed demo\/D1; 1 label change\(s\); 0 programme\(s\) updated/);
+  assert.equal(gh.state.find((i) => i.number === 5).state, 'closed');
+  assert.deepEqual(gh.state.find((i) => i.number === 5).labels, [LABELS.task]);
 });
 
 test('release without --force is refused when someone else holds the claim, and --force takes it', () => {

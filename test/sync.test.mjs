@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tickChecklist, planLabels, planProgrammes, planSync } from '../lib/store/github/sync.mjs';
 import { LABELS } from '../lib/store/github/issues.mjs';
+import { UNVERIFIED } from '../lib/roadmap/board.mjs';
 
 test('the checklist ticks and UNTICKS from what actually closed', () => {
   // Two-way on purpose: a reopened issue unticks. A checklist that could only ever advance would
@@ -29,6 +30,22 @@ test('a landed task wants NO status label, and a stale one is stripped', () => {
   // every landing and on every tick.
   assert.deepEqual(planLabels([{ issue: 9, status: 'todo', labels: [LABELS.todo] }]), []);
   assert.deepEqual(planLabels([{ issue: 10, status: 'landed', labels: [] }]), []);
+});
+
+test('an unverified row keeps its status:todo — the derivation is not landed, so the label is not a lie', () => {
+  // Gated on the STRICT status, never on `isLanded` (which also admits UNVERIFIED): a status label
+  // is a projection of the derivation, and 22 of 41 landed rows in planetCraft carried no recorded
+  // subject at all — stripping the label here would leave an open issue with no `status:` label and
+  // nothing having closed it, findable only through a local `unverified:` line.
+  assert.deepEqual(planLabels([{ issue: 14, status: UNVERIFIED, labels: [LABELS.todo] }]), []);
+  // And `planSync` never closes it either: `landedHere` is false for exactly the same reason.
+  const plan = planSync({
+    rows: [{ key: 'demo/D4', issue: 14, issueState: 'open', status: UNVERIFIED, labels: [LABELS.todo],
+      landedHere: false, subjects: [] }],
+    programmeIssues: [], taskIssues: [],
+  });
+  assert.deepEqual(plan.close, []);
+  assert.deepEqual(plan.labels, []);
 });
 
 test('a programme closes only when it has tasks and every one of them is closed', () => {

@@ -33,6 +33,17 @@ test('a recorded subject on main makes it landed', () => {
   assert.equal(reconcile({ tasks, git, register, overlay: new Map() }).rows[0].status, 'landed');
 });
 
+// `landedHere` is the one fact that authorises `sync` to close another party's issue, so it is
+// pinned directly here — not only through a consumer's test — or a later edit to
+// `deriveLocalStatus` (subject trimming, a log window, a normalisation) could silently start
+// closing issues that never landed with every other test still green.
+test('landedHere is true only when the SAME derivation that decides status also says landed', () => {
+  const git = { refs: new Set(), mainSubjects: new Set(['feat: the first thing']) };
+  const register = [row({ status: 'landed', subjects: ['feat: the first thing'] })];
+  assert.equal(reconcile({ tasks, git, register, overlay: new Map() }).rows[0].landedHere, true);
+  assert.equal(reconcile({ tasks, git: noGit, register: [], overlay: new Map() }).rows[0].landedHere, false);
+});
+
 test('landed with NO recorded subject is "landed?", listed separately, never todo', () => {
   const register = [row({ status: 'landed', subjects: [] })];
   const b = reconcile({ tasks, git: noGit, register, overlay: new Map() });
