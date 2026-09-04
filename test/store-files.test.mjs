@@ -85,8 +85,6 @@ test('everything is mine, everything is open, and the commands that cannot apply
   assert.equal(p.owner, ctx.store.whoami());
   assert.equal(ctx.store.openRoadmap('demo').noop, true);
   assert.match(ctx.store.reserve('demo').why, /one machine/i);
-  assert.equal(ctx.store.setStatus('demo/D1', 'landed').noop, true);
-  assert.equal(ctx.store.close('demo/D1', { subject: 'x' }).noop, true);
   assert.equal(ctx.store.claim('demo/D1', 'me').ok, true);
 });
 

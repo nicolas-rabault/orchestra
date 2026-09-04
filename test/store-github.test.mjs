@@ -137,16 +137,18 @@ test('claim on a task already held by someone else fails, naming the holder', ()
   assert.deepEqual(store.claim('demo/D1', 'bob'), { ok: false, holder: 'alice' });
 });
 
-test('close closes the issue, and the overlay then reports it landed', () => {
+// A CLOSED issue is landed, whoever it is assigned to and whatever git says here — another
+// developer's commit never reaches this machine's main, so the shared channel is the only witness.
+// `sync` is what does the closing now; this asserts the reading, which is the half the board needs.
+test('a closed task issue reads as landed in the overlay', () => {
   const f = makeFakeGh({
     me: 'nico',
     issues: [
       { number: 1, title: 'demo — Demo', labels: [LABELS.programme], author: 'nico', body: '- **Roadmap** demo\n' },
-      { number: 5, title: taskTitle(task), labels: [LABELS.task], body: 'Programme: #1\n' },
+      { number: 5, title: taskTitle(task), labels: [LABELS.task], state: 'closed', body: 'Programme: #1\n' },
     ],
   });
   const { store } = online(f);
-  assert.deepEqual(store.close('demo/D1'), { noop: false });
   assert.equal(store.overlay().get('demo/D1').status, 'landed');
 });
 

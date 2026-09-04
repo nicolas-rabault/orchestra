@@ -207,7 +207,6 @@ test('[offline] the overlay is empty and every command that cannot apply says so
   p.store.publish(p.draftPath);
   assert.equal(p.store.overlay().size, 0);
   assert.equal(p.store.openRoadmap('demo').noop, true);
-  assert.equal(p.store.setStatus('demo/D1', 'claimed').noop, true);
 
   // Offline there is nowhere to write a status, so `sync` does nothing — and that is correct
   // (spec §4.1), not a gap. It says why and exits 0.

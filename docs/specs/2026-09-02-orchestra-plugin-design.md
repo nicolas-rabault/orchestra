@@ -171,8 +171,7 @@ Store = {
   publish(draftPath),            // -> { slug, keys }
   claim(key, who),               // -> { ok: true } | { ok: false, holder }
   release(key, { force }),
-  setStatus(key, status),
-  close(key, { subject }),
+  sync(rows),                    // -> { noop, why } | { closed, labels, programmes }
   openRoadmap(slug), reserve(slug),
 }
 ```
