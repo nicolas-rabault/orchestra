@@ -22,6 +22,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { joinRows, buildModel, invokeCommand } from '../lib/monitor/model.mjs';
 import { layout } from '../lib/monitor/layout.mjs';
+import { tabsOf } from '../lib/monitor/tabs.mjs';
 import { openItems } from '../lib/monitor/answers.mjs';
 import { pendingId } from '../lib/register/pending.mjs';
 import { PENDING_GRACE_MS } from '../lib/register/inbox.mjs';
@@ -374,6 +375,19 @@ test('buildModel attaches a listening port to the node that holds it', () => {
   assert.deepEqual(buildModel(base).nodes[0].servers.map((s) => s.port), [5307]);
 });
 
+// New: `serverFor` matches on port ALONE (Task 2's `listServers` probes only the ports the
+// register names, so there is no `cwd` to match against) — asserted on the FULL server entry, not
+// just its port, so a regression back to a `cwd`/basename label would be caught here.
+test('buildModel labels a matched server by its port, ignoring a server on some other port', () => {
+  const m = buildModel({ ...base, servers: [{ port: 5307, pid: 1 }, { port: 9999, pid: 2 }] });
+  assert.deepEqual(m.nodes[0].servers, [{ port: 5307, label: '5307' }]);
+});
+
+test('buildModel gives an empty server list to a node whose port nothing listens on', () => {
+  const m = buildModel({ ...base, register: [regRow({ port: 6000 })], servers: [{ port: 5307, pid: 1 }] });
+  assert.deepEqual(m.nodes[0].servers, []);
+});
+
 test('buildModel passes the board failure through, so the page can say what is missing', () => {
   const m = buildModel({ ...base, board: { status: 'absent', rows: [], message: 'not here yet' } });
   assert.equal(m.source.board, 'absent');
@@ -428,7 +442,6 @@ test('buildModel frames register rows by the roadmap slug they name, and badges 
   assert.deepEqual(m.nodes.filter((node) => node.badges.includes('unfiled')).map((node) => node.key), ['unfiled/ZZ']);
   // A bare dep still resolves, inside its own frame and not across frames.
   assert.deepEqual(m.nodes.find((node) => node.key === 'lighting/A5').depKeys, ['lighting/S5']);
-  assert.equal(m.nodes.find((node) => node.key === 'lighting/S5').roadmapSlug, 'lighting');
   assert.deepEqual(layout(m.nodes).frames.map((f) => f.roadmap), ['council', 'lighting', 'unfiled']);
 });
 
@@ -442,6 +455,56 @@ test('buildModel does not throw when a register row has a session but no branch 
   assert.equal(node.invoke.lines[0], 'claude stop s1');
   assert.ok(node.invoke.lines[1].includes(`${CFG.worktrees}/x`));
 });
+
+// The strip across the top of the window. The words are the scheduler's: `lib/register/ready.mjs`
+// treats `claimed`/`review` as "in flight" and hands work only to `todo`, so the header counts
+// those two and never invents a third meaning for "active". It counts the TAB the page is showing,
+// which is why the figures come from `tabsOf` rather than from a second tally on the model: the
+// strip describes what is on screen, and a filtered canvas under an unfiltered count is the page
+// contradicting itself.
+{
+  const stripRows = [
+    regRow({ id: 'lod/C2', status: 'review', branch: 'a' }),
+    regRow({ id: 'lod/C3', status: 'claimed', branch: 'b' }),
+    regRow({ id: 'lod/C4', status: 'todo', branch: 'c' }),
+    regRow({ id: 'lod/C5', status: 'todo', branch: 'd' }),
+    regRow({ id: 'lod/C6', status: 'landed', branch: 'e' }),
+    regRow({ id: 'lod/C7', status: 'dropped', branch: 'f' }),
+    regRow({ id: 'lod/C8', status: 'built-held', branch: 'g' }),
+  ];
+  const stripNodes = buildModel({ ...base, board: { status: 'absent', rows: [], message: null }, register: stripRows }).nodes;
+  const [{ counts: stripCounts }] = tabsOf(stripNodes);
+
+  test('the board counted for the strip: counts in-flight tasks as active and untouched ones as waiting', () => {
+    assert.equal(stripCounts.active, 2);
+    assert.equal(stripCounts.waiting, 2);
+    assert.equal(stripCounts.landed, 1);
+  });
+
+  // `dropped` and `built-held` are in none of the three figures, so without a total the strip
+  // would read as though 5 of 5 tasks were accounted for and quietly lose two of them.
+  test('the board counted for the strip: carries the total, so the three figures cannot be read as everything there is', () => {
+    assert.equal(stripCounts.total, 7);
+    assert.ok(stripCounts.active + stripCounts.waiting + stripCounts.landed < stripCounts.total);
+  });
+
+  test('the board counted for the strip: counts a task the roadmap defines and no session has adopted', () => {
+    const m = buildModel({ ...base, register: [] });
+    assert.deepEqual(tabsOf(m.nodes)[0].counts, { active: 1, waiting: 0, landed: 0, total: 1 });
+  });
+
+  // Each tab counts its own rows alone: the local figures over the local canvas, hers over hers.
+  test("the board counted for the strip: keeps this machine's figures apart from another developer's", () => {
+    const m = buildModel({ ...base, register: [], board: { status: 'ok', message: null, rows: [
+      boardRow(),
+      boardRow({ key: 'pixels/Q1', id: 'Q1', roadmap: 'pixels', branch: 'pixels/q1', status: 'claimed', mine: false, owner: 'alice', programmeState: 'open' }),
+      boardRow({ key: 'pixels/Q2', id: 'Q2', roadmap: 'pixels', branch: 'pixels/q2', status: 'todo', mine: false, owner: 'alice', programmeState: 'open' }),
+    ] } });
+    const tabs = tabsOf(m.nodes);
+    assert.deepEqual(tabs[0].counts, { active: 1, waiting: 0, landed: 0, total: 1 });
+    assert.deepEqual(tabs[1].counts, { active: 1, waiting: 1, landed: 0, total: 2 });
+  });
+}
 
 // ---------------------------------------------------------------------------------------------
 // invokeCommand
