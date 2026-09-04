@@ -13,8 +13,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfigOrThrow } from '../lib/config.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
-import { createHandler, PUBLIC_DIR } from '../lib/monitor/server.mjs';
+import { createHandler, serve, PUBLIC_DIR } from '../lib/monitor/server.mjs';
 import { makeRepo } from './helpers/fixture.mjs';
+import { fakeReq, fakeRes } from './helpers/fakeHttp.mjs';
 
 const repos = [];
 const dirs = [];
@@ -33,22 +34,6 @@ function fixture(name = 'served') {
   const cfg = loadConfigOrThrow(r.root);
   return { ...r, cfg, handler: createHandler({ cfg, port: FAKE_PORT, publicDir: PUBLIC_DIR }) };
 }
-
-const fakeRes = () => {
-  const res = { code: null, body: null, headers: null, headersSent: false };
-  res.writeHead = (code, headers) => { res.code = code; res.headers = headers ?? null; res.headersSent = true; };
-  res.end = (body) => { res.body = body ?? null; };
-  return res;
-};
-
-const fakeReq = (method, url, { body = null, headers = {} } = {}) => ({
-  method, url, headers,
-  on(event, fn) {
-    if (event === 'data' && body !== null) fn(body);
-    if (event === 'end') fn();
-    return this;
-  },
-});
 
 const ask = async (f, method, url, opts) => {
   const res = fakeRes();
@@ -112,6 +97,28 @@ test('refuses a malformed answer with a 400 rather than a crash, and writes noth
 });
 
 // ---- new here ------------------------------------------------------------------------------------
+
+// `replaceAll`'s replacement STRING expands `$&`, `$'` and friends. Passing the escaped name as a
+// string would splice the remainder of the file in after the title — `<script src="/app.js">` tag
+// included — straight past the escaping. A replacer function's return value is inserted verbatim.
+test('a project whose name contains $ patterns does not splice the file into its own title', async () => {
+  const f = fixture("x$'y$&z");
+  const html = String((await ask(f, 'GET', '/')).body);
+  // `&` is an entity by the time it reaches the title; the `$` sequences are not, and must survive
+  // verbatim rather than expanding into the file around them.
+  assert.match(html, /<title>x\$'y\$&amp;z — orchestra<\/title>/);
+  // The tell of the bug: `$'` inserts everything AFTER the match, so the rest of the page would
+  // appear a second time and the file would carry two <main> elements.
+  assert.equal(html.split('<main>').length - 1, 1);
+});
+
+test('an answer larger than the 1 MB cap is refused as too large, not as "not JSON"', async () => {
+  const f = fixture();
+  const huge = JSON.stringify({ task: null, pending: null, answer: 'x'.repeat(1_100_000) });
+  const res = await ask(f, 'POST', '/api/answer', { body: huge });
+  assert.equal(res.code, 413);
+  assert.match(JSON.parse(res.body).error, /larger than 1 MB/);
+});
 
 test('the page carries the project name, as TEXT: a project called <script> names a tab, it does not run', async () => {
   const f = fixture('<script>alert(1)</script>');
@@ -216,5 +223,30 @@ test('the dev-server list is probed once for two model builds, and again when th
     assert.equal(readFileSync(calls, 'utf8'), 'xx', 'a new port is a new question');
   } finally {
     process.env.PATH = PATH;
+  }
+});
+
+// `serve` binds and nothing else: no browser, no registry write, no process of any kind. Those are
+// `lib/cli/monitor.mjs`'s, and the acceptance drives them through `orchestra monitor`.
+test('serve binds, and the bound server carries an error listener of its own', async () => {
+  const f = fixture();
+  const { server, port, url } = await serve(f.cfg);
+  try {
+    assert.ok(server.listening);
+    assert.equal(url, `http://127.0.0.1:${port}`);
+    // `listenOnFreePort` removes both of ITS listeners the instant the bind succeeds, and nothing in
+    // this plugin installs `process.on('uncaughtException')` — so without one here an 'error' event
+    // on the listening socket (EMFILE at accept time, above all) would terminate node outright, with
+    // no diagnostic. `emit` returning true is node's own answer to "did anything handle this".
+    const write = process.stderr.write.bind(process.stderr);
+    let logged = '';
+    process.stderr.write = (chunk) => { logged += chunk; return true; };
+    let handled;
+    try { handled = server.emit('error', new Error('EMFILE, too many open files')); }
+    finally { process.stderr.write = write; }
+    assert.equal(handled, true, 'an error event on the bound server is handled');
+    assert.match(logged, /the monitor's socket reported an error: EMFILE/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
   }
 });

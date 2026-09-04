@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SHARED_MODULES } from '../lib/monitor/server.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -150,6 +151,23 @@ test('a "/"-rooted specifier is legal only in a browser asset, and only when it 
   assert.equal(browserUrl(asset, '//cdn.example.com/x.js'), false);
   // The same specifier in a file node executes: an offence.
   assert.equal(browserUrl(`lib${sep}monitor${sep}server.mjs`, '/layout.mjs'), false);
+});
+
+// The exemption above is justified by one sentence — "it is a URL this server answers from a closed
+// list" — and this is what makes that sentence true rather than a claim. NOTHING LOADS `app.js`: no
+// test in this repository executes a browser asset, so an import added to one and not to
+// `SHARED_MODULES` would be a silent 404 that breaks the page while every suite stays green. This is
+// the load-bearing point of the acknowledged gap, and it costs one walk.
+test('every "/"-rooted import in a browser asset is a path the monitor actually serves', () => {
+  const asked = new Set();
+  for (const file of files(join(repo, 'lib', 'monitor', 'public'))) {
+    for (const spec of packageImports(readFileSync(file, 'utf8'))) {
+      if (spec.startsWith('/')) asked.add(spec);
+    }
+  }
+  // A positive control: an empty set would pass the subset assertion below without proving anything.
+  assert.ok(asked.size > 0, 'the page imports at least one shared module');
+  assert.deepEqual([...asked].sort().filter((s) => !SHARED_MODULES.includes(s)), []);
 });
 
 test('package.json declares no dependencies', () => {

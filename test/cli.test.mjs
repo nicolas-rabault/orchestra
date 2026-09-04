@@ -231,9 +231,12 @@ test('every registered verb but the machine-level ones honours the off switch â€
     assert.equal(res.stderr, '', `${verb}: expected no stderr, got ${JSON.stringify(res.stderr)}`);
   }
 
-  // The positive control: each exception answers in that same configless directory.
+  // The positive control: each exception ANSWERS and SUCCEEDS in that same configless directory.
+  // Both halves â€” a verb that started exiting 1 while still printing its answer would otherwise
+  // pass here, and an exit code is what a script reads.
   for (const verb of MACHINE_VERBS) {
     const res = spawnSync('node', [BIN, verb], { cwd: r.root, encoding: 'utf8' });
+    assert.equal(res.status, 0, `${verb}: expected exit 0, got ${res.status} (stderr: ${res.stderr})`);
     assert.match(res.stdout, /\S/, `${verb}: expected the machine-level verb to answer anyway`);
   }
 });

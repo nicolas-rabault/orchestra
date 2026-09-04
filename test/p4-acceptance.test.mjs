@@ -32,6 +32,7 @@ import { loadConfigOrThrow } from '../lib/config.mjs';
 import { candidatePort } from '../lib/monitor/port.mjs';
 import { createHandler, PUBLIC_DIR } from '../lib/monitor/server.mjs';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
+import { fakeReq, fakeRes } from './helpers/fakeHttp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 
@@ -111,24 +112,6 @@ const stopMonitor = (m) => new Promise((resolve) => {
   if (m.child.exitCode !== null || m.child.signalCode !== null) { resolve(); return; }
   m.child.once('exit', () => resolve());
   m.child.kill('SIGTERM');
-});
-
-// The fake response the source's own handler suite used: it records what `writeHead`/`end` were
-// given and nothing else.
-const fakeRes = () => {
-  const res = { code: null, body: null, headers: null, headersSent: false };
-  res.writeHead = (code, headers) => { res.code = code; res.headers = headers ?? null; res.headersSent = true; };
-  res.end = (body) => { res.body = body ?? null; };
-  return res;
-};
-
-const fakeReq = (method, url, { body = null, headers = {} } = {}) => ({
-  method, url, headers,
-  on(event, fn) {
-    if (event === 'data' && body !== null) fn(body);
-    if (event === 'end') fn();
-    return this;
-  },
 });
 
 // The in-process handler BINDS NOTHING, so the port it is handed is only the base it parses a
@@ -300,6 +283,15 @@ test('a second `orchestra monitor` in the same project points at the first page 
   // is still the one serving it.
   assert.equal(entryOf(p.id).port, port);
   assert.ok(stillServing(first));
+
+  // And the argument check runs BEFORE that refusal, or `orchestra monitor --prot` in a project
+  // whose page is already up would print "already open", exit 0, and never mention the argument it
+  // did not understand.
+  const typo = spawnSync(process.execPath, [BIN, 'monitor', '--prot'],
+    { cwd: p.root, encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
+  assert.equal(typo.status, 1);
+  assert.equal(typo.stdout, '');
+  assert.match(typo.stderr, /unknown argument --prot/);
 
   await stopMonitor(first);
 });
