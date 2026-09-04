@@ -4,6 +4,7 @@ import { writeFileSync, existsSync } from 'node:fs';
 import { makeRepo } from './helpers/fixture.mjs';
 import {
   statePath, emptyState, readState, writeState, registerRow, qualifyDep, FOREIGN, STRUCTURAL,
+  recordLanding,
 } from '../lib/register/state.mjs';
 
 const repos = [];
@@ -93,4 +94,17 @@ test('FOREIGN is terminal so nothing schedules another developer\'s task here', 
 
 test('every key of an empty state is structural, so the archive can never file one as prose', () => {
   for (const k of Object.keys(emptyState('/tmp/x'))) assert.ok(STRUCTURAL.has(k), `${k} is not structural`);
+});
+
+test('recordLanding unions subjects onto the matching row and never duplicates them', () => {
+  // A row that lands in two goes — a follow-up after a held branch — keeps the subjects of both, and
+  // re-running `land` on the same branch cannot duplicate them.
+  const state = { tasks: [{ id: 'demo/D1', branch: 'demo/d1', subjects: ['feat: one'], status: 'review' }] };
+  const once = recordLanding(state, 'demo/d1', ['feat: one', 'fix: two']);
+  assert.equal(once.matched, 'demo/D1');
+  assert.deepEqual(once.state.tasks[0].subjects, ['feat: one', 'fix: two']);
+  assert.equal(once.state.tasks[0].status, 'landed');
+  // A branch with no row is the ordinary case (a fix, a study) and says nothing.
+  assert.equal(recordLanding(state, 'nobody/knows', ['x']).matched, null);
+  assert.equal(recordLanding({}, 'demo/d1', ['x']).matched, null);
 });

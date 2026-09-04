@@ -226,6 +226,35 @@ test('a second --detach on a running landing does not start a second one', () =>
   run(r.root, 'await', branch, '--for=60');
 });
 
+test('a landing records its commit subjects on the register row that named the branch', () => {
+  // THE WHOLE PATH, in a scratch repository, because the write is wrapped in a catch that can turn a
+  // programming error into one warning line — which is exactly how the source shipped a landing that
+  // exited 0 while the register was never written, for two days and every landing.
+  const r = project([{ name: 'green', cmd: 'true' }]);
+  const { branch } = branchWith(r);
+  writeFileSync(join(r.root, '.orchestra', 'state.json'), `${JSON.stringify({
+    version: 1, root: r.root, adopted: true,
+    conductor: { session: null, language: null, inboxSeen: null },
+    budgetResetAt: null,
+    tasks: [{ id: 'demo/D1', branch, subjects: [], status: 'review' }],
+  }, null, 2)}\n`);
+
+  assert.equal(run(r.root, 'land', branch).code, 0);
+  const state = JSON.parse(readFileSync(join(r.root, '.orchestra', 'state.json'), 'utf8'));
+  assert.deepEqual(state.tasks[0].subjects, ['feat: the branch does a thing']);
+  assert.equal(state.tasks[0].status, 'landed');
+});
+
+test('an unwritable register does not stop a landing that has already merged', () => {
+  const r = project([{ name: 'green', cmd: 'true' }]);
+  const { branch } = branchWith(r);
+  writeFileSync(join(r.root, '.orchestra', 'state.json'), 'not json at all');
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+  assert.match(out, /landed, but the register was not updated/);
+  assert.deepEqual(branches(r), ['main']);
+});
+
 test('queue-list prints a held entry with its note, and reaps an entry whose branch is gone', () => {
   const r = project([{ name: 'suite', cmd: 'exit 1' }]);
   const { branch } = branchWith(r);
