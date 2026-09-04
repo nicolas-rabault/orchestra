@@ -1,16 +1,30 @@
-import { test, after } from 'node:test';
+import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
 import { writeState, emptyState } from '../lib/register/state.mjs';
+import { recordInstance } from '../lib/machine.mjs';
+import { projectId } from '../lib/paths.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
-after(() => repos.forEach((r) => r.cleanup()));
+
+// A temporary HOME, exactly like test/machine.test.mjs's own pattern — the doctor pin-conflict
+// tests below write real entries into `~/.orchestra/instances.json`, and must never touch the
+// developer's own registry. Harmless for every other test in this file, none of which reads HOME.
+const HOME = process.env.HOME;
+const homes = [];
+beforeEach(() => { const h = mkdtempSync(join(tmpdir(), 'orchestra-home-')); homes.push(h); process.env.HOME = h; });
+after(() => {
+  process.env.HOME = HOME;
+  homes.forEach((h) => rmSync(h, { recursive: true, force: true }));
+  repos.forEach((r) => r.cleanup());
+});
 
 const run = (cwd, ...args) => {
   const r = execFileSync('node', [BIN, ...args], { cwd, encoding: 'utf8' });
@@ -67,6 +81,48 @@ test('doctor says what offline cannot answer', () => {
 test('doctor does not say it in online mode', () => {
   const r = repo({ mode: 'online' });
   assert.doesNotMatch(run(r.root, 'doctor'), /this machine only/i);
+});
+
+// §8.3 / plan scope answer 4: a pinned `monitor.port` already held by another LIVE registered
+// project is an error, not a warning — it will refuse to start, not silently move. `run()` throws
+// on a non-zero exit (`execFileSync`), so this catches the throw and reads the error's own
+// `stdout`/`status` rather than a returned string.
+test('doctor reports a pinned monitor.port already held by another live project, and exits 1', () => {
+  const other = repo({ name: 'other-project' });
+  const mine = repo({ mode: 'offline', config: { monitor: { port: 45123 } } });
+  recordInstance({ id: projectId(other.root), name: 'other-project', root: other.root,
+    mode: 'offline', port: 45123, monitorPid: process.pid });
+
+  assert.throws(
+    () => execFileSync('node', [BIN, 'doctor'], { cwd: mine.root, encoding: 'utf8', stdio: 'pipe' }),
+    (e) => e.status === 1
+      && e.stdout.includes(`error: monitor.port 45123 is pinned here but already held by other-project (${other.root})`),
+  );
+});
+
+// "auto" never conflicts, by construction (§8.3) — the candidate is a pure function of the
+// project's own id, so it cannot be "stolen": no error, whatever the registry holds.
+test('doctor prints no error for an "auto" monitor.port, even given a same-port collision on file', () => {
+  const other = repo({ name: 'other-project' });
+  const mine = repo({ mode: 'offline' });   // monitor.port defaults to "auto"
+  recordInstance({ id: projectId(other.root), name: 'other-project', root: other.root,
+    mode: 'offline', port: 12345, monitorPid: process.pid });
+
+  const out = run(mine.root, 'doctor');
+  assert.doesNotMatch(out, /error:/);
+});
+
+// A pin held only by a REAPED instance (its checkout gone) is not a live conflict — `liveInstances`
+// already filters it out, so `doctor` must say nothing.
+test('doctor prints no error when the pin is held only by a reaped instance', () => {
+  const other = repo({ name: 'other-project' });
+  const mine = repo({ mode: 'offline', config: { monitor: { port: 45123 } } });
+  recordInstance({ id: projectId(other.root), name: 'other-project', root: other.root,
+    mode: 'offline', port: 45123, monitorPid: process.pid });
+  rmSync(other.root, { recursive: true, force: true });   // the other project's checkout is gone
+
+  const out = run(mine.root, 'doctor');
+  assert.doesNotMatch(out, /error:/);
 });
 
 test('an unknown subcommand exits non-zero and lists what exists', () => {

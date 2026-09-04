@@ -1,7 +1,7 @@
 // The machine registry, under a temporary HOME so the file under test is never the developer's own.
 import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -22,7 +22,7 @@ after(() => {
   roots.forEach((r) => rmSync(r, { recursive: true, force: true }));
 });
 
-const { machineDir, instancesPath, maxWorkers, readInstances, recordInstance, otherWorkers, DEFAULT_MAX_WORKERS } =
+const { machineDir, instancesPath, maxWorkers, readInstances, recordInstance, otherWorkers, liveInstances, DEFAULT_MAX_WORKERS } =
   await import('../lib/machine.mjs');
 
 test('os.homedir follows HOME, which is what makes this suite safe', () => {
@@ -106,4 +106,69 @@ test('a corrupt instances.json is replaced, not fatal', () => {
   assert.deepEqual(readInstances(), []);
   recordInstance({ id: 'aaa111', name: 'A', root: a, mode: 'offline', workers: 1 });
   assert.deepEqual(readInstances().map((i) => i.id), ['aaa111']);
+});
+
+// P4 makes the registry multi-writer: `ready` sends the worker side (`workers`, `conductorPid`,
+// `conductorSession`), the monitor sends the port side (`port`, `monitorPid`), onto the SAME entry.
+// A replacing write (today's behaviour) would let each erase the other's fields — the dangerous
+// direction is the monitor erasing `workers`, since another project would then read `undefined`,
+// count 0, and launch MORE. `recordInstance` must merge instead.
+test('recordInstance merges a monitor-shaped write onto a conductor-shaped one, keeping both field sets', () => {
+  const root = projectRoot();
+  const now = Date.now();
+  recordInstance({ id: 'aaa111', name: 'A', root, mode: 'offline', workers: 2,
+    conductorSession: 's1', conductorPid: 4242 }, { now });
+  recordInstance({ id: 'aaa111', name: 'A', root, mode: 'offline', port: 4390, monitorPid: 5151 },
+    { now: now + 1000 });
+  const all = readInstances();
+  assert.equal(all.length, 1);
+  assert.equal(all[0].workers, 2);
+  assert.equal(all[0].conductorSession, 's1');
+  assert.equal(all[0].conductorPid, 4242);
+  assert.equal(all[0].port, 4390);
+  assert.equal(all[0].monitorPid, 5151);
+});
+
+// `updatedAt` doubles as "does this entry still exist" (isLive) — the monitor's own 5-minute
+// keepalive (§8.3) refreshes it with NO `workers` field, which must not be read as "the worker
+// count is still current". `otherWorkers` must trust `workers` only while its OWN stamp,
+// `workersAt`, is fresh, falling back to `updatedAt` for an entry written before this change (an
+// entry `ready` wrote under today's code, which never stamped `workersAt` at all). Raw fixture
+// entries on disk, deliberately bypassing `recordInstance`, so this proves `otherWorkers`'s OWN
+// read-time rule in isolation from the write-side merge fix above.
+test('otherWorkers only trusts workers while workersAt is fresh, falling back to updatedAt for an entry that predates it', () => {
+  const stale = projectRoot();
+  const legacy = projectRoot();
+  const now = Date.now();
+  const past = new Date(now - 6 * 60 * 60 * 1000 - 1).toISOString();   // one ms past SEEN_STALE_MS
+  const fresh = new Date(now).toISOString();
+
+  mkdirSync(machineDir(), { recursive: true });
+  writeFileSync(instancesPath(), `${JSON.stringify({ version: 1, instances: [
+    // `updatedAt` fresh — a monitor keepalive refreshed the entry (§8.3) — but `workersAt` stale:
+    // the worker count it reported must stop being trusted, even though the entry stays LISTED.
+    { id: 'stale1', name: 'S', root: stale, mode: 'offline', workers: 5, updatedAt: fresh, workersAt: past },
+    // A legacy entry, in exactly the shape TODAY's `ready` writes — no `workersAt` field at all —
+    // must still count, falling back to `updatedAt`.
+    { id: 'legacy', name: 'L', root: legacy, mode: 'offline', workers: 3, updatedAt: fresh },
+  ] }, null, 2)}\n`);
+
+  // 0 from the stale entry (workersAt too old) + 3 from the legacy one (falls back to updatedAt).
+  assert.equal(otherWorkers('mine11', { now }), 3);
+});
+
+// The read half of the same liveness rule, for `orchestra instances` and `doctor` — a dead entry on
+// disk (its root gone) must not appear, without needing a write to reap it first.
+test('liveInstances lists only entries that are still live, not the ones a write would reap', () => {
+  const here = projectRoot();
+  const gone = projectRoot();
+  const now = Date.now();
+  recordInstance({ id: 'here11', name: 'H', root: here, mode: 'offline' }, { now });
+  mkdirSync(machineDir(), { recursive: true });
+  const raw = JSON.parse(readFileSync(instancesPath(), 'utf8'));
+  raw.instances.push({ id: 'gone11', name: 'G', root: gone, mode: 'offline',
+    updatedAt: new Date(now).toISOString() });
+  writeFileSync(instancesPath(), `${JSON.stringify(raw, null, 2)}\n`);
+  rmSync(gone, { recursive: true, force: true });
+  assert.deepEqual(liveInstances({ now }).map((e) => e.id), ['here11']);
 });
