@@ -1,0 +1,459 @@
+/* One dark surface, four accents, and one gradient — the crest that travels along a progress line,
+   which is motion rather than decoration and is the only thing on the page that can say "something
+   is happening to this right now". The graph is the illustration, so everything else stays quiet. */
+:root {
+  --bg: #0e1116; --frame: #151a21; --line: #232a34; --node: #1b2129;
+  --ink: #c9d1d9; --dim: #7d8794; --hi: #f0f6fc;
+  --todo: #5b6673; --claimed: #4a9eff; --review: #f0a53a; --landed: #3fb950; --dropped: #4a4f57;
+  /* built-held: finished and deliberately not landed (G0 waits on S5 by a user ruling). Without
+     its own accent it fell back to the todo grey and read as never started, which is the opposite
+     of what it is. */
+  --held: #a371f7;
+  --alert: #f2545b;
+  /* answered and waiting for orchestra: the third state, which must not read as an alarm and must
+     not read as an ordinary claimed node either. Teal is the one accent still free — far from the
+     claimed blue, far from the landed green, and nothing else on the page uses it. */
+  --answered: #2ec4b6;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* The wave, in one place. It is a repeating background — one soft crest every `--crest` pixels,
+     slid by exactly that distance per cycle — so the loop is seamless at ANY width: a two-task
+     segment six pixels wide still visibly moves, which a single crest sized as a percentage of its
+     own bar could not do. The travel in `@keyframes crest` reads the same variable, so the step and
+     the period cannot drift apart. */
+  --crest: 46px;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 13px/1.5 var(--sans); overflow: hidden; }
+/* `minmax(0, 1fr)`, not the implicit `auto` row: an auto row is sized by its content, so the rail
+   grew to the full height of its line list, `flex: 1` on that list never had to overflow — the
+   panel would not scroll — and the remark box and footer were pushed below the fold, where
+   `body { overflow: hidden }` clipped them. A bare `1fr` has the same content floor; the `0`
+   minimum is what lets the row be shorter than what is inside it. */
+main { display: grid; grid-template-columns: 340px 1fr; grid-template-rows: auto minmax(0, 1fr); height: 100%; }
+
+/* ---- the strip across the top ----
+   `auto` for its row and `1 / -1` for its column: it spans both panels, and it is sized by its own
+   content so the row below it keeps the `minmax(0, 1fr)` the rail depends on to scroll. */
+#top { position: relative; grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); }
+/* The whole board, along the strip's own bottom edge — out of the flex flow, so it spans the window
+   whatever the pills do and never widens the row that the panels below depend on being sized by. */
+#top-progress { position: absolute; left: 0; right: 0; bottom: 0; }
+#top h1 { margin: 0; font: 600 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+/* Brighter and larger than the tool's own name beside it: with four of these pages open, WHICH
+   project this one is looking at is the first thing to read, and "orchestra" is the same on all
+   four. It sits immediately after the h1 and before the figures, so the eye lands on it first. */
+#project { font: 600 13px/1 var(--sans); color: var(--ink); margin-left: -8px; }
+/* One pill per figure, the number brighter than its label: the number is what is read at a glance
+   and the word is what makes it mean something. */
+#tally { display: flex; flex-wrap: wrap; gap: 8px; font: 11px var(--mono); color: var(--dim); }
+#tally span { padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; }
+#tally b { font-weight: 600; color: var(--ink); }
+#tally .active b { color: var(--claimed); }
+#tally .landed b { color: var(--landed); }
+/* Answered and not yet collected — the same teal a node in that state wears, because it is the same
+   state counted across the whole board. */
+#tally .held { border-color: #2ec4b64d; color: var(--answered); }
+#tally .held b { color: var(--answered); }
+/* The same alarm colour as the pulsing nodes and the corner list, because it is the same set of
+   questions counted a third time — and the reason the corner list may vanish when it is empty: the
+   figure that says whether anything is waiting on you is here, permanently, at zero or not. */
+#tally .attention { border-color: var(--alert); color: var(--alert); }
+#tally .attention b { color: var(--alert); }
+
+/* ---- the developer tabs ----
+   Whose work the stage shows: local first and by default, then one per developer the shared board
+   names while they have unfinished work. The active tab wears the node background rather than an
+   accent — it is a place you are AT, not a state to be alarmed about. */
+#tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+#tabs button { display: flex; align-items: center; gap: 6px; padding: 3px 11px; background: none;
+  color: var(--dim); border: 1px solid var(--line); border-radius: 999px; font: 11px var(--sans); cursor: pointer; }
+#tabs button:hover { color: var(--hi); border-color: var(--dim); }
+#tabs button.on { color: var(--hi); border-color: var(--dim); background: var(--node); }
+/* The count on a tab is that developer's ACTIVE figure, in the same blue the strip's pill uses,
+   because it is the same fact counted for somebody else. */
+#tabs button b { font: 600 11px var(--mono); color: var(--claimed); }
+
+/* ---- the rail ---- */
+#rail { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-width: 0; }
+#rail header { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.field input { width: 100%; padding: 6px 8px; background: var(--node); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; font: 12px var(--sans); }
+.field input:focus { outline: none; border-color: var(--claimed); }
+#rail-lines { flex: 1; margin: 0; padding: 12px; list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+#rail-lines li { cursor: pointer; border-left: 2px solid var(--line); padding-left: 10px; }
+#rail-lines li:hover { border-left-color: var(--claimed); }
+#rail-lines .meta { display: flex; gap: 8px; font: 11px var(--mono); color: var(--dim); }
+/* Which task the line is about, on every line that has one — including the user's own answers, which
+   used to say only "you" and left a reply sitting in the panel with nothing naming the question it
+   belonged to. `min-width: 0` + ellipsis because a qualified key (`firsthour/A2`) shares 340px with
+   the clock and the speaker. */
+#rail-lines .meta .task { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+#rail-lines li.you .meta .task { color: var(--review); }
+#rail-lines .text { color: var(--ink); white-space: pre-wrap; }
+#rail-lines li.you { border-left-color: var(--review); }
+#rail-lines li.you .text { color: var(--hi); }
+#rail-foot { padding: 8px 16px; border-top: 1px solid var(--line); font: 11px var(--mono); color: var(--dim); }
+/* The free remark — an answer addressed to orchestra rather than to an item. It sits at the foot
+   of the rail, where the conversation it joins is. */
+#remark { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); }
+#remark textarea { grid-column: 1; padding: 6px 8px; background: var(--node); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; font: 12px var(--sans); resize: vertical; }
+#remark textarea:focus { outline: none; border-color: var(--claimed); }
+#remark button { grid-column: 2; align-self: end; padding: 6px 12px; background: var(--node); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; font: 12px var(--sans); cursor: pointer; }
+#remark button:hover { border-color: var(--claimed); color: var(--hi); }
+#remark textarea:disabled, #remark button:disabled { opacity: .5; cursor: not-allowed; }
+#remark-status { grid-column: 1 / -1; }
+#remark-status:empty { display: none; }
+
+/* ---- the stage ---- */
+#stage { position: relative; min-width: 0; }
+/* Anchored from the left with a max-width, not stretched edge-to-edge: `inset` with both left and
+   right set would size the box to fill the stage and run its background rectangle behind the
+   toolbar, which sits in its own absolutely-positioned corner at the same z-index. The gutter
+   reserved on the right is that whole corner column plus its margins, not the width of three small
+   buttons: the notification list shares the column and is far wider than the toolbar. */
+/* `pointer-events: none`, because this box lies over the top-left frame's title — the roadmap's
+   collapse toggle and its drag handle — and an absolutely-positioned box on top intercepts every
+   click on what is beneath it. Nothing here needs the pointer except the ×, which takes it back. The
+   scroll that used to bound its height went with it: a message clipped without a reachable scrollbar
+   is a message lost, and the × is the way out of a long one. */
+#banner { position: absolute; top: 12px; left: 12px; max-width: calc(100% - 300px);
+  z-index: 3; padding: 8px 12px; border-radius: 6px; pointer-events: none;
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--frame); border: 1px solid var(--line); color: var(--dim); font: 12px var(--sans); }
+/* The same trap the notification list fell into, and the reason `display` is never declared on this
+   page without asking what `hidden` is supposed to do: an author `display` beats the UA sheet's
+   `[hidden] { display: none }` at any specificity, so the flex row above would have kept the banner
+   on screen through every `banner.hidden = true` — including the × the row exists for. */
+#banner[hidden] { display: none; }
+#banner-text { min-width: 0; }
+#banner-close { pointer-events: auto; flex: none; padding: 0 4px; background: none; border: 0;
+  color: var(--dim); font-size: 15px; line-height: 1.2; cursor: pointer; }
+#banner-close:hover { color: var(--hi); }
+/* The unadopted repository: no node, nothing to pan, so this sits in the middle of the stage and
+   says which thing is missing — the register, not the roadmap board the banner talks about. */
+#empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2;
+  max-width: 420px; text-align: center; color: var(--dim); font: 13px/1.7 var(--sans); }
+#empty code { font: 12px var(--mono); color: var(--ink); }
+/* One column in the corner holding the toolbar and the notification list, so the two cannot collide
+   however long the list gets — placed independently, they overlapped as soon as more than one
+   question was open. */
+#corner { position: absolute; top: 12px; right: 12px; z-index: 3; width: 264px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-height: calc(100% - 24px); }
+#toolbar { display: flex; gap: 6px; }
+#toolbar button { padding: 4px 10px; background: var(--frame); color: var(--dim);
+  border: 1px solid var(--line); border-radius: 6px; font: 11px var(--sans); cursor: pointer; }
+#toolbar button:hover { color: var(--hi); border-color: var(--dim); }
+
+/* ---- what is waiting on you ----
+   The alarm colour the pulsing nodes use, because this is the same set of questions seen from the
+   corner instead of from the canvas. `min-height: 0` on the flex child is what lets the list scroll
+   inside the column rather than growing the column past the stage. */
+#notifs { width: 100%; min-height: 0; display: flex; flex-direction: column;
+  background: var(--frame); border: 1px solid var(--alert); border-radius: 8px; overflow: hidden; }
+/* `hidden` is a UA-stylesheet `display: none`, and ANY author `display` beats it whatever the
+   specificity — so the line above kept this box on screen through every `notifs.hidden = true` the
+   page has ever set, and the corner showed a red panel announcing "0 waiting on you". The property
+   has to be taken back explicitly, in the author sheet, for the attribute to mean anything at all.
+   Every other `hidden` element on this page (the banner, the empty state, the lightbox arrows)
+   declares no `display` of its own, which is why they hide and this one did not. */
+#notifs[hidden] { display: none; }
+#notifs-head { padding: 6px 10px; border-bottom: 1px solid var(--line); background: #f2545b14;
+  font: 600 10px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--alert); }
+#notifs-list { margin: 0; padding: 0; list-style: none; overflow-y: auto; }
+#notifs-list li { padding: 8px 10px; border-top: 1px solid var(--line); cursor: pointer; }
+#notifs-list li:first-child { border-top: 0; }
+#notifs-list li:hover { background: var(--node); }
+#notifs-list .who { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#notifs-list .id { font: 600 11px var(--mono); color: var(--hi); }
+#notifs-list .shot { font: 10px var(--mono); color: var(--claimed); }
+/* `.what` and not `.ask`: the card's `.ask` is a bordered, padded, tinted block, and a row here
+   wearing that class inherited the whole box — a rounded rectangle inside a rounded rectangle. */
+#notifs-list .what { margin-top: 2px; font: 11px/1.45 var(--sans); color: var(--dim); }
+
+/* ---- the pictures orchestra names ----
+   A thumbnail wherever the text that mentions it is drawn. `background` under the image so a file
+   that is still loading is a quiet tile and not a flash of the page's own dark ground. */
+.shots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.shots img { width: 44px; height: 44px; object-fit: cover; background: var(--node);
+  border: 1px solid var(--line); border-radius: 4px; cursor: zoom-in; }
+.shots img:hover { border-color: var(--claimed); }
+/* A path orchestra named that is not on this machine. Shown, because a picture silently absent is
+   indistinguishable from a sentence that never mentioned one. */
+.shots .gone { align-self: center; font: 10px var(--mono); color: var(--dim);
+  text-decoration: line-through; word-break: break-all; }
+
+#lightbox { max-width: 96vw; max-height: 96vh; padding: 0; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--frame); color: var(--ink); overflow: hidden; }
+#lightbox::backdrop { background: #05070ae0; }
+#light-img { display: block; max-width: 96vw; max-height: calc(96vh - 40px); object-fit: contain; }
+#lightbox footer { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+  border-top: 1px solid var(--line); font: 11px var(--mono); color: var(--dim); }
+#light-cap { flex: 1; text-align: center; word-break: break-all; }
+#lightbox button { padding: 2px 10px; background: var(--node); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; font: 12px var(--sans); cursor: pointer; }
+#lightbox button:hover { border-color: var(--claimed); color: var(--hi); }
+#canvas { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
+#canvas.dragging { cursor: grabbing; }
+#viewport { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+/* Three explicit layers, painted bottom to top in DOM order: frames (opaque background) under
+   edges under nodes. A frame's background is opaque, so if it paints after the SVG it covers
+   every curve underneath it — every edge lives inside some frame, so that hid ALL of them. */
+#frames { position: absolute; top: 0; left: 0; }
+#edges { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
+#edges path { fill: none; stroke: #39414d; stroke-width: 1.25; }
+#edges path.cross { stroke-dasharray: 5 4; stroke: #4b5563; }
+#edges path.lit { stroke: var(--claimed); }
+
+/* ---- frames ---- */
+/* The body of a frame is a label, and a label must not intercept the pointer. Frames are siblings
+   with no z-index, so DOM order decides who is on top: once a roadmap can be dragged, a frame
+   dropped over another one covered its title — the collapse toggle and the drag handle both — and
+   that roadmap could not be reached again except by clearing the arrangement. Only the title band
+   listens now, so an overlap costs 34px instead of a whole frame. Panning is unchanged: a pointer on
+   a frame's empty space falls through to the canvas, which is where the pan handler already was. */
+.frame { position: absolute; border: 1px solid var(--line); border-radius: 10px; background: var(--frame);
+  pointer-events: none; }
+.frame > .title { pointer-events: auto; }
+/* One line, always: a one-node frame is only ~215px wide, and without this its count wrapped to a
+   second line and its file name ran out past the frame's own border. The name and the count keep
+   their width; the file name is the part that gives way, since it is the least load-bearing. */
+/* `grab`, because the title is the handle: click it to collapse the roadmap, drag it to put the
+   roadmap where you want it. `touch-action: none` so a drag on a trackpad or a touchscreen is a drag
+   and not the browser scrolling the page out from under it. */
+.frame > .title { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; overflow: hidden;
+  font: 600 11px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+  cursor: grab; touch-action: none; user-select: none; }
+.frame > .title:hover { color: var(--hi); }
+.frame > .title:active { cursor: grabbing; }
+/* A frame the user placed, marked quietly on its own border so an arrangement is visible as one — and
+   so a frame that did not move where it was expected to says which of the two it is. */
+.frame.placed { border-color: #4a9eff40; }
+.frame > .title > span { white-space: nowrap; }
+.frame > .title .count { font: 11px var(--mono); letter-spacing: 0; text-transform: none; }
+.frame > .title .warn { color: var(--review); font: 11px var(--mono); letter-spacing: 0; text-transform: none; }
+/* The roadmap's own progress, along the bottom of its 34px title band — INSIDE it, not under it, so
+   a collapsed frame (which is nothing but that band) still carries it. The frame is deaf to the
+   pointer except for the title, and this line inherits that deafness on purpose: it lies over the
+   bottom 3px of the drag handle, and a bar that swallowed a pointerdown there would be a drag that
+   silently did nothing. Its numbers are written out beside the roadmap's name for the same reason. */
+.frame > .progress { position: absolute; left: 0; right: 0; top: 31px; }
+
+/* ---- nodes ----
+   A two-row CSS GRID, not a wrapping flex row: `flex-wrap` decides whether an item fits the
+   CURRENT LINE using its unshrunk preferred width, so a flex row only wraps to a second line
+   once id+meta's combined natural width already exceeds the card — `min-width: 0` on meta lets
+   it shrink AFTER it has room on a line, it does not buy that room. A longer meta
+   (`unfiled · lane council-B`) doesn't fit next to id, so it wraps to its OWN line and pushes the
+   title to a third — three rows fighting the same fixed 52px card, kept off the card's edge only
+   by `align-content: center` eating the padding down to a few px. One more badge reintroduces
+   the exact bleeding-past-the-card defect this layout exists to prevent.
+   Grid places by TRACK, not by fit: row 1 is always exactly id + meta, row 2 is always exactly
+   the title, regardless of content width. Meta's `1fr` column takes what id's `auto` column
+   doesn't, and its own `overflow: hidden` + `min-width: 0` makes IT ellipsis in that column
+   instead of wrapping anywhere — the card is two rows, always, by construction. */
+.node { position: absolute; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto;
+  align-items: center; align-content: center; column-gap: 8px; row-gap: 3px;
+  padding: 8px 12px 8px 14px; border: 1px solid var(--line); border-left: 3px solid var(--todo);
+  border-radius: 8px; background: var(--node); cursor: pointer;
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
+.node:hover { transform: translateY(-1px); box-shadow: 0 4px 14px #0006; border-color: var(--dim); }
+.node .id { grid-column: 1; grid-row: 1; font: 600 12px var(--mono); color: var(--hi); }
+.node .name { grid-column: 1 / -1; grid-row: 2; font: 12px var(--sans); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node .meta { grid-column: 2; grid-row: 1; justify-self: end; min-width: 0; max-width: 100%; font: 10px var(--mono); color: var(--dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* `--accent` is the status colour said once, for the left border AND the phase line under the card,
+   so the two can never disagree about what state the task is in. The default is the todo grey, which
+   is also what an unrecognised status (`paused`, today) falls back to — a colour the page has not
+   been taught is better shown as the neutral one than as somebody else's. */
+.node { --accent: var(--todo); }
+.node.claimed { --accent: var(--claimed); border-left-color: var(--claimed); }
+.node.review { --accent: var(--review); border-left-color: var(--review); }
+.node.landed { --accent: var(--landed); border-left-color: var(--landed); }
+.node.built-held { --accent: var(--held); border-left-color: var(--held); }
+.node.dropped { --accent: var(--dropped); border-left-color: var(--dropped); opacity: .55; }
+.node.dropped .id { text-decoration: line-through; }
+.node.selected { border-color: var(--hi); }
+/* Answered and waiting for orchestra. Declared BEFORE .node.attention, which has the same
+   specificity, so a task carrying one answered question and one still open keeps the alarm: the
+   later rule wins and the border goes back to red. A hollow dot, not a filled one — the question
+   is no longer on the user. */
+.node.answered { --accent: var(--answered); border-color: var(--answered); }
+.node .dot { position: absolute; top: 8px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--alert); }
+.node .dot.answered { background: none; border: 2px solid var(--answered); }
+/* The dot sits in the same corner the meta text ellipsizes toward; without room reserved for it,
+   a long meta string's ellipsis lands right under the dot. */
+.node.attention .meta, .node.answered .meta { padding-right: 12px; }
+
+/* The loudest looping animation on the page: a task that is waiting on a human. Declared after
+   `.node.answered` at the same specificity, so a task with one answered question and one still open
+   takes the alarm accent back — on its border and on its line alike. */
+.node.attention { --accent: var(--alert); border-color: var(--alert); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { border-color: #7a2b30; box-shadow: 0 0 0 3px #f2545b1a; } }
+
+/* ---- how far along it is ----
+   Two shapes, one language, and the difference between them is what the register can honestly say.
+
+   A SET of tasks has a real fraction, so it gets `.progress`: a segmented bar under the roadmap's
+   title and along the bottom of the strip. Every task is in exactly one band and the bands sum to
+   the total (see progress.mjs), so the bar cannot show a roadmap as finished while a sixth of it
+   sits in a state the bar never mentioned.
+
+   A SINGLE task has no fraction at all — nothing in the register measures how far into a task its
+   session is — so it gets `.phase`: a thin line that says only which state it is in, and says
+   whether anything is happening to it by moving or standing still. A percentage derived from its
+   status would be a number the page invented. */
+@keyframes crest { to { background-position: var(--crest) 0; } }
+
+/* --- one task: a line that moves while something is moving --- */
+.phase { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; overflow: hidden;
+  border-radius: 0 0 5px 5px; }
+/* Two layers rather than one dimmed element: the track has to sit far back and the crest has to
+   arrive at full strength, and an `opacity` on their common parent would take the crest down with it. */
+.phase::before, .phase::after { content: ''; position: absolute; inset: 0; }
+.phase::before { background: var(--accent); opacity: .3; }
+/* Landed is the one state that is not a phase but an end: a solid line, the full width of the card. */
+.node.landed .phase::before { opacity: .9; }
+/* A crest means something is happening to this task RIGHT NOW, and nothing else. A queued task is
+   not moving, and a board of thirty-seven waiting rows all rippling says the opposite of what a queue
+   is — the wave is only worth looking at because most of the board is still. So `todo` keeps its line
+   and loses its motion, along with held, dropped, paused and landed.
+
+   `--crest-delay` is written by the page on every repaint (see `anchorCrests` in app.js): a CSS
+   animation starts when its element is created, every repaint replaces every card, and the model's
+   etag moves on its own every five seconds — so every crest on the board used to snap back to its
+   start together, at that exact cadence. A negative delay says "this has already been running for
+   that long", which makes the phase a function of the clock instead of of the rebuild. */
+.phase::after { display: none;
+  background-image: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: var(--crest) 100%;
+  animation: crest 1.5s linear infinite var(--crest-delay, 0s); }
+.node.claimed .phase::after, .node.review .phase::after { display: block; }
+/* Waiting on a HUMAN, which is a live state whatever the register calls the task underneath it: the
+   live board carries `blocked` and `paused` rows holding an unanswered question, and their line
+   stood perfectly still while the card around it pulsed red. Last, so it wins the display over every
+   status rule above — the alarm accent it already took from `.node.attention` moves with it. */
+.node.attention .phase::after { display: block; animation-duration: 2.4s; }
+
+/* --- a set of tasks: a bar whose bands sum to the total --- */
+.progress { display: flex; height: 3px; overflow: hidden; background: var(--line); }
+.progress span { min-width: 0; }
+.progress .landed { background-color: var(--landed); }
+.progress .waiting { background-color: var(--todo); }
+.progress .other { background-color: var(--dropped); }
+/* The one band with a session on it, and the only one that moves — the same rule as a card's line,
+   held to on the bar so the two cannot come to mean different things. White rather than the band's
+   own colour, because this segment is already painted at full strength: the wave has to read as
+   light passing over it, not as a second colour. */
+.progress .active { background-color: var(--claimed);
+  background-image: linear-gradient(90deg, transparent, #ffffff5c, transparent);
+  background-size: var(--crest) 100%;
+  animation: crest 1.5s linear infinite var(--crest-delay, 0s); }
+
+/* A still page must still tell what is moving from what is not, so the crest becomes a step in
+   brightness instead of a step in motion — the one thing it was there to say. */
+@media (prefers-reduced-motion: reduce) {
+  .node.attention { animation: none; border-color: var(--alert); }
+  .phase::after, .progress .active { animation: none; background-image: none; }
+  .node.claimed .phase::before, .node.review .phase::before { opacity: .8; }
+}
+
+/* ---- the card ---- */
+#card { width: min(720px, 92vw); max-height: 84vh; padding: 0; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--frame); color: var(--ink); overflow: auto; }
+#card::backdrop { background: #05070aa8; backdrop-filter: blur(2px); }
+#card header { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 14px 18px; background: var(--frame); border-bottom: 1px solid var(--line); }
+#card header > div { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#card-id { font: 600 13px var(--mono); color: var(--hi); }
+#card-status { padding: 2px 8px; border-radius: 999px; font: 11px var(--mono); background: var(--node); color: var(--dim); }
+#card-status.claimed { color: var(--claimed); } #card-status.review { color: var(--review); }
+#card-status.landed { color: var(--landed); } #card-status.dropped { color: var(--dropped); }
+#card-status.built-held { color: var(--held); }
+#card-badges { display: flex; gap: 6px; }
+#card-badges span { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font: 11px var(--mono); color: var(--dim); }
+#card-close { background: none; border: 0; color: var(--dim); font-size: 20px; line-height: 1; cursor: pointer; border-radius: 4px; }
+#card-close:hover { color: var(--hi); }
+/* showModal() autofocuses the first focusable element, which is this button, on every open — so
+   the default focus ring is not a rare keyboard-only case here but the normal first frame of the
+   card. Themed rather than removed, so keyboard focus stays visible. */
+#card-close:focus-visible { outline: 2px solid var(--claimed); outline-offset: 1px; }
+#card h2 { margin: 0; padding: 16px 18px 0; font: 600 17px var(--sans); color: var(--hi); }
+#card-body { padding: 12px 18px 20px; display: flex; flex-direction: column; gap: 18px; }
+.sec > h3 { margin: 0 0 6px; font: 600 10px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.sec p { margin: 0; }
+.sec .muted { color: var(--dim); }
+/* A conductor's note can run to thousands of characters — a full turn-by-turn log, not a
+   summary — so only a short excerpt shows by default (see whatItIs() in app.js); this cap
+   applies to the full text once "show the rest" reveals it, so even a huge note stays reachable
+   by its own scroll rather than swallowing the card. The cap only engages once content actually
+   overflows it, so the section's other short fallback strings ("nothing yet", "none detected…")
+   render exactly as before. */
+.sec p.muted { max-height: 320px; overflow-y: auto; }
+/* ---- the conductor's-note fallback: short excerpt, full text one click away ---- */
+.note { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.note-toggle { padding: 0; background: none; border: 0; color: var(--claimed); font: 11px var(--sans);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.note-toggle:hover { color: var(--hi); }
+/* ---- active game servers: the task's own leads, the rest folds behind one line ---- */
+.own { display: flex; flex-direction: column; gap: 8px; }
+.own-entry { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* `.own .own-link` (two classes), not `.own-link` alone, because `.sec a` further down (one class
+   + the `a` type) outranks a single-class rule regardless of source order — the button was
+   rendering with its own background colour as its text colour, invisible, until this lost fight
+   was won on specificity instead of hoping for the right order. */
+.own .own-link { padding: 5px 12px; border-radius: 6px; background: var(--claimed); color: #051423;
+  font: 600 12px var(--sans); text-decoration: none; }
+.own .own-link:hover { background: #6fb4ff; }
+.sec details summary { cursor: pointer; font: 12px var(--sans); color: var(--dim); }
+.sec details summary:hover { color: var(--hi); }
+.sec details ul { margin-top: 8px; }
+.cmd { position: relative; padding: 10px 40px 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); font: 11px/1.7 var(--mono); white-space: pre-wrap; word-break: break-all; }
+.cmd button { position: absolute; top: 6px; right: 6px; padding: 2px 8px; background: var(--node);
+  color: var(--dim); border: 1px solid var(--line); border-radius: 6px; font: 10px var(--sans); cursor: pointer; }
+.cmd button:hover { color: var(--hi); }
+.sec ul { margin: 0; padding-left: 18px; }
+.sec a { color: var(--claimed); }
+.ask { border: 1px solid var(--alert); border-radius: 10px; padding: 12px; background: #f2545b0d; }
+.ask .kind { font: 11px var(--mono); color: var(--alert); text-transform: uppercase; letter-spacing: .1em; }
+.ask p { margin: 6px 0 10px; white-space: pre-wrap; }
+/* An answered block is the same block, calmed: teal instead of red, everywhere the red was. */
+.ask.answered { border-color: var(--answered); background: #2ec4b60d; }
+.ask.answered .kind { color: var(--answered); }
+.ask.answered textarea:focus, .ask.answered .options button:hover { border-color: var(--answered); }
+.ask.answered [type=submit] { background: var(--answered); color: #06201d; }
+.ask .said { margin: 0 0 10px; padding: 8px 10px; border-left: 2px solid var(--answered); background: #2ec4b60d; }
+.ask .said .when { font: 11px var(--mono); color: var(--answered); }
+.ask .said p { margin: 4px 0 6px; color: var(--hi); }
+.ask .said .waiting { font: 12px var(--sans); color: var(--dim); }
+/* The decision template's `<sub>` footer: the numbers, the names and the paths, kept readable but
+   plainly secondary to the question. Split off the ask in keys.mjs, so its tags are never printed. */
+.ask .footer { margin: 8px 0 10px; font: 11px/1.6 var(--mono); color: var(--dim); white-space: pre-wrap; word-break: break-word; }
+.ask .options { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.ask .options button { padding: 5px 10px; background: var(--node); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; font: 12px var(--sans); cursor: pointer; text-align: left; }
+.ask .options button:hover { border-color: var(--alert); }
+.ask form { display: flex; gap: 8px; }
+.ask textarea { flex: 1; min-height: 60px; padding: 8px; background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; font: 12px var(--sans); resize: vertical; }
+.ask textarea:focus { outline: none; border-color: var(--alert); }
+.ask [type=submit] { align-self: flex-end; padding: 7px 14px; background: var(--alert); color: #fff;
+  border: 0; border-radius: 6px; font: 600 12px var(--sans); cursor: pointer; }
+/* A send in flight (or already sent) disables every control in the block at once — textarea,
+   submit and every option button — so a second click cannot fire a second, possibly different,
+   answer. Dimmed and not-allowed rather than merely inert, so it reads as "answered" or "sending",
+   never as broken. */
+.ask textarea:disabled, .ask [type=submit]:disabled, .ask .options button:disabled { opacity: .5; cursor: not-allowed; }
+.sent { color: var(--landed); font: 12px var(--mono); }
+.failed { color: var(--alert); font: 12px var(--mono); }
+.tech { font: 11px/1.8 var(--mono); color: var(--dim); }
+/* A log row is a flex line of label + text; a strip of thumbnails joining it must take a line of its
+   own rather than being squeezed in beside the words, hence the wrap and the full-width basis. */
+.tech div { display: flex; gap: 8px; flex-wrap: wrap; }
+.tech .shots { flex-basis: 100%; }
+.tech b { color: var(--ink); font-weight: 500; min-width: 84px; }

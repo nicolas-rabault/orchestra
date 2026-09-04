@@ -197,28 +197,43 @@ test('lock acquire refuses a --pid with no value, rather than writing a null pid
 });
 
 // The off switch (`if (!cfg && !cmd.machine) process.exit(0)` in bin/orchestra) is written in ONE
-// place and every verb but `doctor` relies on it rather than re-implementing the check — but until
-// now only `roadmap board` was ever pinned against it. `archive-images` is behind that same gate
-// and deletes files; a verb that quietly stopped honouring it would only be caught here.
+// place and every verb but the machine-level ones relies on it rather than re-implementing the
+// check — but until now only `roadmap board` was ever pinned against it. `archive-images` is behind
+// that same gate and deletes files; a verb that quietly stopped honouring it would only be caught
+// here.
 //
 // The verb list is read from `orchestra help`'s own output (bin/orchestra prints `[...COMMANDS.keys()]`
 // verbatim) rather than duplicated by hand, so a verb registered later is covered automatically
 // without this test being told about it.
-test('every registered verb but doctor honours the off switch — exits 0 and prints nothing', () => {
+//
+// The exceptions are spec §3.1's machine-level verbs, which answer ABOUT THE MACHINE and not about
+// a project, so a directory that has never heard of orchestra is exactly where they must still
+// speak: `doctor` tells a first-time user how to opt in, and `instances` says what else on this
+// machine is running. They are named here, and asserted to answer, so that this test cannot go
+// green by one of them quietly falling silent instead.
+const MACHINE_VERBS = ['doctor', 'instances'];
+
+test('every registered verb but the machine-level ones honours the off switch — exits 0 and prints nothing', () => {
   const help = execFileSync('node', [BIN, 'help'], { encoding: 'utf8' });
   const verbs = help.split('\n').map((l) => l.trim())
     .filter((l) => l && l !== 'orchestra <subcommand>');
-  assert.ok(verbs.includes('doctor'));
+  for (const verb of MACHINE_VERBS) assert.ok(verbs.includes(verb), `${verb} is registered`);
   assert.ok(verbs.includes('archive-images'));
   assert.ok(verbs.length > 2, 'the help output did not parse into a real verb list');
 
   const r = repo();
   rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
   for (const verb of verbs) {
-    if (verb === 'doctor') continue;
+    if (MACHINE_VERBS.includes(verb)) continue;
     const res = spawnSync('node', [BIN, verb], { cwd: r.root, encoding: 'utf8' });
     assert.equal(res.status, 0, `${verb}: expected exit 0, got ${res.status} (stderr: ${res.stderr})`);
     assert.equal(res.stdout, '', `${verb}: expected no stdout, got ${JSON.stringify(res.stdout)}`);
     assert.equal(res.stderr, '', `${verb}: expected no stderr, got ${JSON.stringify(res.stderr)}`);
+  }
+
+  // The positive control: each exception answers in that same configless directory.
+  for (const verb of MACHINE_VERBS) {
+    const res = spawnSync('node', [BIN, verb], { cwd: r.root, encoding: 'utf8' });
+    assert.match(res.stdout, /\S/, `${verb}: expected the machine-level verb to answer anyway`);
   }
 });

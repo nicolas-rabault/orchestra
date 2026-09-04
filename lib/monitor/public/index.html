@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{project}} — orchestra</title>
+<link rel="stylesheet" href="/style.css">
+<main>
+  <!-- Across the whole window, above both columns: what the board is doing, in numbers, so the
+       count of what is running and what is queued does not have to be read off the canvas by
+       panning it. It also gives the "waiting on you" figure a permanent home, which is what lets
+       the red list in the corner disappear entirely when nothing is waiting. -->
+  <header id="top">
+    <!-- The project's name, not the tool's: four of these pages open at once are four tabs all
+         called "orchestra" otherwise, and the name is the only thing that tells them apart. The
+         server substitutes it into both placeholders below as it serves this file, so the tab and
+         the header are right before a single byte of JavaScript has run; app.js then re-reads it
+         from `model.project` on every poll, so a project renamed in its config follows without a
+         reload. -->
+    <h1>orchestra</h1>
+    <div id="project">{{project}}</div>
+    <div id="tally"></div>
+    <!-- Whose work the stage shows: the local view first and by default, then one tab per
+         developer the shared board names while they have unfinished work. Always drawn, even
+         alone — it names the view you are looking at, and it is where the others appear. -->
+    <nav id="tabs"></nav>
+    <!-- The whole board as one line, lying along the strip's own bottom border. The pills above it
+         are three figures; this is what they are a share of. -->
+    <div id="top-progress"></div>
+  </header>
+  <aside id="rail">
+    <header>
+      <label class="field"><input id="rail-filter" type="search" placeholder="filter by task" autocomplete="off"></label>
+    </header>
+    <ol id="rail-lines"></ol>
+    <form id="remark">
+      <textarea id="remark-text" rows="2" placeholder="say something to orchestra" autocomplete="off"></textarea>
+      <button id="remark-send" type="submit">send</button>
+      <div id="remark-status"></div>
+    </form>
+    <footer id="rail-foot"></footer>
+  </aside>
+  <section id="stage">
+    <!-- Over the canvas, and deliberately deaf to the pointer: it sits exactly on top of the first
+         frame's title, which is that roadmap's collapse toggle AND its drag handle, and an
+         absolutely-positioned box swallows every click on whatever is under it. Only its × listens. -->
+    <div id="banner" hidden><span id="banner-text"></span><button id="banner-close" title="hide this — it comes back if the situation changes">×</button></div>
+    <div id="empty" hidden>orchestra has not adopted anything yet — run <code>/orchestra</code> in this
+      repository and its tasks appear here.</div>
+    <!-- One absolutely-positioned column in the corner, not two: the notification list and the
+         toolbar are both "top right", and left to place themselves independently they overlapped
+         the moment the list had more than a row or two in it. -->
+    <div id="corner">
+      <div id="toolbar">
+        <button id="tidy" hidden title="put every roadmap back where the layout puts it">tidy</button>
+        <button id="fit" title="fit (F)">fit</button>
+        <button id="zoom-out" title="zoom out">−</button>
+        <button id="zoom-in" title="zoom in">+</button>
+      </div>
+      <div id="notifs" hidden>
+        <div id="notifs-head"></div>
+        <ol id="notifs-list"></ol>
+      </div>
+    </div>
+    <div id="canvas"><div id="viewport"><div id="frames"></div><svg id="edges" aria-hidden="true"></svg><div id="nodes"></div></div></div>
+  </section>
+</main>
+<dialog id="card">
+  <header>
+    <div>
+      <span id="card-id"></span>
+      <span id="card-status"></span>
+      <span id="card-badges"></span>
+    </div>
+    <button id="card-close" title="close (Esc)">×</button>
+  </header>
+  <h2 id="card-title"></h2>
+  <div id="card-body"></div>
+</dialog>
+<!-- Opened OVER the card with its own showModal(), so it stacks in the top layer: Esc closes the
+     picture and leaves the question underneath it exactly as it was, half-typed answer included. -->
+<dialog id="lightbox">
+  <img id="light-img" alt="">
+  <footer>
+    <button id="light-prev" title="previous (←)">←</button>
+    <span id="light-cap"></span>
+    <button id="light-next" title="next (→)">→</button>
+    <button id="light-close" title="close (Esc)">×</button>
+  </footer>
+</dialog>
+<script type="module" src="/app.js"></script>

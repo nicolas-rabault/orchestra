@@ -3,10 +3,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// The one directory under `lib/` whose files are NOT executed by node. `lib/monitor/public/app.js`
+// runs in a BROWSER, and it imports `/layout.mjs`, `/answers.mjs`, `/clock.mjs`, `/progress.mjs` and
+// `/tabs.mjs` — the five pure modules the monitor serves so the page and the tests share one copy of
+// them instead of the page carrying a second.
+//
+// The invariant this whole file holds is "nothing this plugin executes IN NODE may import a
+// package". A `/`-rooted specifier in a browser asset is not a package: it is a URL, answered by
+// `lib/monitor/server.mjs` from a CLOSED LIST of five paths, and it is never a specifier node
+// resolves. So it is legal there and nowhere else.
+//
+// Deliberately NOT an exclusion of the directory, which would be a hole: a real package import
+// (`'lodash'`) or a CDN URL in a browser file would then go unflagged, and this narrower rule still
+// catches both. `//` is excluded too — `//cdn.example.com/x.js` is a protocol-relative URL to
+// another host, which starts with a slash and is exactly the thing an exclusion would have let
+// through.
+const BROWSER_ASSETS = `lib${sep}monitor${sep}public${sep}`;
+const browserUrl = (rel, spec) =>
+  rel.startsWith(BROWSER_ASSETS) && spec.startsWith('/') && !spec.startsWith('//');
 
 function* files(dir) {
   let entries;
@@ -111,13 +130,26 @@ test('nothing under bin/, lib/ or hooks/ imports a package', () => {
   for (const dir of ['bin', 'lib', 'hooks']) {
     for (const file of files(join(repo, dir))) {
       const src = readFileSync(file, 'utf8');
-      const imports = packageImports(src);
-      for (const spec of imports) {
-        offenders.push(`${file.slice(repo.length + 1)} imports ${spec}`);
+      const rel = file.slice(repo.length + 1);
+      for (const spec of packageImports(src)) {
+        if (browserUrl(rel, spec)) continue;
+        offenders.push(`${rel} imports ${spec}`);
       }
     }
   }
   assert.deepEqual(offenders, []);
+});
+
+// The exemption's edges, pinned so nobody widens it into the exclusion it deliberately is not.
+test('a "/"-rooted specifier is legal only in a browser asset, and only when it is not a URL to another host', () => {
+  const asset = `lib${sep}monitor${sep}public${sep}app.js`;
+  assert.equal(browserUrl(asset, '/layout.mjs'), true);
+  // A package, and a CDN, in the very file the exemption covers: still offences.
+  assert.equal(browserUrl(asset, 'lodash'), false);
+  assert.equal(browserUrl(asset, 'https://cdn.example.com/x.js'), false);
+  assert.equal(browserUrl(asset, '//cdn.example.com/x.js'), false);
+  // The same specifier in a file node executes: an offence.
+  assert.equal(browserUrl(`lib${sep}monitor${sep}server.mjs`, '/layout.mjs'), false);
 });
 
 test('package.json declares no dependencies', () => {
