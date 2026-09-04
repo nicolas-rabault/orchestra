@@ -65,10 +65,32 @@ test('two genuinely different subjects do not fold together', () => {
   assert.notEqual(a, b);
 });
 
-test('a fingerprint observation is normalised as an identifier, not as prose', () => {
-  // `normalizeId` folds punctuation only — no stop-word removal, no word cap — because an
-  // identifier a project's own reporter computed is already canonical, not free text.
+test('a canonical fingerprint is case-folded but otherwise passed through unchanged', () => {
   assert.equal(fingerprintFor({ fingerprint: 'A1b2C3' }), 'fingerprint:a1b2c3');
+});
+
+// The strict-format check the source project's own `crash` kind carried (a token, never the
+// message or the stack) is the whole point of the rename to `fingerprint` — losing it would let
+// a caller passing free text mint a fresh ticket on every occurrence, exactly the failure a
+// fingerprint exists to prevent. Review fix round 1, finding 1.
+test('a canonical precomputed fingerprint folds onto ONE ticket, filed from two separate call sites', () => {
+  const fileA = [];
+  const fileB = [];
+  const a = upsertTicket(fileA, { fingerprint: 'Ab12cd3' }).ticket;
+  const b = upsertTicket(fileB, { fingerprint: 'ab12cd3' }).ticket;
+  assert.equal(a.fingerprint, b.fingerprint);
+  assert.equal(a.id, b.id);
+});
+
+test('a non-canonical fingerprint is REJECTED, never silently slugified into a new identity', () => {
+  // The raw message, not a token: exactly what a careless caller would pass, and exactly what
+  // folds nothing since it still carries every line number and detail a fingerprint exists to
+  // discard.
+  assert.throws(() => fingerprintFor({ fingerprint: 'TypeError: cannot read property of undefined' }),
+    /not a canonical fingerprint/);
+  // Longer than the 12-character cap the source project's own reporter output fits inside.
+  assert.throws(() => fingerprintFor({ fingerprint: 'waytoolongtobeanythingsreporter' }),
+    /not a canonical fingerprint/);
 });
 
 test('fingerprintFor demands exactly one of fingerprint/subject', () => {

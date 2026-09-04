@@ -301,6 +301,34 @@ test('a landing commits its ledger even though the lock is held elsewhere by a n
   assert.ok(ledgerSha, `no ledger commit found in:\n${r.git('log', '--oneline', 'main')}`);
 });
 
+// Review fix round 1, finding 2. `cfg.ledgers` is empty in every project today, but task 7 of
+// this plan makes `orchestra init` propose the ticket file into it — the day two configured
+// ledgers land in the SAME directory (this project's own ticket file plus whatever else it keeps
+// beside it) is the day `ledgerLockTargets`'s per-directory grouping stops being latent. Locking
+// per PATH instead of per directory would nest the identical `withQueueLock` call inside itself —
+// same pid, still alive — and wait out the full 30-second production deadline before throwing.
+// This proves the grouping holds by proving a landing with two same-directory ledgers finishes
+// fast: a self-deadlock cannot finish in under ten seconds when its own timeout is thirty.
+test('two ledgers in the same directory take ONE lock, not two nested ones that self-deadlock', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { ledgers: ['reports/x.jsonl', 'reports/y.jsonl'] });
+  mkdirSync(join(r.root, 'reports'), { recursive: true });
+  writeFileSync(join(r.root, 'reports', 'x.jsonl'), '{"a":1}\n');
+  writeFileSync(join(r.root, 'reports', 'y.jsonl'), '{"b":1}\n');
+  r.git('add', '-A');
+  r.git('commit', '-q', '-m', 'chore: seed two ledgers sharing one directory');
+  writeFileSync(join(r.root, 'reports', 'x.jsonl'), '{"a":1}\n{"a":2}\n');
+  writeFileSync(join(r.root, 'reports', 'y.jsonl'), '{"b":1}\n{"b":2}\n');
+
+  const { branch } = branchWith(r);
+  const start = Date.now();
+  const { code, out } = run(r.root, 'land', branch);
+  const elapsed = Date.now() - start;
+  assert.equal(code, 0, out);
+  assert.match(out, /committed 2 ledger file\(s\)/);
+  assert.ok(elapsed < 10_000,
+    `expected one lock and a fast landing, took ${elapsed}ms — looks like a self-deadlock against the 30s production timeout`);
+});
+
 test('land --detach returns 15 at once, and await collects the real code and the gate name', () => {
   const r = project([
     { name: 'slow', cmd: 'sleep 1; echo SLOW-RAN' },
