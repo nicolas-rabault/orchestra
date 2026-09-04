@@ -45,6 +45,26 @@ test('pending is never prose: a question already put survives archiving', () => 
   assert.deepEqual(next.tasks[0].pending, [{ ask: 'A or B?' }]);
 });
 
+test('an unanswered question keeps a terminal row even when NOTHING depends on it', () => {
+  const { next, archived } = partition(
+    { tasks: [row('demo/D1', { pending: [{ ask: 'A or B?' }] })] },
+    { at: 'T' },
+  );
+  const kept = next.tasks.find((t) => t.id === 'demo/D1');
+  assert.ok(kept, 'the row must survive while its question is still open');
+  assert.deepEqual(kept.pending, [{ ask: 'A or B?' }]);
+  assert.equal(archived.length, 1);
+  assert.equal(archived[0].id, 'demo/D1');
+});
+
+test('its twin: once the question is answered, the same row leaves entirely', () => {
+  const { next } = partition(
+    { tasks: [row('demo/D1', { pending: [{ ask: 'A or B?', answer: 'A' }] })] },
+    { at: 'T' },
+  );
+  assert.deepEqual(next.tasks, []);
+});
+
 test('nothing finished means nothing moves, INCLUDING the conductor prose', () => {
   const state = { tasks: [row('demo/D1', { status: 'claimed' })], lesson: 'never do that again' };
   const { next, archived } = partition(state, { at: 'T' });

@@ -1268,8 +1268,10 @@ orchestra archive --write
 It moves every terminal row's `note`, `subjects`, `decisions` and `touches` — and the register's
 own top-level prose with them — into `.orchestra/archive.jsonl`. This is more precise than it
 sounds: a finished row **leaves the register entirely**, unless a surviving row still depends on
-it, in which case it stays stripped of exactly those four fields, so dependency resolution and the
-progress bar keep working. It is a MOVE: nothing is deleted.
+it, or it still carries an unanswered question in `pending[]` — in either case it stays stripped
+of exactly those four fields (`pending` is never one of them), so dependency resolution, the
+heartbeat's own stand-down check above, and the progress bar keep working. It is a MOVE: nothing
+is deleted.
 
 Keep the measurement it exists for: measured 2026-08-30 in planetCraft, at the end of one roadmap,
 `state.json` was 202 KB and 87 of its 87 rows were terminal — not one live row — with 136 KB of
