@@ -785,8 +785,9 @@ started *after* the hold was issued.
    (`lib/register/beat.mjs`'s `conductorState`, read off the register file's own mtime), and a
    tick that skips the write reads as ninety minutes of silence at the next heartbeat slot.
 
-   Stopping is no longer going deaf. Four things wake you, each named with its phase where it
-   has one: the answer watch armed in step 1 hands you each new answer within seconds — and
+   Stopping is no longer going deaf. Three things wake you, each named with its phase where it
+   has one, and a landing you run yourself needs none, for the same reason `await` can always be
+   re-run: the answer watch armed in step 1 hands you each new answer within seconds — and
    until phase 4 there is no page to write one, so the beat is what it is really doing; worker
    turns you resumed notify you as their Bash tasks complete — a landing dispatched to
    `merge_agent` wakes you the very same way, its turn ending being no different from a worker's;

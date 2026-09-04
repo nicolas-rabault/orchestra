@@ -3063,6 +3063,30 @@ Expected: `no orphaned landings`.
 Stage `README.md` and `.claude-plugin/plugin.json`, message:
 `chore(plugin): 0.4.0 — the merge gate, roadmap sync, and merge_agent`
 
+### Hand-over to P5
+
+Recorded here, not in the README, because each item is a fact about this phase's own code that only
+becomes actionable once P5 exists to act on it — a reader of the plan that adds the ticket queue and
+`orchestra init` is who needs to find these, not a user of `orchestra land` today.
+
+1. **`.orchestra/.gitignore` must cover `gate/`.** Spec §3.2's list of gitignored runtime state
+   predates this phase and does not name it. `orchestra init` writes that file; `lib/gate/land.mjs`'s
+   `gatePaths` creates `.orchestra/gate/queue.json`, `gate/runs/`, `gate/logs/`, `gate/waiters`,
+   `gate/holder` and `gate/mutex` — without the line, a project commits its queue record, its logs
+   and its run records.
+2. **`guard-main-commit` must reconcile two markers for one fact.** `lib/gate/land.mjs`'s `gateEnv`
+   stamps `ORCHESTRA_GATE=1` on the environment of the gate's own git calls and every configured
+   gate; `lib/store/files.mjs` already stamps `ORCHESTRA_WRITES_MAIN=1` on its two git write calls,
+   for the same guard, with no reader today. Two spellings of one fact is how they start
+   disagreeing, and P5 must also decide how a PreToolUse hook reads either one, since such a hook
+   sees the agent's Bash command text, never this process's environment.
+3. **The ledger commit owes a cross-process lock.** `commitLedgers` (`lib/gate/land.mjs`) takes none,
+   because there is no ticket queue yet to take one from — P5's ticket queue is what closes this gap.
+4. **`rerere.enabled` belongs in `templates/CLAUDE-rules.md` and in `doctor`, not in a gate that
+   refuses.** A queue that rebases branches all day meets recurring conflict hashes, and rerere's
+   cache is shared by every worktree of a repository — enabling it project-wide, not refusing a
+   landing on its absence, is the right lever.
+
 ---
 
 ## Review checklist for the branch review
