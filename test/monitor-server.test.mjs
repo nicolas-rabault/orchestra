@@ -6,7 +6,7 @@
 // The source's "reads the board once for two model requests" test is NOT repeated here: that cache
 // moved into `readBoard` itself and is proven in test/monitor-sources.test.mjs. The cache this
 // handler still owns — the dev-server list — is proven below, against a fake `lsof` on PATH.
-import { test, after } from 'node:test';
+import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,9 +19,22 @@ import { fakeReq, fakeRes } from './helpers/fakeHttp.mjs';
 
 const repos = [];
 const dirs = [];
+
+// A temporary HOME per test, exactly like test/monitor-acceptance.test.mjs's own pattern. This
+// file's tests trusted `serve`/`createHandler` to never touch `~/.orchestra` — a promise this
+// branch broke without anyone noticing here (`machineMonitorPort()` reads
+// `~/.orchestra/machine.json`, and `discoverProjects` can WRITE `~/.orchestra/instances.json` from
+// inside a GET handler) only because no test below happens to issue a request that reaches
+// `discoverProjects`. One added request would start writing the developer's own real registry;
+// this closes that hole regardless of which test trips it next.
+const HOME = process.env.HOME;
+const homes = [];
+beforeEach(() => { const h = mkdtempSync(join(tmpdir(), 'orchestra-home-')); homes.push(h); process.env.HOME = h; });
 after(() => {
+  process.env.HOME = HOME;
   repos.forEach((r) => r.cleanup());
   dirs.forEach((d) => rmSync(d, { recursive: true, force: true }));
+  homes.forEach((h) => rmSync(h, { recursive: true, force: true }));
 });
 
 // Nothing here binds anything, so this number is only the base a relative request URL is parsed

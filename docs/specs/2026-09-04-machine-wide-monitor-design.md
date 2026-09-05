@@ -103,6 +103,15 @@ the third is new:
   per project. This is the one place where going plural makes the page *cheaper* than N copies of it
   were.
 
+**Resolving the SET itself is not free either, and it is paid on every poll.** `discoverProjects`
+(§2) calls `loadConfigOrThrow` once per known root, and that function forks `git rev-parse` TWICE —
+once directly, once through `findConfig`'s repository-boundary check — so N projects cost roughly
+2*(N+1) child processes just to decide which N projects exist, before a single board is read.
+Measured over a 5-project fixture: 12 forks and 123 ms for one `discoverProjects` call. The handler
+resolves this set ONCE per request, never once for the etag and again for the body — a second
+resolution would double this cost for nothing, and could let the etag describe a different set than
+the one the body actually serves.
+
 The etag is the concatenation of each project's `sourceStamp`, so an unchanged machine still answers
 304 without rebuilding anything.
 
