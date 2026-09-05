@@ -1,5 +1,5 @@
 {
-  "description": "Guards that keep an opted-in project's main branch integrate-only.",
+  "description": "Guards that keep an opted-in project's main branch integrate-only, its merge gate for the merge gate alone, its drafts local, and its shared tasks claimed before they start; plus a roadmap format check that runs after every edit.",
   "hooks": {
     "PreToolUse": [
       {
@@ -19,6 +19,33 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-main-commit.mjs\"",
             "statusMessage": "Checking the main-is-integrate-only commit guard"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-full-suite.mjs\"",
+            "statusMessage": "Checking the full-suite guard"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-draft.mjs\"",
+            "statusMessage": "Checking the draft guard"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-claim.mjs\"",
+            "statusMessage": "Checking the claim guard"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/lint-roadmap.mjs\"",
+            "statusMessage": "Linting the roadmap format"
           }
         ]
       }
