@@ -1387,8 +1387,10 @@ In `docs/specs/2026-09-02-orchestra-plugin-design.md`:
 
 - [ ] **Step 4: Bump the plugin**
 
-`.claude-plugin/plugin.json` to `0.6.0`. It is a breaking change: a per-project URL that someone
-bookmarked no longer answers.
+`.claude-plugin/plugin.json` to `0.7.0`. It is a breaking change: a per-project URL that someone
+bookmarked no longer answers. **0.7.0, not the `0.6.0` this plan was written against**: phase 5
+landed on main as `0.6.0` while this branch was being built, and the plugin cache is indexed by
+version — two changes sharing one number ships one of them invisible.
 
 - [ ] **Step 5: Commit**
 
