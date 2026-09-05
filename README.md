@@ -20,20 +20,22 @@ a test enforces that.
 
 ## Opt a project in
 
-Write one committed file, `.orchestra/config.json`, holding the one required key:
-
-```json
-{ "mode": "offline" }
+```sh
+orchestra init --mode offline   # or --mode online, if roadmaps should be GitHub issues
 ```
 
 `offline` keeps roadmaps as committed markdown; `online` publishes them as GitHub issues and needs
-the `gh` CLI. Everything else has a default — run `orchestra doctor` in the project to see the
+the `gh` CLI. `init` writes `.orchestra/config.json` (detecting a build system and proposing gates
+where it can, asking rather than guessing at everything it cannot), `.orchestra/.gitignore`, and
+appends the project's hard rules to `CLAUDE.md`. Run `orchestra init --detect --json` first to see
+what it would propose without writing anything, and `orchestra doctor` afterwards to see the
 resolved configuration with every defaulted key marked.
 
-**The absence of that file is the plugin's off switch.** In a project that has not opted in, every
-command exits 0 and prints nothing, so the plugin is safe to install globally. The two exceptions
-are `doctor`, which is how a project opts in, and `orchestra instances`, which answers about the
-machine rather than about a project.
+**The absence of `.orchestra/config.json` is the plugin's off switch.** In a project that has not
+opted in, every command exits 0 and prints nothing, so the plugin is safe to install globally. The
+three exceptions are `doctor`, `orchestra instances`, which answers about the machine rather than
+about a project, and `orchestra init` itself, which is the command that writes the file in the
+first place.
 
 The config's most important key is `gates`, the merge gate's own checklist for a landing:
 
@@ -51,21 +53,21 @@ The config's most important key is `gates`, the merge gate's own checklist for a
 
 Gates run in the order written — cheapest first is the project's own call, not a rule this plugin
 enforces — and `skipWhenAllPathsMatch` skips a gate only when every changed path matches one of its
-globs; an unreadable or empty diff runs the gate rather than skip it.
+globs; an unreadable or empty diff runs the gate rather than skip it. `init` proposes a `deadcode`
+or `lint` gate before `suite` when it finds one, from what it detects in `package.json`; adding
+`visual`, or anything a detector cannot see, is by hand afterwards.
 
-**Gitignore the plugin's own runtime state.** `orchestra init` (phase 5) will write
-`.orchestra/.gitignore` for you; until then, add this line by hand so a project does not commit the
-merge gate's queue record, its landing logs and its run records:
+Then, once, per project:
 
-```
-.orchestra/gate/
+```sh
+orchestra install-heartbeat
 ```
 
 ## What works today
 
-Phase 1 shipped the roadmap layer, phase 2a the register and the machine budget, phase 2b the
-protocol that drives them, phase 3 the merge gate and `roadmap sync`, phase 4 the monitoring page,
-its allocated port and `orchestra instances`:
+The roadmap layer, the register and the machine budget, the protocol that drives them, the merge
+gate and `roadmap sync`, the monitoring page and its allocated port, the guard hooks, `orchestra
+init`, the ticket queue and the heartbeat — every phase of the extraction has landed:
 
 - **`/orchestra`** — the conductor protocol: the nevers, the journal, the framing pass, the nine
   steps of a tick, the playtest gate, and the worker briefs as templates a project fills from its
@@ -91,8 +93,9 @@ its allocated port and `orchestra instances`:
   it reaches a live conductor through that session's `watch-answers` loop within seconds, and
   otherwise waits in the inbox for the next tick.
 - **`orchestra instances`** — every orchestra registered on this machine: name, id, mode, root,
-  URL, whether anything is listening there, worker count, and how long since it reported itself.
-  Like `doctor`, it answers without a project config.
+  URL, whether anything is listening there, worker count, a truncated conductor session id and how
+  long since its last beat, and how long since it reported itself. Like `doctor`, it answers
+  without a project config.
 - **`orchestra archive|archive-images`** — move a finished run's prose out of the register, and
   sweep the photographs under `.orchestra/images/` that nothing live still names.
 - **`orchestra land <branch> [--detach] | await <branch> [--for=N] | queue-list`** — the merge gate:
@@ -105,13 +108,32 @@ its allocated port and `orchestra instances`:
   there is nowhere to write a status.
 - **`merge_agent`** — the agent that runs the gate, resolves a conflict and reports. Nothing else
   should land a branch.
+- **The guard hooks** (`hooks/hooks.json`) — `guard-main-edit` and `guard-main-commit` keep main
+  integrate-only (the second refuses `git commit` **and** `git merge` on it too, `--abort` /
+  `--continue` / `--quit` exempted, overridden by `ORCHESTRA_GATE=1`); `guard-full-suite` refuses a
+  bare invocation of the `suite` gate; `guard-draft` keeps a roadmap draft off `git add`;
+  `guard-claim` refuses a `git worktree add -b <branch>` the board does not show claimed by you,
+  failing open when the channel is unreachable and closed on a cached board; `lint-roadmap` reports
+  a roadmap format issue after every edit; `orchestra-inbox` injects an unread answer into a live
+  interactive session. Every one of them exits 0 and silent with no `.orchestra/config.json`.
+- **`orchestra init [--mode online|offline] [--force] | --detect [--json]`** — see "Opt a project
+  in" above.
+- **`orchestra tickets <list|add|close|show>`** — the ticket ledger at `cfg.tickets.file`
+  (`.orchestra/tickets.jsonl` by default), upserted on a coarse fingerprint, behind a
+  30-second-then-throw queue lock shared with the merge gate's own ledger commit.
+- **`orchestra install-heartbeat [--print]`** — one launchd agent (macOS) or systemd user timer
+  (Linux) per project, labelled `com.orchestra.<id>`, refusing a label already held by a different
+  project's checkout. **The systemd path is written from the launchd path's own shape and is not
+  exercised by any test in this plugin** — verify it by hand. Never a crontab entry: a cron job runs
+  outside the login session and cannot read the login keychain.
 
 A conductor launches its workers with the harness's own `claude --bg`; there is no launcher in the
-plugin, and `ready` produces a plan rather than executing one.
-
-Not yet: the guard hooks, `orchestra init`, the ticket queue and the heartbeat (5). Until the
-`orchestra-inbox` hook exists, a conductor collects the page's answers with `orchestra inbox` on
-every tick and with the `watch-answers` loop in between. See the spec's phase table (§15).
+plugin, and `ready` produces a plan rather than executing one. Those launches, and the heartbeat's
+own hourly tick, need a one-time interactive acceptance of `claude --dangerously-skip-permissions`
+granted once on this machine. **`doctor` does not check for that acceptance, deliberately**: there
+is no documented file whose content states whether it was granted, and a `doctor` row that guessed
+would read as a check while checking nothing. `init` prints the step as a reminder instead, and the
+`orchestra` skill's own preflight proves it on a throwaway session before planning any launch.
 
 ---
 

@@ -18,12 +18,13 @@ at the root of this plugin's own directory. **First, always:**
 "${CLAUDE_PLUGIN_ROOT}/bin/orchestra" doctor
 ```
 
-`doctor` is the only command that answers in a project that has not opted in. It prints the resolved
-configuration, marks every key that fell back to a default, and names the mode. **If it says the
-project has not opted in, stop and do what it tells you** — write `.orchestra/config.json` with its
-one required key. Nothing else in this skill works before that, and every other subcommand exits 0
-and silent rather than complaining, on purpose: that silence is what makes this plugin safe to
-install globally.
+`doctor` prints the resolved configuration in a project that has already opted in, marking every
+key that fell back to a default, and names the mode. **If it says the project has not opted in,
+stop and do what it tells you** — run `orchestra init --mode online` or `--mode offline`. Nothing
+else in this skill works before that, and every other subcommand exits 0 and silent rather than
+complaining, on purpose: that silence is what makes this plugin safe to install globally. (`doctor`,
+`orchestra instances` and `orchestra init` itself are the three exceptions that answer with no
+config at all.)
 
 ## 1. Two destinations, one drafting room
 

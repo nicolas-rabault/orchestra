@@ -75,14 +75,15 @@ own `root` key names the project you think you are conducting.
 
 ## What is not here yet
 
-The single roll-call. An absent command is named here with its phase, in backticks, and never as
-something to type: an occurrence elsewhere names its phase again, or it is a bug.
+The single roll-call of what remains a genuine limitation or a deliberate **Never**, now that every
+command this plugin ships actually exists.
 
 - **A limitation, not an absence: `orchestra roadmap sync`.** It exists (see The tick, step 7);
   offline it does nothing, and that is correct (spec §4.1) — there is nowhere to write a status.
-- **A limitation, not an absence: `ledgers` is empty in every project until phase 5** brings the
-  ticket queue. The gate commits what that key lists at the head of every landing; with nothing
-  listed it commits nothing, and a conductor's `postLanding` remains the way a branch gets a
+- **A limitation, not an absence: `ledgers` defaults to empty.** `orchestra init` proposes the
+  ticket file (`.orchestra/tickets.jsonl`) into it for a fresh project, but nothing forces a project
+  to keep it there. The gate commits what that key lists at the head of every landing; with nothing
+  listed it commits nothing, and a conductor's `postLanding` remains the way a branch gets any OTHER
   main-branch ledger written.
 - **A limitation, not an absence: the monitoring page sees only the ports orchestra recorded.** It
   asks `lsof` about the `port` written on a register row and on each `pending[]` item, and about
@@ -90,24 +91,22 @@ something to type: an occurrence elsewhere names its phase again, or it is a bug
   to a project whose dev server lives somewhere else entirely. So a dev server on a port no
   register row names is invisible to the page. That question is answered by the dev-server sweep
   below, which is a shell procedure and not the page's job.
-- **A limitation, not an absence: an answer posted on the page REACHES a conductor, and never
-  creates one.** When a beat under a minute old belongs to a live pid, the page says so and that
-  session's `orchestra watch-answers` loop hands it the answer within seconds; otherwise the page
-  says the answer is in the inbox and the next tick will read it, and it starts nothing. An answer
-  typed while nobody is beating therefore waits for the next tick — the whole cost, and deliberate:
-  wiring the delivery of an answer to CREATE a conductor instead of to REACH the live one cost six
-  conductor identities in half an hour on 2026-08-13 in planetCraft, two `merge_agent` runs twelve
-  seconds apart on one branch, and three answers left unread because the register kept naming a
-  reader that had already died.
-- **Phase 5**: the guard hooks — `orchestra-inbox`, the one that injects an answer into a live
-  interactive session, among them — `orchestra init`, the ticket queue (`orchestra tickets`) and
-  the heartbeat (`orchestra install-heartbeat`). **Never propose a cron entry for the heartbeat**: a
-  cron job runs outside the login session and cannot read the login keychain, so every tick dies on
-  `Not logged in` — eight consecutive ticks did, and seven hours were lost, on the night of
-  2026-08-12/13 in planetCraft. A launchd agent or a systemd user timer is the shape that works.
-- **Never**: a retrospective tool (spec §13 — its metrics belong to the source project), and a
-  level-triggered net under the answer watch. See `### The answer net, and what has no net under it
-  yet`.
+- **Never wire an answer's delivery to CREATE a conductor instead of to REACH the live one.** The
+  page never does: when a beat under a minute old belongs to a live pid, it says so and that
+  session's `orchestra watch-answers` loop hands over the answer within seconds; otherwise it says
+  the answer is in the inbox and the next tick will read it, and it starts nothing itself. An
+  answer typed while nobody is beating therefore waits — for at most one heartbeat slot now
+  (`orchestra install-heartbeat`), never for ever, but it still waits, and that wait is the whole
+  cost, paid deliberately: wiring the delivery of an answer to CREATE a conductor instead of to
+  REACH the live one cost six conductor identities in half an hour on 2026-08-13 in planetCraft,
+  two `merge_agent` runs twelve seconds apart on one branch, and three answers left unread because
+  the register kept naming a reader that had already died. See `### The answer net, and what has no
+  net under it yet` for what still cannot be covered.
+- **Never propose a cron entry for the heartbeat.** `orchestra install-heartbeat` renders a launchd
+  agent (macOS) or a systemd user timer (Linux) — never a crontab entry, because a cron job runs
+  outside the login session and cannot read the login keychain: every tick died on `Not logged in`,
+  eight consecutive ticks, seven hours lost, on the night of 2026-08-12/13 in planetCraft.
+- **Never**: a retrospective tool (spec §13 — its metrics belong to the source project).
 - **One limitation, not an absence**: `orchestra ready` reconciles against the literal branch
   `main`. A project whose main branch has another name gets a ready set that reconciles nothing, in
   silence, until a later phase widens it.
@@ -160,8 +159,8 @@ You learn that language by being spoken to, and you **write it down the first ti
 `conductor.language` in `.orchestra/state.json`, a plain name (`français`, `English`). That write is
 the whole mechanism, and it is not bookkeeping: most journal lines are written by a headless tick
 that has no user message to infer anything from, so a language only ever deduced is a language lost
-on every tick that has no user in it — and phase 5's heartbeat will start one an hour. Absent from
-the register, write English and keep watching for a message that settles it.
+on every tick that has no user in it — and `orchestra install-heartbeat` starts one an hour. Absent
+from the register, write English and keep watching for a message that settles it.
 
 It applies to what a worker sends you, too — the briefs below ask for it — and to a roadmap you
 draft (`roadmaps.drafts`). It does NOT apply to a published roadmap (`roadmaps.published`) or to any
@@ -273,7 +272,7 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    And an item written with no `askedAt` is reported **with no age rather than dropped**, so an old
    row never silently disappears from the very report that exists to find the longest wait.
 
-3. **When answers reach you — by phase 5's `orchestra-inbox` hook, once it exists, or by
+3. **When answers reach you — by the `orchestra-inbox` hook or by
    `orchestra inbox` — stamp `conductor.inboxSeen`** with the newest timestamp you were shown, in
    the same write that clears the answered `pending[]` items. Forget it and the same answers come
    back next tick — a repeated relay, never a lost one. The stamp is a single shared watermark, so
@@ -401,14 +400,13 @@ started *after* the hold was issued.
 - **Do not tell a worker to avoid heavy jobs.** It buys nothing and costs it the measurement it was
   launched to take. If the project has a `queue`, its own commands already route through it.
 - **The one thing that is yours**: a worker reporting that its measurement could not get what it
-  needed is a tooling finding — it goes to the user, or once phase 5's ticket queue exists, to a
-  ticket (see `## What is not here yet`), never into a workaround. No amount of conductor
-  vigilance substitutes for fixing it.
+  needed is a tooling finding — it goes to the user, or to a ticket (`orchestra tickets add`),
+  never into a workaround. No amount of conductor vigilance substitutes for fixing it.
 
 ## The tick
 
 0. **Before anything else — before the page, before the watch, before you record yourself — ask
-   whether somebody is already conducting.** One command, and phase 5's heartbeat runs the same
+   whether somebody is already conducting.** One command, and the heartbeat runs the same
    one:
    ```sh
    orchestra yield-check     # exit 10 = hand back; it has already journalled the line
@@ -424,9 +422,10 @@ started *after* the hold was issued.
 1. **Rehydrate.**
 
    **The page.** `orchestra instances` lists every orchestra registered on this machine — name,
-   id, mode, root, URL, whether anything is listening there, worker count, and how long since it
-   reported itself. With `doctor` it is one of the two subcommands that answer without a project
-   config, so it answers from anywhere. This project's row is where its port comes from, and that
+   id, mode, root, URL, whether anything is listening there, worker count, a truncated conductor
+   session id and how long since its last beat, and how long since it reported itself. With
+   `doctor` and `init` it is one of the three subcommands that answer without a project config, so
+   it answers from anywhere. This project's row is where its port comes from, and that
    port is stable across restarts: `monitor.port` defaults to `"auto"`, which is `4380 + (the
    project's six-hex id, mod 100)`, probed upward until one is free, and the port **actually
    bound** is what gets recorded.
@@ -485,7 +484,7 @@ started *after* the hold was issued.
    the only evidence anywhere that a conductor is ALIVE — the loop lives exactly as long as this
    session, so a beat under a minute old whose pid answers signal 0 is a live conductor, where a
    register naming one is not. Both halves earn their keep now: the page writes the answers this
-   loop announces, and the beat is what the lock and phase 5's heartbeat both read.
+   loop announces, and the beat is what the lock and the heartbeat both read.
    Arm exactly one: a second watch on the same session announces everything twice. **A headless
    tick arms none** — the loop would die with the tick, and its beat would spend the next minute
    naming a conductor that is already gone.
@@ -646,16 +645,16 @@ started *after* the hold was issued.
    orchestra inbox          # what the user answered on the page
    ```
    **Run it on every tick.** It prints nothing when there is nothing, and what it prints when
-   there is, is a decision the user has already made and is waiting on. Phase 5's
-   `orchestra-inbox` hook, once it exists, injects the same text into an interactive conductor's
+   there is, is a decision the user has already made and is waiting on. The
+   `orchestra-inbox` hook injects the same text into an interactive conductor's
    session — but it is structurally blind to a session that has only just started: a fresh
    session's `SessionStart` and its one `UserPromptSubmit` both fire before it can record itself in
    `state.json`, so the gate is still reading the previous conductor's id. In planetCraft, where
    the page spawned a tick of its own from its reply button — this plugin's page deliberately
    spawns none — five answers reached nobody that way on 2026-08-12: G1 sat fifty minutes on a
    defect the user had already described, and three tasks launched half an hour after the user had
-   said to keep the machine quiet. Here the fresh session that will meet that same gate is phase
-   5's heartbeat tick. Whether the text arrives by hook or by this command, the obligation is the
+   said to keep the machine quiet. Here the fresh session that meets that same gate is the
+   heartbeat tick. Whether the text arrives by hook or by this command, the obligation is the
    same one: relay verbatim, clear the `pending[]` item, journal an `answer`, stamp
    `conductor.inboxSeen` — the journal's third obligation is this same mechanic seen from the
    cursor's side.
@@ -666,10 +665,11 @@ started *after* the hold was issued.
 
    The page is the writer of `.orchestra/inbox.jsonl`, so this command now has something to print:
    the oldest answers nobody has taken yet, whether they answer a `pending[]` item or are a free
-   remark. The hook is still phase 5's, so in this phase that text reaches you two ways and no
-   third — this command on every tick, and step 1's answer watch in between — and all four
-   obligations above stand, the stamp included. An answer posted while nobody was beating started
-   nothing and is simply sitting there; this read is what collects it.
+   remark. The hook adds a third path when it can fire, but a session's own first turn is exactly
+   where it goes blind, so treat it as a bonus rather than a substitute — this command on every
+   tick, and step 1's answer watch in between, remain the two paths guaranteed to reach you, and
+   all four obligations above stand, the stamp included. An answer posted while nobody was beating
+   started nothing and is simply sitting there; this read is what collects it.
 5. **Checkpoint.** A checkpoint is the moment you stop trickling questions out one at a time and
    present every pending decision to the user together, grouped and ordered, each in its Decision
    Template — the act the journal and the framing pass both mean when they call a landing or a
@@ -697,7 +697,9 @@ started *after* the hold was issued.
    checkpoint, and continue — the launch step below picks up whatever the landing unblocked.
 
    **When the user approves a merge, this is the hand-off — and you still never merge BY HAND: that
-   rule outlives its enforcement, and phase 5's hooks are what will hold it.**
+   rule outlives its enforcement, and `guard-main-commit` is what holds it now — it refuses `git
+   commit` and `git merge` on the main checkout's main branch alike, `--abort|--continue|--quit`
+   exempted, unless `ORCHESTRA_GATE=1` marks the gate's own process.**
 
    ```sh
    orchestra land <branch> --detach     # returns at once, exit 15
@@ -735,8 +737,8 @@ started *after* the hold was issued.
      believing it: the branch touches neither the test nor its subject; the machine was
      over-subscribed while the suite ran; the test passes on re-run in isolation. All three held
      on MA4's second refusal — the branch was innocent and the gate was reading load. File the
-     missing cushion as a finding rather than carrying the suspicion into the next branch — the
-     ticket queue is phase 5, so in this phase a finding like that goes to the user.
+     missing cushion as a finding rather than carrying the suspicion into the next branch:
+     `orchestra tickets add`.
 
    **Drain the row's `postLanding` — the writes the BRANCH could not make.** The `ledgers`
    config lists tracked files the main branch owns, and the gate commits them at the head
@@ -746,10 +748,11 @@ started *after* the hold was issued.
    planetCraft, MA4 landed and its two closures and its one new ticket were still unwritten when
    the run was reviewed and called green — nobody owned that other end. So this is
    **attempt-and-record, never a blocking obligation**, unlike an undelivered relay, and the
-   difference is mechanical: a project's own ledger-writing tool can itself hold a lock and
-   refuse when it cannot get one, but the gate's own commit takes NO cross-process lock of its
-   own — a limitation, not an absence, exactly like `ledgers` being empty above: `lib/gate/land.mjs`
-   names the gap in its own comment, and it is phase 5's to add. So a tick forbidden to end with one
+   difference is mechanical: the gate's own commit of `ledgers` files takes a lock now
+   (`lib/gate/land.mjs`'s `commitLedgers`, over `lib/tickets/lock.mjs`'s queue lock — one target
+   per distinct directory `cfg.ledgers` resolves into), but a `postLanding` command is neither
+   that write nor under that lock: it runs later, by hand, in the same tick that saw the landing,
+   and nothing wraps it in a lock or checks that it ran at all. So a tick forbidden to end with one
    outstanding would not deadlock against the landing that produced it; it would race an
    unserialised writer for nothing, which is reason enough on its own. Record the error on the row;
    the next tick retries.
@@ -784,11 +787,12 @@ started *after* the hold was issued.
    Keep the stale-board rule as a rule of this step: **if `orchestra roadmap board` reports
    itself stale, launch nothing this tick and end here** — a cached board cannot say whether
    another developer has taken a task, and starting anyway overwrites their claim. Say so in the
-   journal. Offline, a board is never served from cache, so this rule is online's. **No command
-   in this phase reports a board as stale.** The rule outlives its enforcement, exactly as never
-   merging does: `guard-claim` is phase 5's, and it fails closed on a cached board deliberately,
-   rather than let an out-of-date read authorise a claim it cannot vouch for. Until then the rule
-   stands on its own reasoning, not on an alarm.
+   journal. Offline, a board is never served from cache, so this rule is online's.
+   **`guard-claim` holds the same line at the point that matters more.** It fails closed on a
+   cached board deliberately, rather than let an out-of-date read authorise the `git worktree add
+   -b <branch>` that starts a task — the gesture which starts the work is the gesture the guard
+   checks, so a conductor who launches on a stale read is stopped there even if this step's own
+   reasoning was missed.
 8. **Launch, and the names.** Launch each row `orchestra ready` places in `launches` — already
    width-capped by "The machine's capacity" above. **Claim first, always**, for your own
    roadmaps too, now that every roadmap is published:
@@ -798,7 +802,7 @@ started *after* the hold was issued.
    Online the claim is what turns the issue `status:wip` for everyone else watching; offline it
    is the register row and the branch ref. If it reports a loss — `lib/cli/roadmap.mjs`'s
    `claim` case throws `claim lost: <key> is held by <holder>` when the store refuses — drop the
-   row from this batch and record who holds it. Phase 5's `guard-claim` hook is the backstop,
+   row from this batch and record who holds it. The `guard-claim` hook is the backstop,
    not the mechanism.
    ```sh
    git worktree add <worktrees>/<slug> -b <branch> <the project's main branch>
@@ -884,14 +888,13 @@ started *after* the hold was issued.
    (`lib/register/beat.mjs`'s `conductorState`, read off the register file's own mtime), and a
    tick that skips the write reads as ninety minutes of silence at the next heartbeat slot.
 
-   Stopping is no longer going deaf. Three things wake you, each named with its phase where it
-   has one: the answer watch armed in step 1 hands you each new answer within seconds — the page
-   writes them and that loop is what turns one into an event here, whatever you are doing; worker
-   turns you resumed notify you as their Bash tasks complete — a landing dispatched to
-   `merge_agent` wakes you the very same way, its turn ending being no different from a worker's;
-   a landing you run yourself needs no wake at all, since `await` blocks in bounded chunks inside
-   your own turn and re-running it is always correct; and phase 5's heartbeat guarantees a tick
-   every hour whatever happens to
+   Stopping is no longer going deaf. Three things wake you: the answer watch armed in step 1 hands
+   you each new answer within seconds — the page writes them and that loop is what turns one into
+   an event here, whatever you are doing; worker turns you resumed notify you as their Bash tasks
+   complete — a landing dispatched to `merge_agent` wakes you the very same way, its turn ending
+   being no different from a worker's; a landing you run yourself needs no wake at all, since
+   `await` blocks in bounded chunks inside your own turn and re-running it is always correct; and
+   the heartbeat (`orchestra install-heartbeat`) guarantees a tick every hour whatever happens to
    you, standing down while you are alive so it cannot become a second conductor beside you.
 
    An interactive conductor may additionally arm one Monitor polling `claude agents --json` for
@@ -1223,12 +1226,11 @@ exists, and never to a row in the middle of a playtest gate.
 
 ## The stand-down tick
 
-**It is a heartbeat's own end-of-run duty, written before the heartbeat is.** The three commands
-below already ship — `orchestra tick-gate`, `orchestra archive` and `orchestra archive-images` —
-while the loop that would call the first of them hourly is phase 5's `orchestra install-heartbeat`
-(see `## What is not here yet`). So this section is not a description of a timer; it is what a
-conductor's own last tick on a roadmap does before it goes quiet, whether that tick is fired by a
-person or, once phase 5 lands, by the loop itself.
+**It is a heartbeat's own end-of-run duty.** The three commands below all ship —
+`orchestra tick-gate`, `orchestra archive` and `orchestra archive-images` — and the loop that calls
+the first of them hourly is `orchestra install-heartbeat`'s own `templates/tick.sh`. So this
+section is not a description of a timer; it is what a conductor's own last tick on a roadmap does
+before it goes quiet, whether that tick is fired by a person or by the loop itself.
 
 `orchestra tick-gate` answers in **one line whose first word is the verb**:
 
@@ -1271,9 +1273,9 @@ undelivered relay; and any row not yet terminal — this last one is what prints
 
 **It holds the machine awake while work is in flight.** `hold-awake` is the word the gate's line
 carries whenever a row is still non-terminal; the shell that turns that word into a wake lock is
-phase 5's, not this tick's — this tick only prints it. Keep the reason it exists: eight heartbeat
-slots of 1 h 23 to 3 h 26 were lost to sleep in one 46-hour roadmap in planetCraft, about six hours
-of it, one of them killing a worker mid-turn.
+`templates/tick.sh`'s own `caffeinate` step, not this command's — `tick-gate` only prints the word.
+Keep the reason it exists: eight heartbeat slots of 1 h 23 to 3 h 26 were lost to sleep in one
+46-hour roadmap in planetCraft, about six hours of it, one of them killing a worker mid-turn.
 
 **It stands down when there is nothing to do, and every decision is logged**, so a heartbeat that
 went quiet always says why — the four `skip` lines above are the whole of it. An unused heartbeat
@@ -1293,9 +1295,11 @@ the S1s and S2s in the journal and at the checkpoint, and put one question there
 Template — work them down, or leave them for the queue. **Do not open the lines yourself**: a
 finished roadmap is the user's moment to choose the next one.
 
-The ticket queue is phase 5's `orchestra tickets`. Until it exists there is no ledger to list, so
-this sweep is over what the run's own journal `note` lines record — say that plainly rather than
-naming a command that is not there.
+**File each S1 and S2 as a ticket, not just a journal note.** `orchestra tickets add --severity
+S1|S2 --kind bug|friction|design|perf --title '<title>' --subject '<one line>'` (or `--fingerprint`
+when the finding already carries one) as you name it in the journal, rather than leaving it to a
+note nobody re-reads. `orchestra tickets list --severity S1` is the sweep itself, for whoever opens
+the next roadmap and was not on this one.
 
 **Then archive the finished rows, on that same tick.**
 
@@ -1361,7 +1365,10 @@ was armed** — its first round announces nothing and only remembers what is alr
 left behind by **a tick that died before relaying it**, because the watch dies with the session
 too.
 
-**There is no level-triggered net under it in this plugin.** A second launchd agent or systemd
-timer is the shape that would work, and choosing to install one is the user's, not a tick's —
-phase 5 is where it is wired and where it is paid for. Never propose a cron entry for it: a cron
-tick cannot read the login keychain, so the net would catch nothing while reading as protection.
+**The net under it is the heartbeat, and it is a floor, never a wake-up call.** `orchestra
+install-heartbeat`'s hourly tick is `decideTick`'s own first override (`lib/register/tick.mjs`): an
+unconsumed answer in the inbox forces `run` even when every other row is terminal, so an answer
+typed while nobody is beating now waits at most one heartbeat slot rather than for ever. It is
+still a wait, not a delivery — see the Never in `## What is not here yet` for why that shape is
+deliberate and what the other shape cost. Never propose a cron entry as a substitute: a cron tick
+cannot read the login keychain, so it would catch nothing while reading as protection.
