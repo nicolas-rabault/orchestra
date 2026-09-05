@@ -1,0 +1,24 @@
+[Unit]
+# ORCHESTRA_ROOT=__ROOT__
+# See templates/heartbeat.service's own copy of this marker for what reads it and why.
+Description=orchestra heartbeat timer for __ROOT__
+
+# THE LINUX PATH IS WRITTEN FROM THE LAUNCHD PATH'S SHAPE AND IS NOT EXERCISED BY ANY TEST IN THIS
+# PLUGIN — see the README.
+[Timer]
+# Hourly, on the :13 — the same slot templates/heartbeat.plist's StartCalendarInterval fires on, so
+# the two platforms tick at the same wall-clock minute.
+OnCalendar=*-*-* *:13:00
+
+# The systemd analogue of launchd firing a missed calendar slot on wake: Persistent=true records
+# when this timer last fired and, if the machine was off or asleep through a slot, fires it once at
+# the next opportunity instead of simply skipping it. Eight slots of 1h23 to 3h26 were lost the
+# other way (a plain interval timer that only counts while running) in one 46-hour roadmap in
+# planetCraft — about six hours, one of them killing a worker mid-turn.
+Persistent=true
+
+# No explicit Unit= here: systemd pairs a timer with the service of the same base name by default,
+# and this file is always installed beside com.orchestra.<id>.service under that same name.
+
+[Install]
+WantedBy=timers.target

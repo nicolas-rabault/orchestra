@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- ORCHESTRA_ROOT=__ROOT__
+       Read by lib/cli/heartbeat.mjs's installedRoot() to recover which project's checkout this
+       installed agent was rendered for — the check that lets `install-heartbeat` refuse to
+       overwrite an agent belonging to a different root, and that lets `orchestra doctor` report an
+       agent left behind by a checkout that no longer exists. Never edit this line by hand: it is
+       rendered by `orchestra install-heartbeat`, once per checkout. -->
+
+  <!-- This is a LaunchAgent, not a cron job. A crontab entry runs outside the user's login session
+       and cannot read the login keychain, which is what `claude`'s own auth reads — on the night
+       of 2026-08-12/13 in planetCraft every cron tick died on "Not logged in", eight consecutive
+       ticks, seven hours frozen. A LaunchAgent runs inside the login session and sees the keychain.
+
+       __ID__ is the six-hex hash of this project's absolute path (`projectId`, lib/paths.mjs) — the
+       only thing that stays unique when two checkouts of one repository, or two unrelated projects
+       sharing a directory name, each install a heartbeat.
+
+       This file is a TEMPLATE: `__ROOT__` and `__ID__` are the only things in it that are not
+       literal. launchd needs an absolute path and expands nothing, so one committed file could
+       never name two developers' checkouts. `orchestra install-heartbeat` renders this into
+       ~/Library/LaunchAgents with the paths of the checkout it is run from, on every run, so a
+       moved checkout self-heals. The installed agent is therefore one substitution away from this
+       file, and `orchestra doctor` re-renders it to check that it still is, rather than letting the
+       real schedule live only in ~/Library/LaunchAgents where it can be neither reviewed nor
+       recovered. -->
+  <key>Label</key>
+  <string>com.orchestra.__ID__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__ROOT__/.orchestra/tick.sh</string>
+  </array>
+
+  <!-- Hourly, on the :13, as a CALENDAR interval rather than StartInterval 3600. The difference is
+       what happens across sleep: StartInterval simply stops counting, and eight slots of 1h23 to
+       3h26 were lost that way in one 46-hour roadmap in planetCraft — about six hours, one of them
+       killing a worker mid-turn. launchd fires a missed calendar slot when the machine wakes. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Minute</key><integer>13</integer></dict>
+  </array>
+
+  <!-- templates/tick.sh keeps its own lock (`orchestra lock`), so a slow tick cannot pile up on
+       the next one. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- Without this, launchd kills every remaining process in the job's process group the moment
+       the tick exits (launchd.plist(5): "When a job dies, launchd kills any remaining processes
+       with the same process group ID as the job"). Reparenting to PID 1 does not help — launchd
+       kills by process group, not by parent.
+
+       This job exists to leave things running behind it: the tick's `caffeinate` is meant to
+       outlive it by ninety minutes, and any worker session the tick launches is meant to outlive
+       it for however long that worker runs. Without AbandonProcessGroup both would die with the
+       tick instead, collapsing the window to the duration of the tick itself — the one stretch the
+       machine was never going to sleep through anyway. -->
+  <key>AbandonProcessGroup</key>
+  <true/>
+
+  <!-- So tick.log can say who fired each tick: the agent (this plist sets ORCHESTRA_TRIGGER=agent)
+       or a hand-run tick (ORCHESTRA_TRIGGER unset, which templates/tick.sh reads as "manual"). A
+       log that cannot tell the two apart cannot answer the one question it exists to answer: did
+       the heartbeat fire when it should have. Measured in planetCraft on 2026-08-14: fourteen tick
+       lines could not answer whether the heartbeat survives sleep, because nothing recorded who
+       fired each one. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>ORCHESTRA_TRIGGER</key>
+    <string>agent</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__ROOT__/.orchestra/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>__ROOT__/.orchestra/launchd.log</string>
+</dict>
+</plist>

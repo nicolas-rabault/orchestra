@@ -1,0 +1,28 @@
+[Unit]
+# ORCHESTRA_ROOT=__ROOT__
+# Read by lib/cli/heartbeat.mjs's installedRoot() — the same marker line as templates/heartbeat.plist's,
+# in a "# " comment instead of an XML one, so one function reads both formats. It is what lets
+# `install-heartbeat` refuse to overwrite an agent belonging to a different root, and lets
+# `orchestra doctor` report an agent left behind by a checkout that no longer exists (§8.5). Never
+# edit this line by hand: it is rendered by `orchestra install-heartbeat`, once per checkout.
+Description=orchestra heartbeat tick for __ROOT__
+
+# THE LINUX PATH IS WRITTEN FROM THE LAUNCHD PATH'S SHAPE AND IS NOT EXERCISED BY ANY TEST IN THIS
+# PLUGIN — see the README. The reasoning below is carried over because it still applies to a
+# systemd user service exactly as it applies to a LaunchAgent; only the mechanism differs.
+[Service]
+Type=oneshot
+Environment=ORCHESTRA_TRIGGER=agent
+ExecStart=__ROOT__/.orchestra/tick.sh
+StandardOutput=append:__ROOT__/.orchestra/launchd.log
+StandardError=append:__ROOT__/.orchestra/launchd.log
+
+# The systemd analogue of the launchd plist's AbandonProcessGroup. systemd's default KillMode
+# (control-group) kills every process left in this unit's cgroup — the tick's own caffeinate
+# equivalent and any worker session it launched included — the moment the unit is torn down, which
+# happens right after ExecStart's process exits for a Type=oneshot service with no RemainAfterExit.
+# KillMode=process limits that teardown to the ExecStart process itself, leaving what it started
+# running. This is the untested half of the trap AbandonProcessGroup documents on the launchd side:
+# without an equivalent here, a systemd tick would have the same problem launchd's did — anything
+# it left running to outlive it would die with it instead.
+KillMode=process
