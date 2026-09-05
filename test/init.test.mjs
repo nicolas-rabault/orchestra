@@ -160,6 +160,19 @@ test('initProject: refuses an invalid mode string, writes nothing', () => {
   assert.equal(existsSync(join(d, '.orchestra')), false);
 });
 
+test('initProject: a mode containing a quote is refused cleanly, not a raw JSON.parse crash', () => {
+  // Review round 1: `__MODE__` is substituted into templates/config.json's TEXT, inside a JSON
+  // string literal, before that text is parsed — a mode holding a `"` used to corrupt the JSON and
+  // surface `JSON.parse`'s own SyntaxError instead of `validate`'s clean refusal message.
+  const d = tmpDir();
+  assert.doesNotThrow(() => initProject(d, { mode: 'a"bad' }));
+  const report = initProject(d, { mode: 'a"bad' });
+  assert.equal(report.ok, false);
+  assert.equal(report.action, 'invalid');
+  assert.match(report.message, /"mode" is required and must be "online" or "offline"/);
+  assert.equal(existsSync(join(d, '.orchestra')), false);
+});
+
 test('initProject: refuses to overwrite an existing config without --force, and touches nothing', () => {
   const d = tmpDir();
   mkdirSync(join(d, '.orchestra'));
@@ -221,13 +234,40 @@ test('initProject: writes .orchestra/.gitignore with exactly the paths the plugi
   assert.deepEqual(lines, [
     'state.json', 'journal.jsonl', 'inbox.jsonl', 'archive.jsonl', 'conductor.beat.json',
     'tick.lock', '.queue.lock', 'drafts/', 'worktrees/', 'images/', 'gate/', 'tick.sh',
-    '*.log', '*.err',
+    '*.log', '*.err', '*.tmp',
   ]);
   // Neither of the two committed paths under `.orchestra/` is ignored.
   assert.equal(lines.includes('config.json'), false);
   assert.equal(lines.includes('.gitignore'), false);
   assert.equal(lines.includes(DEFAULTS.tickets.file.replace('.orchestra/', '')), false);
   assert.equal(readFileSync(join(d, '.orchestra', '.gitignore'), 'utf8'), GITIGNORE);
+});
+
+test('initProject: the written .gitignore actually hides every real atomic-write scratch file, in a real repo', () => {
+  // Review round 1: `state.json.<pid>.tmp` and `conductor.beat.json.<pid>.tmp` — the scratch files
+  // `lib/register/state.mjs`'s `writeState` and `lib/register/beat.mjs`'s `writeBeat` rename
+  // FROM — showed up as `??` in `git status` after an `init`, because the first cut of this list
+  // named `.queue.lock` but not the wider class it belongs to. This reproduces the exact shape of
+  // that failure — a real git repo, `init`, then the scratch names those two functions (and
+  // `templates/tick.sh`'s own `tick.log.tmp` log-rotation line) actually use on disk — and proves
+  // `git status` now reports nothing.
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  initProject(r.root, { mode: 'offline' });
+  // CLAUDE.md is also new here (`init` created it) — real and expected to show up in `git status`
+  // until a human commits it; committing it in this fixture keeps the assertion below about the
+  // scratch files under `.orchestra/`, not about CLAUDE.md's own tracked state.
+  r.git('add', '.orchestra/config.json', '.orchestra/.gitignore', 'CLAUDE.md');
+  r.git('commit', '-q', '-m', 'opt in');
+
+  writeFileSync(join(r.root, '.orchestra', 'state.json.12345.tmp'), '{}');
+  writeFileSync(join(r.root, '.orchestra', 'conductor.beat.json.6789.tmp'), '{}');
+  writeFileSync(join(r.root, '.orchestra', 'tick.log.tmp'), 'log rotation in flight\n');
+  mkdirSync(join(r.root, '.orchestra', '.queue.lock'));
+  writeFileSync(join(r.root, '.orchestra', '.queue.lock', 'pid'), '99999');
+
+  const status = r.git('status', '--porcelain');
+  assert.equal(status.trim(), '', `expected git status to report nothing untracked, got:\n${status}`);
 });
 
 test('initProject: creates CLAUDE.md when none exists', () => {
@@ -264,6 +304,25 @@ test('initProject: appends to a pre-existing CLAUDE.md rather than replacing it,
   assert.equal(second.claude.action, 'unchanged');
   assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), afterFirst);
   assert.equal(afterFirst.match(/<!-- orchestra:claude-rules -->/g).length, 1);
+});
+
+test('initProject: a CLAUDE.md carrying the marker line but not the rules underneath it still gets them', () => {
+  // Review round 1: the marker alone used to be read as "the block is already here", so a
+  // CLAUDE.md where the rules were edited or truncated but the marker line survived was reported
+  // `unchanged` forever and never actually received them. The fix checks for the block itself.
+  const d = tmpDir();
+  writeFileSync(join(d, 'CLAUDE.md'), '<!-- orchestra:claude-rules -->\n(someone deleted the rest)\n');
+  const report = initProject(d, { mode: 'offline' });
+  assert.equal(report.claude.action, 'appended');
+  const text = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
+  assert.match(text, /\(someone deleted the rest\)/);
+  assert.match(text, /rerere\.enabled true/);
+  assert.match(text, /merge_agent/);
+
+  // Now that the full, current block is actually present, a second run reports unchanged.
+  const second = initProject(d, { mode: 'offline', force: true });
+  assert.equal(second.claude.action, 'unchanged');
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), text);
 });
 
 // ---------------------------------------------------------------------------------
@@ -335,4 +394,14 @@ test('CLI: `init --mode nonsense` refuses — an invalid mode value, never silen
   const res = run(r.root, 'init', '--mode', 'nonsense');
   assert.equal(res.status, 1);
   assert.match(res.stderr, /"mode"/);
+});
+
+test('CLI: `init --mode <value with a quote>` refuses cleanly, no raw JSON.parse SyntaxError on stderr', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  const res = run(r.root, 'init', '--mode', 'a"bad');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /"mode" is required and must be "online" or "offline"/);
+  assert.doesNotMatch(res.stderr, /SyntaxError/);
+  assert.equal(existsSync(join(r.root, '.orchestra', 'config.json')), false);
 });
