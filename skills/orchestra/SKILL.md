@@ -21,13 +21,51 @@ Run it from anywhere inside the project. If `CLAUDE_PLUGIN_ROOT` is unset, the b
 `orchestra <subcommand>` and means that.
 
 **`orchestra doctor` first, always.** It prints the resolved configuration, marks every key that
-fell back to a default, and names the mode. If it says the project has not opted in, stop and do
-what it says — every subcommand but two exits 0 and silent otherwise, on purpose, and that silence
-is what makes the plugin safe to install globally. The two exceptions are `doctor` itself and
-`orchestra instances`, which answers about the MACHINE rather than about a project and so has no
-project config to be missing. Read off it `mode`, `name`, `id`, `language`, `mainBranch`,
-`worktrees`, `branchTests`, `docs.specs`, `docs.plans`, `docs.results`, `briefExtra` and `queue`,
-and nothing else.
+fell back to a default, and names the mode. If it says the project has not opted in, go to
+**Onboarding a new project** below and do that first. Every subcommand but three exits 0 and
+silent otherwise, on purpose, and that silence is what makes the plugin safe to install globally.
+The three exceptions are `doctor` itself, `orchestra instances` and `orchestra init`, none of which
+need a project config to answer — `instances` because it answers about the MACHINE rather than
+about a project, `init` because it is the command that writes the config in the first place. Once
+a project has one, read off `doctor` `mode`, `name`, `id`, `language`, `mainBranch`, `worktrees`,
+`branchTests`, `docs.specs`, `docs.plans`, `docs.results`, `briefExtra` and `queue`, and nothing
+else.
+
+## Onboarding a new project (`orchestra init`)
+
+**Run this once, before anything else, in a project `doctor` says has not opted in.** `init` writes
+`.orchestra/config.json`, `.orchestra/.gitignore`, and appends `templates/CLAUDE-rules.md` to the
+project's `CLAUDE.md` (or creates it) — see `lib/cli/init.mjs` for exactly what each of those
+holds. What it cannot do is guess: `detect(root)` only proposes a gate or a branch-test command it
+found real evidence of (a script in `package.json`, a `Cargo.toml`, a `pyproject.toml`, a Makefile
+`test:` target), and anything it did not find goes in its `missing` list rather than being
+invented — a gate that does not run is a gate that refuses every landing.
+
+Ask, in this order:
+
+1. **Run `orchestra init --detect --json` first**, before asking anything. It never writes. Read
+   its `buildSystem`, `gates`, `branchTests`, `ledgers` and `missing`.
+2. **`mode`** — the one key with no default, so ask it even when detection found everything else:
+   - `online` — roadmaps are GitHub issues, so every developer on the repository sees who is
+     working on what (needs the `gh` CLI, authenticated).
+   - `offline` — roadmaps are committed markdown under `docs/roadmaps`, and "is somebody already
+     working on this" is answered for this machine only.
+3. **Everything named in `missing`**, one at a time, only if detection actually left it empty:
+   - `suite` — no recognised test command at all. Ask what runs the whole suite, if anything does
+     yet. A project with nothing here can still adopt orchestra; it just lands without a gate.
+   - `branchTests` — no fast, changed-files-only test command. Ask what a worker should run on
+     every iteration instead of the whole suite, if there is one.
+   Take "there isn't one" as a real, valid answer — do not press for a command that does not exist.
+4. **Run `orchestra init --mode <answer>`.** Everything `detect` found is picked up automatically;
+   nothing needs to be re-typed back in.
+5. **Anything the user answered in step 3 has to be added by hand**, in `.orchestra/config.json`,
+   after `init` runs — a `gates` entry (`{"name": ..., "cmd": ...}`, cheapest first) or a
+   `branchTests` string. `init` has no flag for supplying one itself, on purpose: the same rule
+   that keeps it from inventing a command keeps it from taking one it cannot verify either.
+   Re-running `init --force` later overwrites the whole file, including anything added this way.
+6. **`init` prints two steps it cannot take.** Do them: run `orchestra install-heartbeat`, and
+   satisfy the one-time interactive acceptance of `claude --dangerously-skip-permissions` — proven
+   on a throwaway session by **Preflight** below, before planning any launch.
 
 **Runtime state resolves to the main checkout, never to the worktree you are standing in.** Every
 subcommand does that for itself. What it cannot do for you is the register you edit **by hand**:

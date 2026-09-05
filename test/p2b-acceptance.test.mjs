@@ -85,11 +85,17 @@ const PLACEHOLDERS = ['branch', 'task', 'title', 'excerpt', 'language', 'branchT
 
 // Every path and command of the source project. A survivor here is transformation 1 or 2 left undone
 // — and a false invocation in a protocol is worse than a false comment, because a worker types it.
+//
+// `CLAUDE.md` left this list in phase 5: it is no longer a leftover of the source project's own
+// checkout, it is the file `orchestra init` writes into WHATEVER project adopts this plugin (every
+// Claude Code project can have one, under that exact name) — the skill's own onboarding section
+// names it on purpose, and a forbidden-list entry from before `init` existed must not keep the
+// section it exists to describe from ever being written.
 const FORBIDDEN = [
   'node tools/', 'tools/orchestra', 'tools/merge-queue', 'tools/tickets', 'tools/retex',
   'tools/queue', 'tools/roadmap/', 'tools/usage-scan', 'npm run ', '.claude/orchestra',
   '.claude/worktrees', 'docs/superpowers/', 'docs/local/', 'docs/ROADMAP.md', 'docs/retex',
-  'reports/', 'CLAUDE.md', 'com.planetcraft', 'launchctl', 'crontab -',
+  'reports/', 'com.planetcraft', 'launchctl', 'crontab -',
 ];
 
 // The slice of `text` that belongs to ONE heading — from the heading's own line up to (not

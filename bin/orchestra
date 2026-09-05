@@ -11,8 +11,13 @@ import { landCommand, awaitCommand, queueListCommand } from '../lib/cli/gate.mjs
 import { monitorCommand, instancesCommand } from '../lib/cli/monitor.mjs';
 import { ticketsCommand } from '../lib/cli/tickets.mjs';
 import { installHeartbeatCommand } from '../lib/cli/heartbeat.mjs';
+import { initCommand } from '../lib/cli/init.mjs';
 
 register('doctor', { machine: true, run: ({ cfg }) => doctor(cfg) });
+// `machine: true`: it is the command that WRITES `.orchestra/config.json` in the first place, so
+// it must answer in exactly the project that has none yet — spec §3.1's off switch names it as one
+// of the three exceptions alongside `doctor` and `instances`.
+register('init', { machine: true, run: initCommand });
 register('roadmap', { run: roadmapCommand });
 register('journal', { run: journalCommand });
 register('inbox', { run: inboxCommand });

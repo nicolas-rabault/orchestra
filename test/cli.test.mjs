@@ -210,10 +210,12 @@ test('lock acquire refuses a --pid with no value, rather than writing a null pid
 //
 // The exceptions are spec §3.1's machine-level verbs, which answer ABOUT THE MACHINE and not about
 // a project, so a directory that has never heard of orchestra is exactly where they must still
-// speak: `doctor` tells a first-time user how to opt in, and `instances` says what else on this
-// machine is running. They are named here, and asserted to answer, so that this test cannot go
-// green by one of them quietly falling silent instead.
-const MACHINE_VERBS = ['doctor', 'instances'];
+// speak: `doctor` tells a first-time user how to opt in, `instances` says what else on this
+// machine is running, and `init` is the command a first-time user runs — it must answer bare, with
+// usage and what it would detect, rather than the off switch's ordinary silence. They are named
+// here, and asserted to answer, so that this test cannot go green by one of them quietly falling
+// silent instead.
+const MACHINE_VERBS = ['doctor', 'instances', 'init'];
 
 test('every registered verb but the machine-level ones honours the off switch — exits 0 and prints nothing', () => {
   const help = execFileSync('node', [BIN, 'help'], { encoding: 'utf8' });
