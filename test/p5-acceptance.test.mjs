@@ -126,18 +126,7 @@ test('every hook hooks.json wires is a row test/hooks-offswitch.test.mjs actuall
 // Row 3 — `install-heartbeat` refuses a label held by another root.
 // ---------------------------------------------------------------------------------------------
 
-// The real machine this suite runs on, captured before any test mutates anything — never
-// `os.homedir()` inside the test body below, which would read whatever HOME this process happens
-// to have at that moment rather than the one fact this check exists to pin down.
-const REAL_HOME = process.env.HOME;
-
 test('install-heartbeat refuses a label held by another root — temporary HOME, injected runner, real machine untouched', () => {
-  // Sanity control, BEFORE: the machine this suite runs on carries no `com.orchestra.*` agent
-  // right now. If it did, the refusal below could pass for the wrong reason (colliding with a
-  // real agent) and the "never touches the real machine" claim would be untestable either way.
-  assert.deepEqual(installedAgents({ home: REAL_HOME }), [],
-    'the real machine must carry no com.orchestra.* agent before this test runs');
-
   const home = mkdtempSync(join(tmpdir(), 'orchestra-heartbeat-home-'));
   const calls = [];
   // The injected runner: records every call and never spawns a real `launchctl` or `systemctl`.
@@ -150,6 +139,13 @@ test('install-heartbeat refuses a label held by another root — temporary HOME,
   };
 
   try {
+    // Sanity control, BEFORE: a test may observe only state it created — this asserts against the
+    // temporary HOME above, never the developer's real `~/Library/LaunchAgents`. Reading the real
+    // one here would fail the day this machine runs `orchestra install-heartbeat` for any project,
+    // for a reason that has nothing to do with this test.
+    assert.deepEqual(installedAgents({ home }), [],
+      'the temporary HOME this test builds must start with no com.orchestra.* agent');
+
     const rootA = mkdtempSync(join(tmpdir(), 'orchestra-heartbeat-proj-a-'));
     const rootB = mkdtempSync(join(tmpdir(), 'orchestra-heartbeat-proj-b-'));
     try {
@@ -171,6 +167,12 @@ test('install-heartbeat refuses a label held by another root — temporary HOME,
 
       // Refused before touching B's checkout at all.
       assert.equal(existsSync(join(rootB, '.orchestra', 'tick.sh')), false);
+
+      // Sanity control, AFTER: the temporary HOME carries exactly the one agent this test
+      // installed — A's, and only A's. Still the temporary HOME, never the real one.
+      const agents = installedAgents({ home });
+      assert.deepEqual(agents.map((a) => a.id), ['shared1']);
+      assert.equal(agents[0].root, rootA);
     } finally {
       rmSync(rootA, { recursive: true, force: true });
       rmSync(rootB, { recursive: true, force: true });
@@ -184,8 +186,4 @@ test('install-heartbeat refuses a label held by another root — temporary HOME,
   // spawn) is the proof nothing outside `run` was ever invoked.
   assert.ok(calls.length > 0, 'the injected runner should have recorded at least one call');
   assert.ok(calls.every(([bin]) => bin === 'launchctl' || bin === 'systemctl'));
-
-  // Sanity control, AFTER: still nothing on the real machine.
-  assert.deepEqual(installedAgents({ home: REAL_HOME }), [],
-    'the real machine must still carry no com.orchestra.* agent after this test runs');
 });
