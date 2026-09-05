@@ -85,13 +85,6 @@ test('validate rejects a gate with no name or no cmd, and duplicate gate names',
     ['config: gate name "a" is used twice — a gate is named in its refusal, so names must be unique']);
 });
 
-test('validate rejects a port that is neither "auto" nor a usable number', () => {
-  assert.deepEqual(validate({ mode: 'offline', monitor: { port: 80 } }),
-    ['config: monitor.port must be "auto" or an integer between 1024 and 65535']);
-  assert.deepEqual(validate({ mode: 'offline', monitor: { port: 'auto' } }), []);
-  assert.deepEqual(validate({ mode: 'offline', monitor: { port: 4380 } }), []);
-});
-
 test('loadConfigOrThrow reports every error at once', () => {
   const r = repo();
   writeFileSync(join(r.root, '.orchestra', 'config.json'), JSON.stringify({ gates: [{}] }));

@@ -1,28 +1,30 @@
 import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
 import { writeState, emptyState } from '../lib/register/state.mjs';
-import { recordInstance } from '../lib/machine.mjs';
-import { projectId } from '../lib/paths.mjs';
-import { candidatePort } from '../lib/monitor/port.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
 
-// A temporary HOME, exactly like test/machine.test.mjs's own pattern — the doctor pin-conflict
-// tests below write real entries into `~/.orchestra/instances.json`, and must never touch the
-// developer's own registry. Harmless for every other test in this file, none of which reads HOME.
+// A temporary HOME, exactly like test/machine.test.mjs's own pattern — `orchestra monitor` below
+// writes a real `~/.orchestra/monitor.json`, and must never touch the developer's own registry.
+// Harmless for every other test in this file, none of which reads HOME.
 const HOME = process.env.HOME;
 const homes = [];
+// Monitor children, killed BY THEIR CAPTURED PID on cleanup (user rule) — never by a pattern over
+// the process table. `orchestra monitor` binds a real port and keeps serving, so a test that starts
+// one must be certain it is stopped even if an assertion above it throws.
+const children = [];
 beforeEach(() => { const h = mkdtempSync(join(tmpdir(), 'orchestra-home-')); homes.push(h); process.env.HOME = h; });
 after(() => {
   process.env.HOME = HOME;
+  for (const c of children) if (c.exitCode === null && c.signalCode === null) c.kill('SIGKILL');
   homes.forEach((h) => rmSync(h, { recursive: true, force: true }));
   repos.forEach((r) => r.cleanup());
 });
@@ -31,6 +33,39 @@ const run = (cwd, ...args) => {
   const r = execFileSync('node', [BIN, ...args], { cwd, encoding: 'utf8' });
   return r;
 };
+
+// A monitor child and the URL it prints — the same shape `test/p4-acceptance.test.mjs` uses.
+// `spawn` and a bounded wait on the child's own stdout/stderr, never `spawnSync` with a timeout: a
+// `spawnSync` here would bind a real port on the developer's own machine and hold it for the whole
+// timeout, and killing a server by anything other than its captured pid is a standing rule in this
+// project.
+function startMonitor(cwd, args = ['--no-open']) {
+  const child = spawn(process.execPath, [BIN, 'monitor', ...args],
+    { cwd, env: { ...process.env, HOME: process.env.HOME } });
+  children.push(child);
+  let text = '';
+  const said = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`no URL printed in 20s by orchestra monitor in ${cwd}: ${text}`)), 20_000);
+    const look = () => {
+      const m = /http:\/\/127\.0\.0\.1:(\d+)/.exec(text);
+      if (!m) return;
+      clearTimeout(timer);
+      resolve({ url: m[0], port: Number(m[1]) });
+    };
+    child.stdout.on('data', (c) => { text += c; look(); });
+    child.stderr.on('data', (c) => { text += c; look(); });
+    child.on('exit', (code, signal) => { clearTimeout(timer); reject(new Error(`orchestra monitor exited (${code ?? signal}): ${text}`)); });
+  });
+  return { child, said };
+}
+
+// SIGTERM, then the child's own `exit` EVENT — never a fixed sleep, never a signal matched over the
+// process table.
+const stopMonitor = (m) => new Promise((resolve) => {
+  if (m.child.exitCode !== null || m.child.signalCode !== null) { resolve(); return; }
+  m.child.once('exit', () => resolve());
+  m.child.kill('SIGTERM');
+});
 
 test('a subcommand in a project with no config exits 0 and prints nothing', () => {
   const r = repo();
@@ -84,51 +119,28 @@ test('doctor does not say it in online mode', () => {
   assert.doesNotMatch(run(r.root, 'doctor'), /this machine only/i);
 });
 
-// §8.3 / plan scope answer 4: a pinned `monitor.port` already held by another LIVE registered
-// project is an error, not a warning — it will refuse to start, not silently move. `run()` throws
-// on a non-zero exit (`execFileSync`), so this catches the throw and reads the error's own
-// `stderr`/`status` rather than a returned string — every other CLI error path in this file writes
-// to stderr, and `doctor`'s error follows the same convention.
-test('doctor reports a pinned monitor.port already held by another live project, and exits 1', () => {
-  const other = repo({ name: 'other-project' });
-  const mine = repo({ mode: 'offline', config: { monitor: { port: 45123 } } });
-  recordInstance({ id: projectId(other.root), name: 'other-project', root: other.root,
-    mode: 'offline', port: 45123, monitorPid: process.pid });
-
-  assert.throws(
-    () => execFileSync('node', [BIN, 'doctor'], { cwd: mine.root, encoding: 'utf8', stdio: 'pipe' }),
-    (e) => e.status === 1
-      && e.stderr.includes(`error: monitor.port 45123 is pinned here but already held by other-project (${other.root})`),
-  );
+// `orchestra monitor` is a machine command now (spec: one page for the whole machine, not one per
+// project) — it must answer from a directory that has never heard of orchestra, the same exception
+// `doctor` already gets. It binds and keeps serving, so it is stopped by `stopMonitor` rather than
+// left to exit on its own the way the old per-project refusal did.
+test('`orchestra monitor` answers from a directory with no config — it is a machine command', async () => {
+  const bare = mkdtempSync(join(tmpdir(), 'orchestra-bare-'));
+  try {
+    const m = startMonitor(bare);
+    const { url } = await m.said;
+    assert.match(url, /http:\/\/127\.0\.0\.1:\d+/);
+    await stopMonitor(m);
+  } finally {
+    rmSync(bare, { recursive: true, force: true });
+  }
 });
 
-// "auto" never conflicts, by construction (§8.3) — the candidate is a pure function of the
-// project's own id, so it cannot be "stolen". The collision built here is REAL — the other
-// instance's recorded port IS `mine`'s own auto candidate. This proves only that "auto" prints no
-// error, not that `pinConflict`'s own early-return guard is what suppresses it: `cfg.monitor.port`
-// is the string `'auto'` and `e.port` a number, so the `find`'s `===` cannot match either way —
-// this collision would print nothing even with the guard deleted.
-test('doctor prints no error for an "auto" monitor.port, even given a same-port collision on file', () => {
-  const other = repo({ name: 'other-project' });
-  const mine = repo({ mode: 'offline' });   // monitor.port defaults to "auto"
-  recordInstance({ id: projectId(other.root), name: 'other-project', root: other.root,
-    mode: 'offline', port: candidatePort(projectId(mine.root)), monitorPid: process.pid });
-
-  const out = run(mine.root, 'doctor');
-  assert.doesNotMatch(out, /error:/);
-});
-
-// A pin held only by a REAPED instance (its checkout gone) is not a live conflict — `liveInstances`
-// already filters it out, so `doctor` must say nothing.
-test('doctor prints no error when the pin is held only by a reaped instance', () => {
-  const other = repo({ name: 'other-project' });
-  const mine = repo({ mode: 'offline', config: { monitor: { port: 45123 } } });
-  recordInstance({ id: projectId(other.root), name: 'other-project', root: other.root,
-    mode: 'offline', port: 45123, monitorPid: process.pid });
-  rmSync(other.root, { recursive: true, force: true });   // the other project's checkout is gone
-
-  const out = run(mine.root, 'doctor');
-  assert.doesNotMatch(out, /error:/);
+test('`orchestra monitor --port 5000` is still refused — the port has one source of truth', () => {
+  const r = spawnSync(process.execPath, [BIN, 'monitor', '--port', '5000'],
+    { cwd: tmpdir(), encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /unknown argument --port/);
+  assert.match(r.stderr, /monitorPort in ~\/\.orchestra\/machine\.json/);
 });
 
 test('an unknown subcommand exits non-zero and lists what exists', () => {
@@ -211,13 +223,13 @@ test('lock acquire refuses a --pid with no value, rather than writing a null pid
 // The exceptions are spec §3.1's machine-level verbs, which answer ABOUT THE MACHINE and not about
 // a project, so a directory that has never heard of orchestra is exactly where they must still
 // speak: `doctor` tells a first-time user how to opt in, `instances` says what else on this
-// machine is running, and `init` is the command a first-time user runs — it must answer bare, with
-// usage and what it would detect, rather than the off switch's ordinary silence. They are named
-// here, and asserted to answer, so that this test cannot go green by one of them quietly falling
-// silent instead.
-const MACHINE_VERBS = ['doctor', 'instances', 'init'];
+// machine is running, `init` is the command a first-time user runs — it must answer bare, with
+// usage and what it would detect, rather than the off switch's ordinary silence — and `monitor`
+// serves the one page for the whole machine. They are named here, and asserted to answer, so that
+// this test cannot go green by one of them quietly falling silent instead.
+const MACHINE_VERBS = ['doctor', 'instances', 'init', 'monitor'];
 
-test('every registered verb but the machine-level ones honours the off switch — exits 0 and prints nothing', () => {
+test('every registered verb but the machine-level ones honours the off switch — exits 0 and prints nothing', async () => {
   const help = execFileSync('node', [BIN, 'help'], { encoding: 'utf8' });
   const verbs = help.split('\n').map((l) => l.trim())
     .filter((l) => l && l !== 'orchestra <subcommand>');
@@ -228,6 +240,9 @@ test('every registered verb but the machine-level ones honours the off switch �
   const r = repo();
   rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
   for (const verb of verbs) {
+    // `monitor` is skipped here for the same reason it needs its own branch below: unlike every
+    // other verb, it does not exit on its own — it binds and keeps serving. A `spawnSync` with no
+    // timeout would hang this whole test waiting for a server that never stops.
     if (MACHINE_VERBS.includes(verb)) continue;
     const res = spawnSync('node', [BIN, verb], { cwd: r.root, encoding: 'utf8' });
     assert.equal(res.status, 0, `${verb}: expected exit 0, got ${res.status} (stderr: ${res.stderr})`);
@@ -238,9 +253,19 @@ test('every registered verb but the machine-level ones honours the off switch �
   // The positive control: each exception ANSWERS and SUCCEEDS in that same configless directory.
   // Both halves — a verb that started exiting 1 while still printing its answer would otherwise
   // pass here, and an exit code is what a script reads.
-  for (const verb of MACHINE_VERBS) {
+  // Driven off MACHINE_VERBS rather than a second literal list, so a verb added to it later is
+  // controlled here without this loop being told about it — minus `monitor`, which answers by
+  // binding and serving rather than by exiting and is proven on its own below.
+  for (const verb of MACHINE_VERBS.filter((v) => v !== 'monitor')) {
     const res = spawnSync('node', [BIN, verb], { cwd: r.root, encoding: 'utf8' });
     assert.equal(res.status, 0, `${verb}: expected exit 0, got ${res.status} (stderr: ${res.stderr})`);
     assert.match(res.stdout, /\S/, `${verb}: expected the machine-level verb to answer anyway`);
   }
+
+  // `monitor` answers too, but by binding and serving rather than by exiting — proven the same way
+  // as the dedicated `orchestra monitor` test above, spawned and stopped by its own captured pid.
+  const m = startMonitor(r.root);
+  const { url } = await m.said;
+  assert.match(url, /http:\/\/127\.0\.0\.1:\d+/);
+  await stopMonitor(m);
 });

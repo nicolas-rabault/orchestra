@@ -32,13 +32,14 @@ register('archive-images', { run: archiveImagesCommand });
 register('land', { run: landCommand });
 register('await', { run: awaitCommand });
 register('queue-list', { run: queueListCommand });
-register('monitor', { run: monitorCommand });
 register('tickets', { run: ticketsCommand });
 // Not `machine: true`: this installs the timer FOR a project, so it needs that project's own
 // config (its root, its id) exactly as `land` and `ready` do — it has no answer to give outside one.
 register('install-heartbeat', { run: installHeartbeatCommand });
-// `machine: true`: it answers about the MACHINE, not about a project, so it must answer from a
-// directory that has never heard of orchestra — spec §3.1's exception to the off switch.
+// `machine: true`: both answer about the MACHINE, not about a project — one page serves every
+// project on it — so both must answer from a directory that has never heard of orchestra, spec
+// §3.1's exception to the off switch.
+register('monitor', { machine: true, run: monitorCommand });
 register('instances', { machine: true, run: instancesCommand });
 
 const [name, ...rest] = process.argv.slice(2);
