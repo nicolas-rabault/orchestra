@@ -147,10 +147,11 @@ the block has no field for it, on purpose.
   task visibly taken to everyone else watching.
 - **Never write a status anywhere.**
 
-**Be honest about enforcement**: in this version, nothing but `claim` itself checks the first two —
-the hooks that refuse a worktree for an unclaimed task arrive in a later phase. The rules outlive
-their enforcement, so keep them on the paths where no tool is watching. The third rule needs no
-enforcement offline: there is no field to write a status into.
+**Be honest about enforcement**: `guard-claim` (`hooks/guard-claim.mjs`) refuses `git worktree add
+-b <branch>` — the one gesture that starts work — for a task that is neither yours-and-open nor
+claimed by you, failing open when the board is unreachable. That is one gesture, not every way work
+could start, so the rules still outlive what it catches; keep them on the paths where no tool is
+watching. The third rule needs no enforcement offline: there is no field to write a status into.
 
 ## 6. Writing a good task
 

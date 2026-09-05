@@ -108,9 +108,6 @@ command this plugin ships actually exists.
   outside the login session and cannot read the login keychain: every tick died on `Not logged in`,
   eight consecutive ticks, seven hours lost, on the night of 2026-08-12/13 in planetCraft.
 - **Never**: a retrospective tool (spec §13 — its metrics belong to the source project).
-- **One limitation, not an absence**: `orchestra ready` reconciles against the literal branch
-  `main`. A project whose main branch has another name gets a ready set that reconciles nothing, in
-  silence, until a later phase widens it.
 
 ## The six nevers
 
@@ -143,8 +140,8 @@ command this plugin ships actually exists.
 6. Never work — or launch a worker on — a shared task you have not claimed.
    `orchestra roadmap claim <key>` first. Online, the issue is how every other machine learns the
    task is taken. Offline the claim still comes first, but it succeeds without telling anybody,
-   because there is nobody to tell: the register row and the branch ref are the interlock. Phase
-   5's `guard-claim` hook is the backstop, not the mechanism.
+   because there is nobody to tell: the register row and the branch ref are the interlock. The
+   `guard-claim` hook (`hooks/guard-claim.mjs`) is the backstop, not the mechanism.
 
 ## The language you write in
 
