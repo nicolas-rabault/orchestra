@@ -251,17 +251,23 @@ test('serve binds, and the bound server carries an error listener of its own', a
 
 // ---- the handler goes plural ----------------------------------------------------------------------
 
-test('the model carries the machine port and one entry per project, in name order', async () => {
+test('the model preserves the order projects() hands it, rather than re-sorting it', async () => {
   const a = fixture('alpha');
   const b = fixture('beta');
   const res = fakeRes();
+  // Passed beta-before-alpha — the OPPOSITE of what a name sort would produce — so this only holds
+  // if the handler truly leaves `projects()`'s order alone. `discoverProjects` already sorts by
+  // name then id (with its own test for it), and the strip the user sees is sorted a second time
+  // client-side by `projectTabsOf`; a sort here as well would be a third, silent definition of the
+  // same rule, and a test that asked for alphabetical output would not catch it — it would pass
+  // whether this code sorts or not.
   await handlerFor(b, a)(fakeReq('GET', '/api/model'), res);
   assert.equal(res.code, 200);
   const m = JSON.parse(res.body);
   assert.equal(m.machine.port, FAKE_PORT);
-  assert.deepEqual(m.projects.map((p) => p.project.name), ['alpha', 'beta']);
+  assert.deepEqual(m.projects.map((p) => p.project.name), ['beta', 'alpha']);
   // Each entry is exactly today's model, unchanged.
-  assert.equal(m.projects[0].project.root, a.root);
+  assert.equal(m.projects[0].project.root, b.root);
   assert.equal(m.projects[0].project.mode, 'offline');
   assert.equal(m.projects[0].project.branch, 'main');
   assert.ok(Array.isArray(m.projects[0].nodes));
@@ -274,6 +280,17 @@ test('the etag covers every project, so one project changing busts it', async ()
   const a = fixture('alpha');
   const b = fixture('beta');
   const handler = handlerFor(a, b);
+
+  // Warm-up, thrown away: the FIRST `/api/model` build is the expensive one — `readBoard` shells
+  // out once per project root before its own per-root cache goes hot, several hundred milliseconds
+  // each. The etag is computed BEFORE `model()` runs, so left unwarmed, that cost sits inside the
+  // gap between the etag captured below and the very next request checking it — and
+  // `sourceStamp`'s 5-second clock bucket (`servers:${Math.floor(now / SERVERS_TTL_MS)}`) can tick
+  // over inside that gap, turning an unchanged etag into a bucket-mismatch 200 roughly one run in
+  // five (measured). This request pays that cost up front so the two requests that matter below
+  // land close enough together that the clock cannot move between them. Do not delete this as
+  // redundant — it is load-bearing, not decoration.
+  await handler(fakeReq('GET', '/api/model'), fakeRes());
 
   const first = fakeRes();
   await handler(fakeReq('GET', '/api/model'), first);
