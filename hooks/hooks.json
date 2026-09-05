@@ -1,5 +1,5 @@
 {
-  "description": "Guards that keep an opted-in project's main branch integrate-only, its merge gate for the merge gate alone, its drafts local, and its shared tasks claimed before they start; plus a roadmap format check that runs after every edit.",
+  "description": "Guards that keep an opted-in project's main branch integrate-only, its merge gate for the merge gate alone, its drafts local, and its shared tasks claimed before they start; a roadmap format check that runs after every edit; and the one hook that speaks, handing an interactive conductor the answers waiting on the monitoring page.",
   "hooks": {
     "PreToolUse": [
       {
@@ -46,6 +46,17 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/lint-roadmap.mjs\"",
             "statusMessage": "Linting the roadmap format"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/orchestra-inbox.mjs\"",
+            "statusMessage": "Checking the orchestra monitor inbox"
           }
         ]
       }
