@@ -1,7 +1,7 @@
 // lib/monitor/server.mjs: the request handler, asserted the way the source project's own suite
 // asserted it — in-process, with a fake request and a fake response. There is no socket here on
 // purpose: `serve`'s binding half is `lib/monitor/port.mjs`'s subject (test/monitor-port.test.mjs)
-// and the two real listeners are the acceptance's (test/p4-acceptance.test.mjs).
+// and the two real listeners are the acceptance's (test/monitor-acceptance.test.mjs).
 //
 // The source's "reads the board once for two model requests" test is NOT repeated here: that cache
 // moved into `readBoard` itself and is proven in test/monitor-sources.test.mjs. The cache this

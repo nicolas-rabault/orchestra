@@ -1,11 +1,12 @@
-// P4's acceptance (spec §15): "two fixtures serve at once on different ports, each page naming its
-// own project; killing one and restarting it returns the same port."
+// The machine-wide monitor's acceptance (docs/specs/2026-09-04-machine-wide-monitor-design.md):
+// "one page serves every project on this machine; killing it and restarting it returns to the same
+// port; an answer posted for one project reaches that project alone."
 //
 // SPLIT DELIBERATELY IN TWO, and this is why. What is SERVED is asserted IN-PROCESS, by calling
 // `createHandler(ctx)` with a fake request and a fake response — the shape the source project's own
 // suite used, deterministic and fast, with no socket between the assertion and the code. What needs
-// TWO REAL LISTENERS at once — allocation, the registry's bound port, the same port across a
-// restart — is asserted OUT-OF-PROCESS, with `orchestra monitor --no-open` children.
+// A REAL LISTENER — binding, the machine registry's recorded port, the same port across a restart,
+// the refuse-and-point — is asserted OUT-OF-PROCESS, with `orchestra monitor --no-open` children.
 //
 // The seam is not timidity about sockets. It is that an HTTP client against localhost is not
 // trustworthy as a PROBE here: measured 2026-08-12 in planetCraft, `curl` could not reach a
@@ -13,24 +14,29 @@
 // conductor. So nothing below asks a child's own port a question; the children are asked only to
 // bind, to print, and to be recorded, and everything about content is asked of the handler directly.
 //
-// Every test runs under a TEMPORARY HOME (spec §14), so `~/.orchestra/instances.json` under test is
-// never the developer's own.
+// Every test runs under a TEMPORARY HOME (spec §14), so `~/.orchestra/instances.json` and
+// `~/.orchestra/monitor.json` under test are never the developer's own — except the bound PORT
+// itself, which is a real machine-wide TCP resource no HOME can namespace: a monitor started here
+// binds the same 4380 a real orchestra page on this developer's machine would, and steps upward
+// exactly as that page would if something already held it. Nothing below asserts the literal
+// number for that reason — only that a restart returns to the SAME one, and that an obstacle on it
+// is stepped over.
 //
 // WHAT THIS SUITE DOES NOT PROVE, said here rather than discovered later: it proves the page
-// composes, allocates and round-trips an answer. It proves nothing about what the page LOOKS like,
-// and nothing about the browser half beyond the bytes being served — no test here loads `app.js`.
-// That is the same limit the source's suite had.
+// composes, discovers its projects, allocates and round-trips an answer. It proves nothing about
+// what the page LOOKS like, and nothing about the browser half beyond the bytes being served — no
+// test here loads `app.js`. That is the same limit the source's suite had.
 import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfigOrThrow } from '../lib/config.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
-import { candidatePort } from '../lib/monitor/port.mjs';
+import { machineMonitorPort, readMonitor } from '../lib/machine.mjs';
 import { createHandler, PUBLIC_DIR } from '../lib/monitor/server.mjs';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
 import { fakeReq, fakeRes } from './helpers/fakeHttp.mjs';
@@ -65,16 +71,10 @@ function project(name) {
   return { ...r, run, id: loadConfigOrThrow(r.root).id, cfg: () => loadConfigOrThrow(r.root) };
 }
 
-// Two fixtures whose CANDIDATES differ. `candidatePort` folds a project id into a 100-wide band, so
-// two random temp directories collide about one time in a hundred — remade rather than left to
-// flake, since "two different deterministic candidates" is half of what row 1 asserts.
+// Two projects. There is no per-project port any more to keep distinct, so nothing here needs the
+// retry loop the candidate-port era required — two temp directories are already two projects.
 function twoProjects() {
-  const a = project('alpha');
-  for (let i = 0; i < 20; i += 1) {
-    const b = project('beta');
-    if (candidatePort(b.id) !== candidatePort(a.id)) return [a, b];
-  }
-  throw new Error('could not build two fixtures with different candidate ports');
+  return [project('alpha'), project('beta')];
 }
 
 const instances = () => JSON.parse(readFileSync(join(process.env.HOME, '.orchestra', 'instances.json'), 'utf8')).instances;
@@ -102,7 +102,7 @@ function startMonitor(root) {
 }
 
 // A child that printed a URL and is STILL RUNNING is a child that bound. `orchestra monitor` prints
-// a URL on the refuse-and-point path too (one page per project) and then exits, so without this
+// a URL on the refuse-and-point path too (one page per machine) and then exits, so without this
 // witness a refusal would satisfy every port assertion below vacuously.
 const stillServing = (m) => m.child.exitCode === null && m.child.signalCode === null;
 
@@ -116,65 +116,75 @@ const stopMonitor = (m) => new Promise((resolve) => {
 });
 
 // The in-process handler BINDS NOTHING, so the port it is handed is only the base it parses a
-// relative request URL against and the number the model echoes back as `project.port`. Deliberately
-// outside the 4380-4479 band all the same, so nothing in this file can be read as claiming a port a
-// real orchestra on this machine might be serving.
+// relative request URL against. Deliberately outside the 4380-4479 band all the same, so nothing in
+// this file can be read as claiming a port a real orchestra on this machine might be serving.
 const FAKE_PORT = 59999;
-const handlerFor = (p) => createHandler({
-  projects: () => [{ id: p.cfg().id, name: p.cfg().name, root: p.root, mode: p.cfg().mode, cfg: p.cfg() }],
-  port: FAKE_PORT, publicDir: PUBLIC_DIR,
-});
+const ctx = (p) => ({ id: p.cfg().id, name: p.cfg().name, root: p.root, mode: p.cfg().mode, cfg: p.cfg() });
+const handlerFor = (...ps) => createHandler({ projects: () => ps.map(ctx), port: FAKE_PORT, publicDir: PUBLIC_DIR });
 
 // ---- row 1 -------------------------------------------------------------------------------------
-test('two projects serve at once on different ports, and the registry records the port each BOUND', async () => {
+test('two projects reach one page: one `orchestra monitor` child, and `/api/model` names both, each with its own root, mode and branch', async () => {
   const [a, b] = twoProjects();
-  assert.notEqual(candidatePort(a.id), candidatePort(b.id));
+  // `b` reaches the live set the way a project ordinarily does — by running something that records
+  // it — never by starting a second page, which would only point at the first (row 7).
+  b.run('ready');
 
-  const ma = startMonitor(a.root);
-  const sa = await ma.said;
-  const mb = startMonitor(b.root);
-  const sb = await mb.said;
+  const m = startMonitor(a.root);
+  const said = await m.said;
+  assert.ok(stillServing(m), 'the one child is serving');
+  assert.match(m.text(), /http:\/\/127\.0\.0\.1:\d+/);
 
-  assert.notEqual(sa.port, sb.port);
-  assert.ok(stillServing(ma), 'the first child is serving');
-  assert.ok(stillServing(mb), 'the second child is serving');
-  assert.match(ma.text(), /http:\/\/127\.0\.0\.1:\d+/);
-  assert.match(mb.text(), /http:\/\/127\.0\.0\.1:\d+/);
-  // The root, so a person with four tabs open can tell which checkout a page is looking at.
-  assert.match(ma.text(), new RegExp(a.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-
-  assert.equal(entryOf(a.id).port, sa.port);
-  assert.equal(entryOf(b.id).port, sb.port);
+  // The registry side: both projects are recorded, `a` by the monitor's own self-discovery, `b` by
+  // its `ready`.
+  assert.equal(entryOf(a.id).root, a.root);
   assert.equal(entryOf(a.id).name, 'alpha');
+  assert.equal(entryOf(b.id).root, b.root);
   assert.equal(entryOf(b.id).name, 'beta');
 
-  await stopMonitor(ma);
-  await stopMonitor(mb);
+  // The content side: asserted in-process (see header), against a handler built over the same two
+  // projects — `/api/model` names both, each with its own root, mode and branch.
+  const res = fakeRes();
+  await handlerFor(a, b)(fakeReq('GET', '/api/model'), res);
+  assert.equal(res.code, 200);
+  const { machine, projects } = JSON.parse(res.body);
+  assert.equal(machine.port, FAKE_PORT);
+  assert.equal(projects.length, 2);
+  const byId = Object.fromEntries(projects.map((p) => [p.project.id, p.project]));
+  assert.equal(byId[a.id].root, a.root);
+  assert.equal(byId[a.id].mode, 'offline');
+  assert.equal(byId[a.id].branch, 'main');
+  assert.equal(byId[b.id].root, b.root);
+  assert.equal(byId[b.id].mode, 'offline');
+  assert.equal(byId[b.id].branch, 'main');
+  assert.notEqual(said.port, undefined);
+
+  await stopMonitor(m);
 });
 
 // ---- row 2 -------------------------------------------------------------------------------------
-test('each page names its own project, in its <title> and in the model', async () => {
+test('each project names itself in the model; the served <title> is `orchestra` and carries no project name', async () => {
   const [a, b] = twoProjects();
+  const handler = handlerFor(a, b);
 
+  const page = fakeRes();
+  await handler(fakeReq('GET', '/'), page);
+  assert.equal(page.code, 200);
+  const html = String(page.body);
+  assert.match(html, /<title>orchestra<\/title>/);
+  for (const p of [a, b]) assert.doesNotMatch(html, new RegExp(p.cfg().name));
+
+  const model = fakeRes();
+  await handler(fakeReq('GET', '/api/model'), model);
+  assert.equal(model.code, 200);
+  const { projects } = JSON.parse(model.body);
   for (const p of [a, b]) {
-    const handler = handlerFor(p);
-
-    const page = fakeRes();
-    await handler(fakeReq('GET', '/'), page);
-    assert.equal(page.code, 200);
-    const html = String(page.body);
-    assert.match(html, new RegExp(`<title>[^<]*${p.cfg().name}[^<]*</title>`));
-
-    const model = fakeRes();
-    await handler(fakeReq('GET', '/api/model'), model);
-    assert.equal(model.code, 200);
-    const { project: shown } = JSON.parse(model.body);
+    const shown = projects.find((x) => x.project.id === p.id).project;
     assert.equal(shown.name, p.cfg().name);
     assert.equal(shown.root, p.root);
     assert.equal(shown.mode, 'offline');
     assert.equal(shown.branch, 'main');
-    // The port the page is served on, echoed from the handler's own context rather than guessed.
-    assert.equal(shown.port, FAKE_PORT);
+    // There is one page now, named once by `machine.port` — repeating it per project is gone.
+    assert.equal(shown.port, undefined);
   }
 });
 
@@ -183,25 +193,26 @@ test('killing a monitor and restarting it returns the same port', async () => {
   const p = project('steady');
   const first = startMonitor(p.root);
   const { port } = await first.said;
+  assert.equal(readMonitor().port, port);
   await stopMonitor(first);
 
   const again = startMonitor(p.root);
   const back = await again.said;
   assert.ok(stillServing(again), 'the restarted monitor bound rather than pointing at the dead one');
   assert.equal(back.port, port);
-  assert.equal(entryOf(p.id).port, port);
+  assert.equal(readMonitor().port, port);
   await stopMonitor(again);
 });
 
 // ---- row 4 -------------------------------------------------------------------------------------
-test('a project whose candidate is taken probes upward, and the registry records what it bound', async () => {
+test('the machine port held by an obstacle makes the monitor probe upward, and `monitor.json` records what it bound', async () => {
   const p = project('crowded');
-  const candidate = candidatePort(p.id);
+  const candidate = machineMonitorPort();
 
-  // The obstacle is THIS FIXTURE'S OWN candidate, computed from its temp path — never a number
-  // written into this file, which could be a port a real orchestra on this machine is serving.
-  // If something else already holds it, the premise of the test holds anyway and the bind is
-  // skipped.
+  // The obstacle is bound on THE MACHINE PORT ITSELF, computed the same way the monitor computes
+  // it — never a number written into this file, which could be a port a real orchestra on this
+  // machine is serving right now. If something else already holds it (a real page, another test),
+  // the premise of the test holds anyway and our own bind is skipped.
   const obstacle = createServer();
   const held = await new Promise((resolve) => {
     obstacle.once('error', () => resolve(false));
@@ -214,7 +225,8 @@ test('a project whose candidate is taken probes upward, and the registry records
     assert.ok(stillServing(m), 'the monitor bound rather than pointing at an existing page');
     assert.notEqual(port, candidate);
     assert.ok(port > candidate, `expected a port above the candidate ${candidate}, got ${port}`);
-    assert.equal(entryOf(p.id).port, port);
+    // `monitor.json` records what it BOUND, never the candidate it started from.
+    assert.equal(readMonitor().port, port);
     await stopMonitor(m);
   } finally {
     if (held) await new Promise((resolve) => obstacle.close(resolve));
@@ -222,49 +234,49 @@ test('a project whose candidate is taken probes upward, and the registry records
 });
 
 // ---- row 5 -------------------------------------------------------------------------------------
-test('an answer posted to the page lands in the inbox, and `orchestra inbox` prints it', async () => {
-  const p = project('answers');
-  const inbox = join(p.root, '.orchestra', 'inbox.jsonl');
+// The invariant this change introduces: an answer names a project, and reaches that project alone.
+test('an answer posted for one project lands in that project alone', async () => {
+  const [a, b] = twoProjects();
+  const inboxA = join(a.root, '.orchestra', 'inbox.jsonl');
+  const inboxB = join(b.root, '.orchestra', 'inbox.jsonl');
 
   const res = fakeRes();
-  await handlerFor(p)(fakeReq('POST', '/api/answer', {
-    body: JSON.stringify({ task: null, pending: null, answer: 'ship at 0.75' }),
+  await handlerFor(a, b)(fakeReq('POST', '/api/answer', {
+    body: JSON.stringify({ project: a.id, task: null, pending: null, answer: 'ship at 0.75' }),
   }), res);
   assert.equal(res.code, 200);
-  const said = JSON.parse(res.body);
-  assert.equal(said.ok, true);
-  // No tick is ever spawned: the only two outcomes are facts about a conductor that already exists.
-  assert.equal(said.conductor, 'no-conductor');
+  assert.equal(JSON.parse(res.body).conductor, 'no-conductor');
 
-  const lines = readFileSync(inbox, 'utf8').trim().split('\n');
+  const lines = readFileSync(inboxA, 'utf8').trim().split('\n');
   assert.equal(lines.length, 1);
-  const line = JSON.parse(lines[0]);
-  assert.equal(line.answer, 'ship at 0.75');
-  assert.equal(line.from, 'monitor');
+  assert.equal(JSON.parse(lines[0]).answer, 'ship at 0.75');
+  assert.equal(JSON.parse(lines[0]).from, 'monitor');
+  assert.equal(existsSync(inboxB), false);
 
-  assert.match(p.run('inbox'), /ship at 0\.75/);
+  assert.match(a.run('inbox'), /ship at 0\.75/);
+  assert.equal(b.run('inbox'), '');
 });
 
 // ---- row 6 -------------------------------------------------------------------------------------
-test('`orchestra instances` lists both projects, and says which is listening', async () => {
+test('`orchestra instances` prints the one machine URL and lists both projects', async () => {
   const [a, b] = twoProjects();
-  const ma = startMonitor(a.root);
-  const sa = await ma.said;
-  const mb = startMonitor(b.root);
-  const sb = await mb.said;
+  b.run('ready');
+
+  const m = startMonitor(a.root);
+  const { port } = await m.said;
 
   const out = execFileSync(process.execPath, [BIN, 'instances'],
     { cwd: a.root, encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
 
-  for (const [p, s] of [[a, sa], [b, sb]]) {
+  assert.match(out, new RegExp(`page: http://127\\.0\\.0\\.1:${port}\\b`));
+
+  for (const p of [a, b]) {
     const row = out.split('\n').find((l) => l.includes(p.root));
     assert.ok(row, `no row for ${p.root} in:\n${out}`);
     assert.match(row, new RegExp(p.cfg().name));
-    assert.match(row, new RegExp(`\\b${s.port}\\b`));
     assert.match(row, /offline/);
-    assert.match(row, /\blistening\b/);
-    // Neither project has run `orchestra ready` yet, so no conductor has ever beaten: both
-    // columns are a dash, never a blank cell (spec §8.2, branch review item 3).
+    // Neither project has run `orchestra ready` with a beating conductor yet, so both columns are
+    // a dash, never a blank cell (spec §8.2, branch review item 3).
     assert.match(row, /—\s+—/);
   }
 
@@ -281,34 +293,32 @@ test('`orchestra instances` lists both projects, and says which is listening', a
   assert.match(rowA, /\b(just now|\d+m ago|\d+h ago)\b/, `expected a relative beat age in:\n${rowA}`);
   assert.match(rowB, /—\s+—/, `expected b's session and beat columns to stay dashes in:\n${rowB}`);
 
-  await stopMonitor(ma);
-  await stopMonitor(mb);
+  await stopMonitor(m);
 });
 
-// ---- scope answer 9: one page per project --------------------------------------------------------
-// Not one of the table's rows, but a requirement of the same phase, and the only path in
-// `orchestra monitor` that decides NOT to bind. Two pages for one project are not wrong, they are
-// confusing, and the second makes the recorded port flap between two numbers.
-test('a second `orchestra monitor` in the same project points at the first page instead of binding', async () => {
-  const p = project('single');
-  const first = startMonitor(p.root);
+// ---- row 7 -------------------------------------------------------------------------------------
+// One page per MACHINE now, not one per project: a second `orchestra monitor`, started in a
+// DIFFERENT project, points at the first page instead of binding a second one.
+test('a second `orchestra monitor` started in a different project points at the one page', async () => {
+  const [a, b] = twoProjects();
+  const first = startMonitor(a.root);
   const { port } = await first.said;
 
   const second = spawnSync(process.execPath, [BIN, 'monitor', '--no-open'],
-    { cwd: p.root, encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
+    { cwd: b.root, encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
   assert.equal(second.status, 0);
   assert.match(second.stdout, new RegExp(`already open at http://127\\.0\\.0\\.1:${port}\\b`));
-  assert.match(second.stdout, /one page per project/);
-  // It changed nothing: the recorded port is still the one the live page bound, and the first child
-  // is still the one serving it.
-  assert.equal(entryOf(p.id).port, port);
+  assert.match(second.stdout, /one page for this machine/);
+  // It changed nothing: the recorded port is still the one the live page bound, and the first
+  // child is still the one serving it.
+  assert.equal(readMonitor().port, port);
   assert.ok(stillServing(first));
 
   // And the argument check runs BEFORE that refusal, or `orchestra monitor --prot` in a project
-  // whose page is already up would print "already open", exit 0, and never mention the argument it
-  // did not understand.
+  // while the page is already up would print "already open", exit 0, and never mention the
+  // argument it did not understand.
   const typo = spawnSync(process.execPath, [BIN, 'monitor', '--prot'],
-    { cwd: p.root, encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
+    { cwd: b.root, encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
   assert.equal(typo.status, 1);
   assert.equal(typo.stdout, '');
   assert.match(typo.stderr, /unknown argument --prot/);
@@ -316,7 +326,7 @@ test('a second `orchestra monitor` in the same project points at the first page 
   await stopMonitor(first);
 });
 
-// ---- an argument that does not exist ---------------------------------------------------------
+// ---- row 8 -------------------------------------------------------------------------------------
 test('`orchestra monitor --port 5000` is refused, because the port has one source of truth', () => {
   const p = project('flagless');
   const r = spawnSync(process.execPath, [BIN, 'monitor', '--port', '5000'],
@@ -324,24 +334,26 @@ test('`orchestra monitor --port 5000` is refused, because the port has one sourc
   assert.equal(r.status, 1);
   assert.equal(r.stdout, '');
   assert.match(r.stderr, /unknown argument --port/);
-  assert.match(r.stderr, /monitor\.port in \.orchestra\/config\.json/);
+  assert.match(r.stderr, /monitorPort in ~\/\.orchestra\/machine\.json/);
 });
 
-// ---- row 8 -------------------------------------------------------------------------------------
-// Row 7 — a pinned port held by another live instance makes `doctor` exit 1 — is Task 1's, and is
-// asserted in test/monitor-port.test.mjs and test/cli.test.mjs.
-test('`orchestra monitor` is silent and exits 0 with no config; `orchestra instances` answers anyway', () => {
+// ---- row 9 -------------------------------------------------------------------------------------
+// The machine exception, inverted: P4's `orchestra monitor` was silent with no config (an
+// off-switch respecter). The machine command answers from anywhere, config or none.
+test('`orchestra monitor` serves even with no config — the machine exception, inverted; `orchestra instances` answers there too', async () => {
   const r = makeRepo({ name: 'unconfigured' });
   repos.push(r);
   rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
-  const env = { ...process.env, HOME: process.env.HOME };
 
-  const off = spawnSync(process.execPath, [BIN, 'monitor'], { cwd: r.root, encoding: 'utf8', env });
-  assert.equal(off.status, 0);
-  assert.equal(off.stdout, '');
-  assert.equal(off.stderr, '');
+  const on = startMonitor(r.root);
+  await on.said;
+  assert.ok(stillServing(on), 'the monitor served despite no config in this directory');
+  assert.match(on.text(), /http:\/\/127\.0\.0\.1:\d+/);
 
-  const machine = spawnSync(process.execPath, [BIN, 'instances'], { cwd: r.root, encoding: 'utf8', env });
+  const machine = spawnSync(process.execPath, [BIN, 'instances'],
+    { cwd: r.root, encoding: 'utf8', env: { ...process.env, HOME: process.env.HOME } });
   assert.equal(machine.status, 0);
   assert.match(machine.stdout, /\S/);
+
+  await stopMonitor(on);
 });

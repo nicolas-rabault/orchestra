@@ -34,7 +34,7 @@ const run = (cwd, ...args) => {
   return r;
 };
 
-// A monitor child and the URL it prints — the same shape `test/p4-acceptance.test.mjs` uses.
+// A monitor child and the URL it prints — the same shape `test/monitor-acceptance.test.mjs` uses.
 // `spawn` and a bounded wait on the child's own stdout/stderr, never `spawnSync` with a timeout: a
 // `spawnSync` here would bind a real port on the developer's own machine and hold it for the whole
 // timeout, and killing a server by anything other than its captured pid is a standing rule in this

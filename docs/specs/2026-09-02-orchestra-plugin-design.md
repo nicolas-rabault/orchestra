@@ -294,8 +294,8 @@ today. `orchestra monitor` replaces `npm run monitor`.
 
 Two additions, both required by §8: the page **names the project it is piloting** — `name`, the main
 checkout's path, the mode and the current branch, in the header and in the `<title>`, so a browser
-with four of these tabs open is readable; and it serves on an **allocated** port rather than a fixed
-one.
+with four of these tabs open is readable; and the page is machine-wide and serves every project on
+it; see `2026-09-04-machine-wide-monitor-design.md`.
 
 ## 8. Several projects on one machine
 
@@ -325,9 +325,12 @@ run here:
 
 ```jsonc
 { "id": "a3f19c", "name": "planetCraft", "root": "/Users/…/planetCraft",
-  "mode": "online", "port": 4381, "monitorPid": 51233,
+  "mode": "online",
   "conductorSession": "…", "beatAt": "2026-09-02T18:41:07Z", "workers": 3 }
 ```
+
+The page's own port lives elsewhere: `~/.orchestra/monitor.json` records the one machine-wide page,
+never a per-project entry here — see `2026-09-04-machine-wide-monitor-design.md`.
 
 It is **advisory, never authority**: the truth about a project stays inside that project, exactly as
 `state.json` and git are the truth today. An entry whose `root` no longer exists, or whose pids are
@@ -339,19 +342,9 @@ directory beside it. Contention is a handful of writes an hour, so nothing more 
 
 ### 8.3 Ports
 
-`monitor.port` accepts `"auto"` (the default) or a number.
-
-`"auto"` computes a **deterministic candidate** — `4380 + (hash(id) mod 100)` — so a project keeps
-the same URL across restarts, then linear-probes upward for a free one, binds it, and records the
-port it *actually* bound in the registry. Recording the bound port rather than the intended one is
-the whole point: a second project that had to probe past a collision is still findable.
-
-The skill never assumes 4380 again. It reads the port from the registry, and its liveness probe stays
-`lsof` on that port — `curl` cannot reach a localhost server this shell can see listening, which was
-measured and cost a conductor an infinite hang.
-
-A number pins the port for a project that wants a stable, hand-chosen URL; `doctor` reports a pinned
-port already held by another registered project as an error, not a warning.
+Superseded. There is one page for the whole machine now, not one per project, and with it one port
+rather than a per-project allocation — see `2026-09-04-machine-wide-monitor-design.md` for what
+replaced this section.
 
 ### 8.4 Worker session names
 
