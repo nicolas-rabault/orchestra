@@ -42,7 +42,22 @@ test('waiting counts the questions with no answer', () => {
 
 test('a slot this tab already answered stops counting as waiting', () => {
   const models = [model('aaaaaa', 'alpha', [node('a/1', 'claimed', [{ id: 'q1', answer: null }])])];
-  assert.equal(projectTabsOf(models, new Set(['a/1:q1']))[0].waiting, 0);
+  assert.equal(projectTabsOf(models, () => new Set(['a/1:q1']))[0].waiting, 0);
+});
+
+// The point of `sentFor` being a function rather than one Set: two projects whose nodes happen to
+// carry the exact same key and item id (a slot key is only unique WITHIN a project) must not share
+// one answered-set. Answering the slot for the FIRST project only must leave the second project's
+// identical-keyed question waiting — the collision this whole strip exists to prevent.
+test('sentFor is sliced per project: answering one project leaves an identically-keyed slot open in the other', () => {
+  const models = [
+    model('aaaaaa', 'alpha', [node('lighting/L2', 'claimed', [{ id: 'q1', answer: null }])]),
+    model('bbbbbb', 'zulu', [node('lighting/L2', 'claimed', [{ id: 'q1', answer: null }])]),
+  ];
+  const sentFor = (id) => (id === 'aaaaaa' ? new Set(['lighting/L2:q1']) : new Set());
+  const tabs = projectTabsOf(models, sentFor);
+  assert.equal(tabs.find((t) => t.id === 'aaaaaa').waiting, 0);
+  assert.equal(tabs.find((t) => t.id === 'bbbbbb').waiting, 1);
 });
 
 test('no projects at all is an empty strip, not a throw', () => {

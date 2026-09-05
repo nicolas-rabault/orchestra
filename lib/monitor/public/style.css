@@ -81,8 +81,13 @@ main { display: grid; grid-template-columns: 340px 1fr; grid-template-rows: auto
 /* ---- the developer tabs ----
    Whose work the stage shows: local first and by default, then one per developer the shared board
    names while they have unfinished work. The active tab wears the node background rather than an
-   accent — it is a place you are AT, not a state to be alarmed about. */
-#tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+   accent — it is a place you are AT, not a state to be alarmed about.
+   `flex-basis: 100%` forces this onto its OWN row of `#top`'s wrapping flex, under the project
+   strip rather than beside it: `#top` is one flex row with `flex-wrap: wrap`, so without this the
+   two strips filled whatever width was left on the same line and read as one undifferentiated row
+   of pills — "a tab one level above" needs two rows, not one row of two sizes. It will often hold
+   only `local` in offline mode; that is expected, and not a reason to let the rows merge back. */
+#tabs { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
 #tabs button { display: flex; align-items: center; gap: 6px; padding: 3px 11px; background: none;
   color: var(--dim); border: 1px solid var(--line); border-radius: 999px; font: 11px var(--sans); cursor: pointer; }
 #tabs button:hover { color: var(--hi); border-color: var(--dim); }
