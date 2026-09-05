@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
+import { hookEnv } from './helpers/hookEnv.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'guard-full-suite.mjs');
 
@@ -15,9 +16,11 @@ const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
 after(() => repos.forEach((r) => r.cleanup()));
 
+// `hookEnv` and not a bare `process.env`: the ambient one carries ORCHESTRA_FULL_SUITE=1 when the
+// suite runs inside a landing, which is this guard's own off switch.
 function runHook(payload, env = {}) {
   return spawnSync(process.execPath, [HOOK], {
-    input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env },
+    input: JSON.stringify(payload), encoding: 'utf8', env: hookEnv(env),
   });
 }
 

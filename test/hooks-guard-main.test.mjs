@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
+import { hookEnv } from './helpers/hookEnv.mjs';
 
 const HOOKS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 const EDIT_HOOK = join(HOOKS_DIR, 'guard-main-edit.mjs');
@@ -24,12 +25,14 @@ const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
 after(() => repos.forEach((r) => r.cleanup()));
 
 // The exact invocation shape a PreToolUse hook receives: the payload as JSON on stdin, an
-// environment it may or may not carry ORCHESTRA_GATE in, nothing on argv.
+// environment it may or may not carry ORCHESTRA_GATE in, nothing on argv. `hookEnv` and not a bare
+// `process.env`: the ambient one carries the gate's own off switches when the suite runs inside a
+// landing, which would disarm the very guard these rows assert refuses.
 function runHook(hookPath, payload, env = {}) {
   return spawnSync(process.execPath, [hookPath], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: hookEnv(env),
   });
 }
 

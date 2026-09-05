@@ -40,6 +40,7 @@ import { roadmapCommand } from '../lib/cli/roadmap.mjs';
 import { writeState, emptyState } from '../lib/register/state.mjs';
 import { inboxPath } from '../lib/register/inbox.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
+import { hookEnv } from './helpers/hookEnv.mjs';
 
 const HOOKS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 const HOOKS_JSON = join(HOOKS_DIR, 'hooks.json');
@@ -48,10 +49,13 @@ const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
 after(() => repos.forEach((r) => r.cleanup()));
 
+// An explicit `env`, because the default is to inherit `process.env` wholesale — and inside a
+// landing that carries the two off switches these rows exist to prove are NOT inert.
 function runHook(file, payload) {
   return spawnSync(process.execPath, [join(HOOKS_DIR, file)], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
+    env: hookEnv(),
   });
 }
 
