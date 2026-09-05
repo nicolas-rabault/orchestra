@@ -154,13 +154,16 @@ test('the five shared modules are served from a closed list, and nothing else un
 test('/api/model answers 304 on its own etag, and 200 once the register moves', async () => {
   const f = fixture();
 
-  // Warm-up, thrown away, and LOAD-BEARING. `sourceStamp` carries a coarse bucket of the clock
-  // (`servers:${Math.floor(now / SERVERS_TTL_MS)}`), and the etag is computed BEFORE `model()`
-  // runs. The FIRST build is the expensive one: `readBoard` shells out to a child process before
-  // its own per-root cache goes hot. So without this line, several hundred milliseconds of that
-  // first build sit between the two etag computations below, and the bucket rolls inside that gap
-  // often enough to turn the expected 304 into a 200. Measured 2026-09-05: green 5/5 run alone,
-  // red 2/2 under the full parallel suite, which is exactly where it matters — the merge gate.
+  // Warm-up, thrown away, and LOAD-BEARING. The FIRST `/api/model` build is the expensive one —
+  // `readBoard` shells out once before its own per-root cache goes hot, several hundred
+  // milliseconds. The etag is computed BEFORE `model()` runs, so left unwarmed, that cost sits
+  // inside the gap between the etag captured below and the very next request checking it — and
+  // `sourceStamp`'s 5-second clock bucket (`servers:${Math.floor(now / SERVERS_TTL_MS)}`) can tick
+  // over inside that gap, turning an unchanged etag into a bucket-mismatch 200. Measured
+  // 2026-09-05: green 5/5 run alone, red 2/2 under the full parallel suite — which is exactly
+  // where it costs something, the merge gate. This request pays that cost up front so the two
+  // requests that matter below land close enough together that the clock cannot move between them.
+  // Do not delete this as redundant — it is load-bearing, not decoration.
   await ask(f, 'GET', '/api/model');
 
   const first = await ask(f, 'GET', '/api/model');
