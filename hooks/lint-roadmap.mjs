@@ -20,11 +20,9 @@
 // Silent and exit 0 whenever `.orchestra/config.json` is absent (spec §3.1).
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { readPayload, projectFor } from '../lib/guards/payload.mjs';
-
-const ORCHESTRA_BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
+import { ORCHESTRA_BIN } from '../lib/guards/orchestraBin.mjs';
 
 const payload = readPayload();
 if (!payload) process.exit(0);

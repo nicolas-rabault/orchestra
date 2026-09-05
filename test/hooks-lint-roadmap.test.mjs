@@ -52,13 +52,17 @@ test('a malformed roadmap under drafts is REPORTED (non-zero exit, violations on
 });
 
 test('a .md file OUTSIDE drafts/published that declares `roadmap:` in its frontmatter is still checked', () => {
+  // Deliberately MALFORMED: a well-formed fixture here could not tell "classified and linted
+  // clean" apart from "never classified at all" — both read as exit 0 with empty stderr. Dropping
+  // a required field means only correct classification (via the frontmatter, since this path is
+  // outside drafts/published) AND linting together produce the refusal this test checks for.
   const r = repo();
-  // ROADMAP's own frontmatter already declares `roadmap: demo` — reused as-is, just filed
-  // somewhere the drafts/published path check would never look.
-  const p = write(r.root, 'somewhere/unexpected.md', ROADMAP);
+  const broken = ROADMAP.replace('- **Roadmap** demo\n', '');
+  const p = write(r.root, 'somewhere/unexpected.md', broken);
   const res = runHook(editPayload(r.root, p));
-  assert.equal(res.status, 0);
-  assert.equal(res.stderr, '');
+  assert.equal(res.status, 2);
+  assert.match(res.stderr, /does not match the format/);
+  assert.match(res.stderr, /Roadmap/);
 });
 
 test('a document merely DISCUSSING roadmaps in its body, with no frontmatter, is NOT classified as one', () => {

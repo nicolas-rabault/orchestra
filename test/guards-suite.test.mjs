@@ -69,3 +69,23 @@ test('no gate cmd (empty or missing) never blocks anything', () => {
 test('a command that never mentions the suite command at all is untouched', () => {
   assert.equal(bareSuiteRun('git status', 'npm test'), null);
 });
+
+// A configured `suite` cmd carrying its OWN leading env assignment (e.g. `{ name: 'suite', cmd:
+// 'CI=1 npm test' }`) must not disarm the guard. `stripEnv` was applied to the CHECKED command but
+// not to `suiteCmd` itself, so the two token lists could never become equal again once `suiteCmd`
+// carried a prefix — a silently-disarmed guard, the worst failure shape a guard has, since it reads
+// exactly like a working one in the config and in `doctor`. Both sides must go through the same
+// normalisation.
+test('a suite cmd with its own leading env assignment still blocks a bare run of it', () => {
+  assert.equal(bareSuiteRun('CI=1 npm test', 'CI=1 npm test'), 'CI=1 npm test');
+});
+
+test('a suite cmd with a leading env assignment blocks a bare run under a DIFFERENT env prefix too', () => {
+  // stripEnv strips ANY leading assignment, not just a matching one — the configured cmd's own
+  // prefix is not part of the identity being matched, only what command it actually runs.
+  assert.equal(bareSuiteRun('FOO=2 npm test', 'CI=1 npm test'), 'FOO=2 npm test');
+});
+
+test('a suite cmd with a leading env assignment still lets a narrowed run through', () => {
+  assert.equal(bareSuiteRun('FOO=2 npm test -- tests/foo.test.js', 'CI=1 npm test'), null);
+});

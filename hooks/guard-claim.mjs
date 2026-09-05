@@ -8,9 +8,10 @@
 //
 // The verdict is `startVerdict` (`lib/roadmap/policy.mjs`), unchanged and already unit-tested; this
 // file owns only the wording, and locating the board. The board comes from this plugin's own CLI,
-// found from THIS hook's own file location — `hooks/` sits beside `bin/` in the plugin, and no
-// environment variable (`CLAUDE_PLUGIN_ROOT` included) is guaranteed to be set in a hook's
-// environment.
+// at `lib/guards/orchestraBin.mjs`'s `ORCHESTRA_BIN` — resolved from that module's own file
+// location, never from an environment variable (`CLAUDE_PLUGIN_ROOT` included is not guaranteed to
+// be set in a hook's environment), and shared with `lint-roadmap.mjs`, the only other hook that
+// shells out to the CLI.
 //
 // It FAILS OPEN when the board is unreachable, or when its JSON parses to a shape that is not a
 // board (`null`, `{}`, a bare number...): a network outage or a broken store must not stop work —
@@ -31,13 +32,10 @@
 //
 // Silent and exit 0 whenever `.orchestra/config.json` is absent (spec §3.1).
 import { execFileSync } from 'node:child_process';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { readPayload, projectFor } from '../lib/guards/payload.mjs';
 import { claimedBranches } from '../lib/guards/claim.mjs';
 import { startVerdict } from '../lib/roadmap/policy.mjs';
-
-const ORCHESTRA_BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
+import { ORCHESTRA_BIN } from '../lib/guards/orchestraBin.mjs';
 
 const payload = readPayload();
 if (!payload) process.exit(0);
