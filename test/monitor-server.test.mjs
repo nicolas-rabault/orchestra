@@ -169,6 +169,16 @@ test('the five shared modules are served from a closed list, and nothing else un
 
 test('/api/model answers 304 on its own etag, and 200 once the register moves', async () => {
   const f = fixture();
+
+  // Warm-up, thrown away, and LOAD-BEARING. `sourceStamp` carries a coarse bucket of the clock
+  // (`servers:${Math.floor(now / SERVERS_TTL_MS)}`), and the etag is computed BEFORE `model()`
+  // runs. The FIRST build is the expensive one: `readBoard` shells out to a child process before
+  // its own per-root cache goes hot. So without this line, several hundred milliseconds of that
+  // first build sit between the two etag computations below, and the bucket rolls inside that gap
+  // often enough to turn the expected 304 into a 200. Measured 2026-09-05: green 5/5 run alone,
+  // red 2/2 under the full parallel suite, which is exactly where it matters — the merge gate.
+  await ask(f, 'GET', '/api/model');
+
   const first = await ask(f, 'GET', '/api/model');
   const etag = first.headers.etag;
   assert.ok(etag, 'the model carries an etag');
