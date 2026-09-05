@@ -66,36 +66,39 @@ orchestra install-heartbeat
 ## What works today
 
 The roadmap layer, the register and the machine budget, the protocol that drives them, the merge
-gate and `roadmap sync`, the monitoring page and its allocated port, the guard hooks, `orchestra
-init`, the ticket queue and the heartbeat — every phase of the extraction has landed:
+gate and `roadmap sync`, one monitoring page for the whole machine and `orchestra instances`, the
+guard hooks, `orchestra init`, the ticket queue and the heartbeat — every phase of the extraction
+has landed:
 
 - **`/orchestra`** — the conductor protocol: the nevers, the journal, the framing pass, the nine
   steps of a tick, the playtest gate, and the worker briefs as templates a project fills from its
   own config (`briefExtra` is where it pastes its own hard rules).
 - **`/roadmap`** — the skill: the grammar, the board, and the nine roadmap subcommands.
 - **`orchestra doctor`** — the resolved configuration, and how a project with no config is told
-  what to write. It also reports a pinned `monitor.port` already held by another live instance as
-  an error, exit 1.
+  what to write. It also warns when a config still carries a leftover `monitor.port` key, which
+  nothing reads any more now that one page serves the whole machine.
 - **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve|sync>`**.
 - **`orchestra journal|inbox|beat|lock|watch-answers`** — the register: one line with a measured
   clock, the answers a user posted on the page, who holds the baton, and one conductor at a time.
 - **`orchestra ready|tick-gate|yield-check`** — the launch plan, whether a heartbeat should tick at
   all, and whether this session should hand the baton back. `ready` budgets its launches against
   every other orchestra on this machine (`~/.orchestra/machine.json`, `maxWorkers`, default 8).
-- **`orchestra monitor`** — the monitoring page for this project: the register as a graph, the
-  journal and the user's answers as one rail, the screenshots a question names, and a box to answer
-  in. It serves in the foreground on 127.0.0.1, opens a browser unless given `--no-open`, and in a
-  project whose page is already up it prints that URL and exits rather than binding a second port.
-  `--no-open` is its only flag: the port has one source of truth, `monitor.port`, which defaults to
-  `"auto"` — `4380 + (the project's six-hex id, mod 100)`, probed upward for a free one, and the
-  port **actually bound** is what gets recorded, so a project keeps the same URL across restarts.
-  The page is the only writer of `.orchestra/inbox.jsonl`. It starts nothing: an answer posted on
-  it reaches a live conductor through that session's `watch-answers` loop within seconds, and
+- **`orchestra monitor`** — one monitoring page for the whole machine, runnable from any directory:
+  the register as a graph, the journal and the user's answers as one rail, the screenshots a
+  question names, and a box to answer in, with a project tab strip above it for every project the
+  machine registry (or the current directory) names. It serves in the foreground on 127.0.0.1,
+  opens a browser unless given `--no-open`, and if the page is already up anywhere it prints that
+  URL and exits rather than binding a second one. `--no-open` is its only flag: the port has one
+  source of truth, `4380` by default, overridable by `monitorPort` in `~/.orchestra/machine.json`,
+  probed upward for a free one, and the port **actually bound** — with the pid that bound it — is
+  what `~/.orchestra/monitor.json` records, so the page keeps the same URL across restarts. The
+  page is the only writer of `.orchestra/inbox.jsonl`. It starts nothing: an answer posted on it
+  reaches a live conductor through that session's `watch-answers` loop within seconds, and
   otherwise waits in the inbox for the next tick.
-- **`orchestra instances`** — every orchestra registered on this machine, in the order its row
-  prints them: name, id, mode, URL, whether anything is listening there, worker count, a truncated
-  conductor session id, how long since its last beat, how long since it reported itself, and root.
-  Like `doctor`, it answers without a project config.
+- **`orchestra instances`** — the one page's URL (or why there is none) above a table of every
+  orchestra registered on this machine, in the order its row prints them: name, id, mode, worker
+  count, a truncated conductor session id, how long since its last beat, how long since it reported
+  itself, and its root. Like `doctor` and `monitor`, it answers without a project config.
 - **`orchestra archive|archive-images`** — move a finished run's prose out of the register, and
   sweep the photographs under `.orchestra/images/` that nothing live still names.
 - **`orchestra land <branch> [--detach] | await <branch> [--for=N] | queue-list`** — the merge gate:

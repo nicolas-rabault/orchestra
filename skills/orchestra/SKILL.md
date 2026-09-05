@@ -419,18 +419,18 @@ started *after* the hold was issued.
    a signal-0.
 1. **Rehydrate.**
 
-   **The page.** `orchestra instances` lists every orchestra registered on this machine, in the
-   order its row prints them — name, id, mode, URL, whether anything is listening there, worker
-   count, a truncated conductor session id, how long since its last beat, how long since it
-   reported itself, and root. With `doctor` and `init` it is one of the three subcommands that
-   answer without a project config, so it answers from anywhere. This project's row is where its
-   port comes from, and that
-   port is stable across restarts: `monitor.port` defaults to `"auto"`, which is `4380 + (the
-   project's six-hex id, mod 100)`, probed upward until one is free, and the port **actually
-   bound** is what gets recorded.
+   **The page.** `orchestra instances` prints one line for the whole machine — the page's URL, or
+   why there is none — above a table of every orchestra registered here, in the order its row
+   prints them: name, id, mode, worker count, a truncated conductor session id, how long since its
+   last beat, how long since it reported itself, and its root. With `doctor`, `init` and `monitor`
+   it is one of the four subcommands that answer without a project config, so it answers from
+   anywhere. The page's port is stable across restarts: `4380` by default, overridable by
+   `monitorPort` in `~/.orchestra/machine.json`, still probed upward until one is free, and the
+   port **actually bound** — together with the pid that bound it — is what
+   `~/.orchestra/monitor.json` records.
 
    ```sh
-   orchestra instances                                          # this project's row: its URL, listening or not
+   orchestra instances                                          # the one page's URL, above the table — listening or not
    lsof -nP -iTCP:<the port in that URL> -sTCP:LISTEN           # the same question, asked directly
    nohup orchestra monitor --no-open >/dev/null 2>.orchestra/monitor.err &   # start it — read below first
    ```
@@ -438,30 +438,33 @@ started *after* the hold was issued.
    **`orchestra monitor` serves in the foreground and never returns** — the listening socket is
    what keeps that process alive — so start it detached, or the call that started it waits out its
    own timeout and takes the page down with it. Run `orchestra instances` again afterwards for the
-   URL it bound. `--no-open` is its only flag, and there is
-   deliberately no `--port`: the port has exactly one source of truth, `monitor.port` in
-   `.orchestra/config.json`. Without `--no-open` it also opens a browser, which a headless tick
-   must never do. Run in a project whose page is already up, it prints that URL and exits 0 rather
-   than binding a second port — one page per project.
+   URL it bound. It is a machine command and runs from anywhere, not only from inside a project.
+   `--no-open` is its only flag, and there is deliberately no `--port`: the port has exactly one
+   source of truth, `monitorPort` in `~/.orchestra/machine.json`. Without `--no-open` it also opens
+   a browser, which a headless tick must never do. Run anywhere while the page is already up, it
+   prints that URL and exits 0 rather than binding a second one — one page for the whole machine,
+   and the project you want is a tab on it, never a separate page.
 
-   **stderr goes to a file under `.orchestra/`, never to `/dev/null`.** A pinned `monitor.port`
-   already held by another live instance is refused loudly (`monitor.port N is already in use —
-   free it, or set monitor.port to "auto"`, `lib/monitor/port.mjs`) — sent to `/dev/null`, that
-   refusal vanishes, the process exits, and the only thing left to read is `orchestra instances`
-   printing `no listener` with no cause. The file says why.
+   **stderr goes to a file under `.orchestra/`, never to `/dev/null`.** The page's own bind never
+   refuses any more — a taken port is simply stepped over — but a runtime failure still only ever
+   surfaces on stderr: a socket error on the bound server (`the monitor's socket reported an
+   error: …`, `lib/monitor/server.mjs`) or a 500 line naming what an in-flight request hit. Sent to
+   `/dev/null`, that line vanishes, and the only thing left to read is `orchestra instances`
+   printing one of the page's states with no cause behind it. The file says why.
 
    Two rules were measured against the page in planetCraft, and both still hold. **Probe with
    `lsof`, never with `curl`** — measured 2026-08-12, `curl` from the conductor's shell could not
    reach a localhost server that `lsof` proved was listening and a browser was using, so the
    `curl` form hung forever and the `||` never fired. `orchestra instances` asks `lsof` for you and
-   prints one of four states: `listening`; `no listener`; `cannot tell` when `lsof` could not
-   answer at all, which is this machine saying it does not know and is not a no; or `no page yet`
-   for a row `orchestra ready` recorded before any page has bound — no port to ask `lsof` about at
-   all. That last one is the state of a first run, so a conductor following this section meets it
-   immediately, before ever starting the page below. **And a page that accepts
-   the connection and never replies is not a wedged process** — restarting it changes nothing,
-   because a fresh one does the same; it is blocked on something it fetches synchronously per
-   request, and that was GitHub being unreachable, through the board read, for nine hours on
+   prints one of four states for the one page: a bare URL when it is listening; the same URL with
+   `— recorded, but nothing is listening there` when the pid is dead or something else took the
+   port; `(cannot tell whether it is listening)` when `lsof` could not answer at all, which is this
+   machine saying it does not know and is not a no; or `no page is open — run orchestra monitor`
+   before anything has ever bound. That last one is the state of a first run, so a conductor
+   following this section meets it immediately, before ever starting the page below. **And a page
+   that accepts the connection and never replies is not a wedged process** — restarting it changes
+   nothing, because a fresh one does the same; it is blocked on something it fetches synchronously
+   per request, and that was GitHub being unreachable, through the board read, for nine hours on
    2026-08-12. That measurement is now this plugin's own rule rather than a warning you have to
    remember: `readBoard` (in `lib/monitor/sources.mjs`) bounds its board read at 10 s, remembers a
    failure for 60 s, and keeps serving the last board that answered, said plainly as stale.
@@ -677,11 +680,12 @@ started *after* the hold was issued.
    present — instead, **if `orchestra ready` printed a `WAITING:` line, send ONE
    PushNotification**, ≤ 200 chars, naming the count, the oldest row and its ask:
    ```
-   3 waiting · dev-loop/F1: integrate the fix queue? · http://127.0.0.1:4412
+   3 waiting · dev-loop/F1: integrate the fix queue? · http://127.0.0.1:4380
    ```
-   **The page's URL goes on that line**, read off this project's row in `orchestra instances` and
-   the same across restarts. It is where the user answers, and a notification that names a batch
-   without saying where to answer it spends the interruption and saves nothing. **Whether or not
+   **The page's URL goes on that line**, read off the one line `orchestra instances` prints above
+   the table — the same across restarts, for every project on the machine — and the user opens it
+   and picks this project's tab. It is where the user answers, and a notification that names a
+   batch without saying where to answer it spends the interruption and saves nothing. **Whether or not
    any of them is blocking**, which was the old filter and was the wrong one: on 2026-08-12/14 in
    planetCraft the four asks that sat longest were all merge approvals, and a merge approval
    blocks nothing you are doing. One push per tick; do not resend for an item you have already
