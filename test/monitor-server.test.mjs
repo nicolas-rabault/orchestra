@@ -150,16 +150,17 @@ test('the page and its two assets are served from publicDir', async () => {
   assert.equal(css.headers['content-type'], 'text/css; charset=utf-8');
 });
 
-test('the five shared modules are served from a closed list, and nothing else under it is reachable', async () => {
+test('the shared modules are served from a closed list, and nothing else under it is reachable', async () => {
   const f = fixture();
-  for (const name of ['/layout.mjs', '/answers.mjs', '/clock.mjs', '/progress.mjs', '/tabs.mjs']) {
+  for (const name of SHARED_MODULES) {
     const res = await ask(f, 'GET', name);
     assert.equal(res.code, 200, `${name} should be served`);
     assert.equal(res.headers['content-type'], 'text/javascript; charset=utf-8');
   }
+  assert.ok(SHARED_MODULES.includes('/projects.mjs'));
   // Real modules in the same directory, and a climb out of it: the path is never used to reach a
   // file, only to look one up in the list.
-  for (const name of ['/server.mjs', '/model.mjs', '/sources.mjs', '/keys.mjs', '/../config.mjs']) {
+  for (const name of ['/server.mjs', '/model.mjs', '/sources.mjs', '/keys.mjs', '/discover.mjs', '/../config.mjs']) {
     assert.equal((await ask(f, 'GET', name)).code, 404, `${name} must not be served`);
   }
 });
@@ -354,19 +355,6 @@ test('the served page no longer substitutes a project name, and names the tool a
   assert.equal(res.code, 200);
   assert.match(String(res.body), /<title>orchestra<\/title>/);
   assert.doesNotMatch(String(res.body), /\{\{project\}\}/);
-});
-
-test('/projects.mjs is served, and a module that is not on the list is not', async () => {
-  const handler = handlerFor(fixture('alpha'));
-  for (const path of SHARED_MODULES) {
-    const res = fakeRes();
-    await handler(fakeReq('GET', path), res);
-    assert.equal(res.code, 200, `${path} should be served`);
-  }
-  assert.ok(SHARED_MODULES.includes('/projects.mjs'));
-  const nope = fakeRes();
-  await handler(fakeReq('GET', '/discover.mjs'), nope);
-  assert.equal(nope.code, 404);
 });
 
 // ---- the answer and image routes name their project ----------------------------------------------

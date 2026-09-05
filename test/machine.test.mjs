@@ -108,37 +108,39 @@ test('a corrupt instances.json is replaced, not fatal', () => {
   assert.deepEqual(readInstances().map((i) => i.id), ['aaa111']);
 });
 
-// P4 makes the registry multi-writer: `ready` sends the worker side (`workers`, `conductorPid`,
-// `conductorSession`), the monitor sends the port side (`port`, `monitorPid`), onto the SAME entry.
-// A replacing write (today's behaviour) would let each erase the other's fields — the dangerous
-// direction is the monitor erasing `workers`, since another project would then read `undefined`,
-// count 0, and launch MORE. `recordInstance` must merge instead.
-test('recordInstance merges a monitor-shaped write onto a conductor-shaped one, keeping both field sets', () => {
+// The registry is multi-writer: `ready` sends the worker side (`workers`, `conductorPid`,
+// `conductorSession`), `discoverProjects` (`lib/monitor/discover.mjs`, called from
+// `orchestra monitor` and from the page's own request handler) sends `id`, `name`, `root` and
+// `mode` the first time it finds the current directory's project unregistered, onto the SAME
+// entry. A replacing write (today's behaviour) would let each erase the other's fields — the
+// dangerous direction is `discoverProjects` erasing `workers`, since another project would then
+// read `undefined`, count 0, and launch MORE. `recordInstance` must merge instead. The monitor
+// process itself writes neither: `port` and `monitorPid` left this registry entirely, for
+// `~/.orchestra/monitor.json`.
+test('recordInstance merges a discoverProjects-shaped write onto a conductor-shaped one, keeping both field sets', () => {
   const root = projectRoot();
   const now = Date.now();
   recordInstance({ id: 'aaa111', name: 'A', root, mode: 'offline', workers: 2,
     conductorSession: 's1', conductorPid: 4242 }, { now });
   const firstWorkersAt = readInstances()[0].workersAt;
-  recordInstance({ id: 'aaa111', name: 'A', root, mode: 'offline', port: 4390, monitorPid: 5151 },
-    { now: now + 1000 });
+  recordInstance({ id: 'aaa111', name: 'A', root, mode: 'offline' }, { now: now + 1000 });
   const all = readInstances();
   assert.equal(all.length, 1);
   assert.equal(all[0].workers, 2);
   assert.equal(all[0].conductorSession, 's1');
   assert.equal(all[0].conductorPid, 4242);
-  assert.equal(all[0].port, 4390);
-  assert.equal(all[0].monitorPid, 5151);
-  // The write side of the `workersAt` rule: a write that carries no `workers` (the monitor-shaped
-  // one here) must NOT restamp it. `recordInstance`'s `if ('workers' in entry)` guard is the whole
-  // fix — deleting that condition (stamping `workersAt` unconditionally) would make `workersAt`
-  // track `updatedAt` exactly, which is the bug `otherWorkers`'s own staleness check exists to
-  // prevent: a monitor keepalive would then refresh a dead conductor's `workersAt` right along with
-  // `updatedAt`, and the staleness check below would never trigger.
+  // The write side of the `workersAt` rule: a write that carries no `workers` (the
+  // discoverProjects-shaped one here) must NOT restamp it. `recordInstance`'s `if ('workers' in
+  // entry)` guard is the whole fix — deleting that condition (stamping `workersAt`
+  // unconditionally) would make `workersAt` track `updatedAt` exactly, which is the bug
+  // `otherWorkers`'s own staleness check exists to prevent: this write would then refresh a dead
+  // conductor's `workersAt` right along with `updatedAt`, and the staleness check below would
+  // never trigger.
   assert.equal(all[0].workersAt, firstWorkersAt);
 });
 
-// `updatedAt` doubles as "does this entry still exist" (isLive) — the monitor's own 5-minute
-// keepalive (§8.3) refreshes it with NO `workers` field, which must not be read as "the worker
+// `updatedAt` doubles as "does this entry still exist" (isLive) — `discoverProjects`'s own
+// registration write refreshes it with NO `workers` field, which must not be read as "the worker
 // count is still current". `otherWorkers` must trust `workers` only while its OWN stamp,
 // `workersAt`, is fresh, falling back to `updatedAt` for an entry written before this change (an
 // entry `ready` wrote under today's code, which never stamped `workersAt` at all). Raw fixture

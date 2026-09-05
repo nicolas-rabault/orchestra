@@ -292,10 +292,13 @@ Ported as-is, reading `.orchestra/` instead of `.claude/orchestra/`. Image paths
 resolved against the main checkout, the worktrees directory and `.orchestra/images/`, as they are
 today. `orchestra monitor` replaces `npm run monitor`.
 
-Two additions, both required by §8: the page **names the project it is piloting** — `name`, the main
-checkout's path, the mode and the current branch, in the header and in the `<title>`, so a browser
-with four of these tabs open is readable; and the page is machine-wide and serves every project on
-it; see `2026-09-04-machine-wide-monitor-design.md`.
+The page is machine-wide, serving every project on this machine at once through a project tab strip
+above the developer strip that already existed — see `2026-09-04-machine-wide-monitor-design.md`,
+which supersedes the rest of this section. In particular, the per-project name once proposed here
+for the header and the `<title>` ("so a browser with four of these tabs open is readable") does not
+survive one page replacing four: there is one tab now, its `<title>` is the tool's name alone, and
+the project the reader is looking at is written by the page's own JavaScript on the first poll,
+never substituted into the served HTML.
 
 ## 8. Several projects on one machine
 
@@ -335,7 +338,9 @@ never a per-project entry here — see `2026-09-04-machine-wide-monitor-design.m
 It is **advisory, never authority**: the truth about a project stays inside that project, exactly as
 `state.json` and git are the truth today. An entry whose `root` no longer exists, or whose pids are
 dead and whose beat is stale, is reaped on the next write — the same liveness argument the tick lock
-already makes. `orchestra instances` prints it, which is how a user answers "which page is which".
+already makes. `orchestra instances` prints the table, above the one line naming the machine's
+single page — the table answers "which projects are registered here", not "which page is which":
+there is one page now, not one per project.
 
 Writes are last-writer-wins on a whole-file rewrite through a temp file and a rename, with one lock
 directory beside it. Contention is a handful of writes an hour, so nothing more is warranted.

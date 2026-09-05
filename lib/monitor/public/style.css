@@ -42,9 +42,10 @@ main { display: grid; grid-template-columns: 340px 1fr; grid-template-rows: auto
    whatever the pills do and never widens the row that the panels below depend on being sized by. */
 #top-progress { position: absolute; left: 0; right: 0; bottom: 0; }
 #top h1 { margin: 0; font: 600 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
-/* Brighter and larger than the tool's own name beside it: with four of these pages open, WHICH
-   project this one is looking at is the first thing to read, and "orchestra" is the same on all
-   four. It sits immediately after the h1 and before the figures, so the eye lands on it first. */
+/* Brighter and larger than the tool's own name beside it: with one page now serving every project
+   on the machine, WHICH of them this view is showing is the first thing to read — "orchestra"
+   alone never says that. It sits immediately after the h1 and before the figures, so the eye lands
+   on it first. */
 #project { font: 600 13px/1 var(--sans); color: var(--ink); margin-left: -8px; }
 /* One pill per figure, the number brighter than its label: the number is what is read at a glance
    and the word is what makes it mean something. */
