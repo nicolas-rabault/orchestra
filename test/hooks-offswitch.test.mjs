@@ -8,19 +8,35 @@
 // Claude Code invokes it, JSON on stdin, nothing on argv — because importing a hook proves nothing
 // about it: its entire contract is a process's exit code and its two streams.
 //
-// Each payload below is one that WOULD be acted on if `.orchestra/config.json` existed — a write
-// to the main checkout, a bare suite run, a claim command, a draft add, a roadmap edit, an inbox
-// with a matching conductor already waiting to be relayed. The fixture is a real git repository
-// with no config, which is the ordinary shape of "a project that has not opted in" (as opposed to
-// a path outside any repository at all, which every hook's own `projectFor` already tolerates via
-// `mainCheckout` failing softly).
+// Review round 1 found two rows (guard-full-suite, guard-claim) whose payload was silent whether
+// or not a config existed — the fixture had no `suite` gate, and the branch matched no roadmap
+// row, so each hook took its own ORDINARY "nothing to do here" exit rather than the off switch.
+// A silent row proves nothing about the off switch specifically, and reads as coverage it is not.
+// A third row (lint-roadmap) had the same defect, found while checking the other five for it: the
+// target file never existed on disk, so `readFileSync` threw and the hook exited 0 for THAT
+// reason regardless of config.
+//
+// Fixed by giving every row a `build(root)` that sets up whatever a FULLY CONFIGURED project needs
+// for that exact payload to be acted on — a gate, a published+unclaimed roadmap task, a malformed
+// file on disk, a register naming the payload's own session — and testing each row TWICE against
+// the very same fixture and the very same payload:
+//   1. "is not inert" — run against the config `build` just wrote; assert the hook actually does
+//      something (a refusal, or `orchestra-inbox`'s relayed text).
+//   2. "the off switch" — delete ONLY `.orchestra/config.json` from that same project (never the
+//      rest of `.orchestra/` — a register or a draft left behind by a project that turned this
+//      plugin off is the realistic shape of "no config", not a pristine repository) and re-run the
+//      identical payload; assert silence.
+// One fixture, one payload, both checks — so a row cannot go inert again without failing #1, and
+// cannot regain behaviour with no config without failing #2.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeRepo } from './helpers/fixture.mjs';
+import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
+import { loadConfig } from '../lib/config.mjs';
+import { roadmapCommand } from '../lib/cli/roadmap.mjs';
 import { writeState, emptyState } from '../lib/register/state.mjs';
 import { inboxPath } from '../lib/register/inbox.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
@@ -29,15 +45,7 @@ const HOOKS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 const HOOKS_JSON = join(HOOKS_DIR, 'hooks.json');
 
 const repos = [];
-// A real git repository with NO `.orchestra/config.json` — the off switch's own precondition —
-// built by stripping the directory `makeRepo` writes it into, the same way `test/config.test.mjs`
-// does for `loadConfig`'s own "no config" case.
-function repoWithoutConfig() {
-  const r = makeRepo();
-  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
-  repos.push(r);
-  return r;
-}
+const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
 after(() => repos.forEach((r) => r.cleanup()));
 
 function runHook(file, payload) {
@@ -47,46 +55,110 @@ function runHook(file, payload) {
   });
 }
 
-// One row per hook in `hooks/hooks.json`. `payload` is built fresh per row so one row's fixture
-// (an inbox file, a register) cannot leak into another's.
+// Silences `roadmapCommand`'s own stdout (`out()` writes straight to `process.stdout`) while a
+// row's `build` publishes a fixture roadmap as setup — the same helper
+// `test/hooks-guard-claim.test.mjs` already uses for the same reason.
+function silently(fn) {
+  const realWrite = process.stdout.write.bind(process.stdout);
+  process.stdout.write = () => true;
+  try { fn(); } finally { process.stdout.write = realWrite; }
+}
+
+function write(root, relPath, text) {
+  const p = join(root, relPath);
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, text);
+  return p;
+}
+
+// One row per hook in `hooks/hooks.json`.
+//   - `repoOpts`: passed to `makeRepo` — the config a row's payload needs to be live at all
+//     (`guard-full-suite` needs a `suite` gate; the rest are live under `makeRepo`'s defaults).
+//   - `build(r)`: does whatever ELSE a live run needs (publishing a roadmap task, writing a
+//     malformed file, seeding a register) and returns the payload.
+//   - `assertLive(res)`: what "this payload was actually acted on" looks like for this hook.
 const ROWS = [
   {
     name: 'guard-main-edit',
     file: 'guard-main-edit.mjs',
-    payload: (r) => ({ cwd: r.root, tool_input: { file_path: join(r.root, 'README.md') } }),
+    build: (r) => ({ cwd: r.root, tool_input: { file_path: join(r.root, 'README.md') } }),
+    assertLive: (res) => {
+      assert.equal(res.status, 2);
+      assert.match(res.stderr, /MAIN checkout/);
+    },
   },
   {
     name: 'guard-main-commit',
     file: 'guard-main-commit.mjs',
-    payload: (r) => ({ cwd: r.root, tool_input: { command: 'git commit -m x' } }),
+    build: (r) => ({ cwd: r.root, tool_input: { command: 'git commit -m x' } }),
+    assertLive: (res) => {
+      assert.equal(res.status, 2);
+      assert.match(res.stderr, /MAIN checkout/);
+    },
   },
   {
     name: 'guard-full-suite',
     file: 'guard-full-suite.mjs',
-    payload: (r) => ({ cwd: r.root, tool_input: { command: 'npm test' } }),
+    repoOpts: { config: { gates: [{ name: 'suite', cmd: 'npm test' }] } },
+    build: (r) => ({ cwd: r.root, tool_input: { command: 'npm test' } }),
+    assertLive: (res) => {
+      assert.equal(res.status, 2);
+      assert.match(res.stderr, /ORCHESTRA_FULL_SUITE=1/);
+    },
   },
   {
     name: 'guard-draft',
     file: 'guard-draft.mjs',
-    payload: (r) => ({ cwd: r.root, tool_input: { command: 'git add .orchestra/drafts/foo.md' } }),
+    build: (r) => ({ cwd: r.root, tool_input: { command: 'git add .orchestra/drafts/foo.md' } }),
+    assertLive: (res) => {
+      assert.equal(res.status, 2);
+      assert.match(res.stderr, /\.orchestra\/drafts/);
+    },
   },
   {
     name: 'guard-claim',
     file: 'guard-claim.mjs',
-    payload: (r) => ({ cwd: r.root, tool_input: { command: 'git worktree add ../wt -b some-branch' } }),
+    // A branch a board would show as an UNCLAIMED row — the shape `guard-claim` itself refuses,
+    // per `test/hooks-guard-claim.test.mjs`'s "starting an unclaimed task's branch is REFUSED".
+    // Publishing the task is what makes `demo/d1-first-thing` a row the board actually carries;
+    // without it the branch matches nothing and this row would be inert exactly as review found.
+    build: (r) => {
+      const cfg = loadConfig(r.root);
+      const draftsDir = join(r.root, cfg.roadmaps.drafts);
+      mkdirSync(draftsDir, { recursive: true });
+      const draftPath = join(draftsDir, 'demo.md');
+      writeFileSync(draftPath, ROADMAP);
+      silently(() => roadmapCommand({ cfg, args: ['publish', draftPath] }));
+      return { cwd: r.root, tool_input: { command: 'git worktree add ../wt -b demo/d1-first-thing main' } };
+    },
+    assertLive: (res) => {
+      assert.equal(res.status, 2);
+      assert.match(res.stderr, /orchestra roadmap claim/);
+    },
   },
   {
     name: 'lint-roadmap',
     file: 'lint-roadmap.mjs',
-    payload: (r) => ({ cwd: r.root, tool_input: { file_path: join(r.root, 'docs', 'roadmaps', 'demo.md') } }),
+    // A roadmap on disk missing a required field — `test/hooks-lint-roadmap.test.mjs`'s own
+    // "malformed roadmap under drafts is REPORTED" fixture. Without a real, malformed file at the
+    // target path, `readFileSync` throws (ENOENT) and the hook exits 0 for THAT reason before it
+    // ever reaches the off switch's actual job — the exact defect review found here.
+    build: (r) => {
+      const broken = ROADMAP.replace('- **Roadmap** demo\n', '');
+      const p = write(r.root, '.orchestra/drafts/demo.md', broken);
+      return { cwd: r.root, tool_input: { file_path: p } };
+    },
+    assertLive: (res) => {
+      assert.equal(res.status, 2);
+      assert.match(res.stderr, /does not match the format/);
+    },
   },
   {
     name: 'orchestra-inbox',
     file: 'orchestra-inbox.mjs',
-    // The strongest version of "would be acted on": a register naming this exact session as
-    // conductor, plus a real unconsumed answer sitting in the inbox — everything `relay` needs to
-    // produce text, missing only the config that turns any of this plugin's behaviour on.
-    payload: (r) => {
+    // A register naming this exact session as conductor, a live beat backing that up, and a real
+    // unconsumed answer sitting in the inbox — everything `relay` needs to produce text.
+    build: (r) => {
       const session = 'aaaaaaaa-1111-2222-3333-444444444444';
       writeState(r.root, {
         ...emptyState(r.root),
@@ -99,6 +171,10 @@ const ROWS = [
       );
       writeBeat(r.root, { session, pid: process.pid, now: Date.now() });
       return { cwd: r.root, session_id: session };
+    },
+    assertLive: (res) => {
+      assert.equal(res.status, 0);
+      assert.match(res.stdout, /ship it/);
     },
   },
 ];
@@ -131,9 +207,21 @@ test('every hook registered in hooks.json has a row in this matrix', () => {
 });
 
 for (const row of ROWS) {
+  test(`${row.name}: the row's payload is not inert — a real config acts on it`, () => {
+    const r = repo(row.repoOpts);
+    const payload = row.build(r);
+    const res = runHook(row.file, payload);
+    row.assertLive(res);
+  });
+
   test(`${row.name}: silent and exit 0 with no config`, () => {
-    const r = repoWithoutConfig();
-    const res = runHook(row.file, row.payload(r));
+    const r = repo(row.repoOpts);
+    const payload = row.build(r);
+    // Only the config file goes — a register, a draft or an inbox a project left behind after
+    // turning this plugin off is the realistic shape of "no config", and the off switch must hold
+    // regardless of what else is sitting under `.orchestra/`.
+    rmSync(join(r.root, '.orchestra', 'config.json'), { force: true });
+    const res = runHook(row.file, payload);
     assert.equal(res.status, 0, `expected exit 0, got ${res.status}\nstderr: ${res.stderr}`);
     assert.equal(res.stdout, '');
     assert.equal(res.stderr, '');
