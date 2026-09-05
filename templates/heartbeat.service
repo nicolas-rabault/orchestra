@@ -13,7 +13,12 @@ Description=orchestra heartbeat tick for __ROOT__
 [Service]
 Type=oneshot
 Environment=ORCHESTRA_TRIGGER=agent
-ExecStart=__ROOT__/.orchestra/tick.sh
+# Quoted: systemd splits an unquoted ExecStart= value into words on whitespace exactly like a shell
+# command line, so a root containing a space would otherwise be split into a nonexistent binary
+# plus a stray argument. Quoting the whole value is systemd.service(5)'s own documented fix for a
+# command path containing a space; StandardOutput=/StandardError= are NOT split this way (each
+# takes one `append:<path>` value, not a command line) and are deliberately left unquoted.
+ExecStart="__ROOT__/.orchestra/tick.sh"
 StandardOutput=append:__ROOT__/.orchestra/launchd.log
 StandardError=append:__ROOT__/.orchestra/launchd.log
 

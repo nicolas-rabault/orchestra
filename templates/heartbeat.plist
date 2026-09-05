@@ -18,20 +18,29 @@
        only thing that stays unique when two checkouts of one repository, or two unrelated projects
        sharing a directory name, each install a heartbeat.
 
-       This file is a TEMPLATE: `__ROOT__` and `__ID__` are the only things in it that are not
-       literal. launchd needs an absolute path and expands nothing, so one committed file could
-       never name two developers' checkouts. `orchestra install-heartbeat` renders this into
-       ~/Library/LaunchAgents with the paths of the checkout it is run from, on every run, so a
-       moved checkout self-heals. The installed agent is therefore one substitution away from this
-       file, and `orchestra doctor` re-renders it to check that it still is, rather than letting the
-       real schedule live only in ~/Library/LaunchAgents where it can be neither reviewed nor
-       recovered. -->
+       This file is a TEMPLATE: `__ROOT__`/`__ROOT_XML__` and `__ID__` are the only things in it
+       that are not literal. launchd needs an absolute path and expands nothing, so one committed
+       file could never name two developers' checkouts. `orchestra install-heartbeat` renders this
+       into ~/Library/LaunchAgents with the paths of the checkout it is run from, on every run, so
+       a moved checkout self-heals. The installed agent is therefore one substitution away from
+       this file, and `orchestra doctor` re-renders it to check that it still is, rather than
+       letting the real schedule live only in ~/Library/LaunchAgents where it can be neither
+       reviewed nor recovered.
+
+       TWO substitutions of the same root, never used in the other's place: `__ROOT__` (raw) in the
+       marker comment above, `__ROOT_XML__` (XML-escaped — `&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`) in
+       every `<string>` element below. A `<string>` element is parsed XML content, where `&`/`<`
+       are not literal; an XML comment is not parsed for markup at all, so escaping the marker's
+       copy would only make `installedRoot()` read back `&amp;` where the real root has `&`, which
+       never compares equal to it — reproducing the exact "a project refuses itself" failure this
+       marker exists to prevent. Put the raw form in a comment, the escaped form in element
+       content, and never swap them. -->
   <key>Label</key>
   <string>com.orchestra.__ID__</string>
 
   <key>ProgramArguments</key>
   <array>
-    <string>__ROOT__/.orchestra/tick.sh</string>
+    <string>__ROOT_XML__/.orchestra/tick.sh</string>
   </array>
 
   <!-- Hourly, on the :13, as a CALENDAR interval rather than StartInterval 3600. The difference is
@@ -74,8 +83,8 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>__ROOT__/.orchestra/launchd.log</string>
+  <string>__ROOT_XML__/.orchestra/launchd.log</string>
   <key>StandardErrorPath</key>
-  <string>__ROOT__/.orchestra/launchd.log</string>
+  <string>__ROOT_XML__/.orchestra/launchd.log</string>
 </dict>
 </plist>

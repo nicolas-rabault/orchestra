@@ -38,11 +38,16 @@ const roots = [];
 const projectRoot = () => { const r = mkdtempSync(join(tmpdir(), 'orchestra-proj-')); roots.push(r); return r; };
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
+// Any other one-off temporary directory a test needs (a plutil-lint scratch space, say) that is
+// neither a project root nor a fake HOME.
+const scratchDirs = [];
+const scratchDir = (prefix) => { const d = mkdtempSync(join(tmpdir(), prefix)); scratchDirs.push(d); return d; };
 
 after(() => {
   process.env.HOME = REAL_HOME;
   homes.forEach((h) => rmSync(h, { recursive: true, force: true }));
   roots.forEach((r) => rmSync(r, { recursive: true, force: true }));
+  scratchDirs.forEach((d) => rmSync(d, { recursive: true, force: true }));
   repos.forEach((r) => r.cleanup());
 });
 
@@ -67,6 +72,17 @@ function recorder({ listHasLabel = true } = {}) {
   run.calls = calls;
   return run;
 }
+
+// Apple's own plist linter — the honest check for "is this still a valid plist", used here
+// exactly as review round 1 asked: only ever against a file under a temporary directory this test
+// created, never against anything under the real `~/Library/LaunchAgents`.
+const plutilLint = (path) => execFileSync('plutil', ['-lint', path], { encoding: 'utf8' });
+
+// A throwaway copy of the XML-escaping this test file needs to build a fixture plist by hand
+// (the "a plist rendered for a different root" case) — kept separate from whatever
+// lib/cli/heartbeat.mjs uses internally, so this test does not accidentally validate the
+// implementation against itself.
+const escapeXmlForTest = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
 // ---------------------------------------------------------------------------------------------
 // Step 1: renderTemplate / installedRoot / the path and label helpers — no filesystem, no
@@ -121,11 +137,14 @@ test('installedRoot returns null when the text carries no marker', () => {
 // A placeholder added to a template without adding it to `freshRender`'s vars would leave it
 // unresolved in every real install — this catches that class of mistake directly on the shipped
 // template files, not on a hand-written fixture string.
-test('every real template renders with {ROOT, ID, BIN} and leaves no placeholder behind', () => {
-  const vars = { ROOT: '/Users/dev/my-project', ID: 'abc123', BIN: '/plugins/cache/orchestra@0.5.0/bin/orchestra' };
+test('every real template renders with {ROOT, ID, BIN, ROOT_XML} and leaves no placeholder behind', () => {
+  const vars = {
+    ROOT: '/Users/dev/my-project', ID: 'abc123', BIN: '/plugins/cache/orchestra@0.5.0/bin/orchestra',
+    ROOT_XML: '/Users/dev/my-project',
+  };
   for (const name of TEMPLATES) {
     const out = renderTemplate(readTemplate(name), vars);
-    assert.doesNotMatch(out, /__[A-Z]+__/, `${name} left an unresolved placeholder`);
+    assert.doesNotMatch(out, /__[A-Z_]+__/, `${name} left an unresolved placeholder`);
     assert.match(out, /\/Users\/dev\/my-project/, `${name} does not carry the rendered root`);
   }
 });
@@ -235,6 +254,90 @@ test('a bootstrap failure is a real failure, not swallowed like bootout\'s', () 
   };
   assert.throws(() => installHeartbeat(cfg, { home, run }), /bootstrap failed/);
 });
+
+// A project root whose LAST path segment is deliberately hostile — a space, an `&`, a `<` — while
+// the rest of the path is an ordinary mkdtemp prefix. `mkdtempSync` alone never produces any of
+// these: every fixture root elsewhere in this file is plain, which is exactly why the two bugs
+// below were invisible to it.
+function weirdRoot(segment) {
+  const base = mkdtempSync(join(tmpdir(), 'orchestra-proj-'));
+  roots.push(base);
+  const root = join(base, segment);
+  mkdirSync(root, { recursive: true });
+  return root;
+}
+
+// The four-case matrix (fresh install, re-install over the same root, a plist rendered for a
+// DIFFERENT root, --print) run against a root containing a space and one containing `&`/`<` — the
+// exact shape review round 1 asked for. `plutil -lint` is run only against files under `home`,
+// which is a temporary directory created by this test, never against anything under the real
+// `~/Library/LaunchAgents`.
+function weirdRootMatrix(label, segment) {
+  test(`${label}: a fresh install recovers the whole root, and the plist lints clean`, () => {
+    const root = weirdRoot(segment);
+    const home = mkdtempSync(join(tmpdir(), 'orchestra-home-')); homes.push(home);
+    const cfg = { id: 'weird1', root };
+
+    const report = installHeartbeat(cfg, { home, run: recorder() });
+    assert.equal(report.ok, true);
+    assert.equal(report.action, 'installed');
+
+    const plistText = readFileSync(plistPath('weird1', home), 'utf8');
+    // The bug this pins: a truncating marker would recover only a PREFIX of `root`, and every
+    // assertion below it would still look plausible for an untruncated path.
+    assert.equal(installedRoot(plistText), root);
+    plutilLint(plistPath('weird1', home));
+  });
+
+  test(`${label}: a re-install over the SAME root is idempotent, not refused against itself`, () => {
+    const root = weirdRoot(segment);
+    const home = mkdtempSync(join(tmpdir(), 'orchestra-home-')); homes.push(home);
+    const cfg = { id: 'weird1', root };
+
+    installHeartbeat(cfg, { home, run: recorder() });
+    // This is Finding 1's exact failure mode: a truncated recovered root reads as belonging to
+    // "a different root" than the untruncated `cfg.root` it is compared against, so the SAME
+    // project refuses itself on its own second run.
+    const second = installHeartbeat(cfg, { home, run: recorder() });
+    assert.equal(second.action, 'reinstalled');
+    assert.equal(second.ok, true);
+  });
+
+  test(`${label}: a plist rendered for a different (also weird) root is refused, with the WHOLE existingRoot named`, () => {
+    const home = mkdtempSync(join(tmpdir(), 'orchestra-home-')); homes.push(home);
+    const otherRoot = weirdRoot(`other ${segment}`);
+    const myRoot = weirdRoot(segment);
+    mkdirSync(dirname(plistPath('weird2', home)), { recursive: true });
+    writeFileSync(plistPath('weird2', home), renderTemplate(readTemplate('heartbeat.plist'), {
+      ROOT: otherRoot, ROOT_XML: escapeXmlForTest(otherRoot), ID: 'weird2', BIN: '/x/bin/orchestra',
+    }));
+
+    const report = installHeartbeat({ id: 'weird2', root: myRoot }, { home, run: recorder() });
+    assert.equal(report.ok, false);
+    assert.equal(report.action, 'refused');
+    // Exact, untruncated equality — not a substring/prefix check, which a truncated recovery could
+    // still pass by accident.
+    assert.equal(report.existingRoot, otherRoot);
+  });
+
+  test(`${label}: --print renders a plist that lints clean and names the whole root`, () => {
+    const root = weirdRoot(segment);
+    const home = mkdtempSync(join(tmpdir(), 'orchestra-home-')); homes.push(home);
+    const report = installHeartbeat({ id: 'weird1', root }, { home, run: recorder(), print: true });
+
+    assert.equal(report.ok, true);
+    assert.equal(installedRoot(report.rendered.plist), root);
+    const scratch = join(scratchDir('orchestra-lint-'), 'printed.plist');
+    writeFileSync(scratch, report.rendered.plist);
+    plutilLint(scratch);
+  });
+}
+
+// review round 1's exact fixture set: a space (Finding 1's own reproduction — mkdtempSync alone
+// never produces one), an `&` and a `<` (Finding 2 — unescaped XML element content).
+weirdRootMatrix('a root containing a space', 'my project');
+weirdRootMatrix('a root containing an ampersand', 'Q&A');
+weirdRootMatrix('a root containing a less-than sign', '<weird>');
 
 // ---------------------------------------------------------------------------------------------
 // heartbeatStatus / installedAgents: the pure read half `doctor` builds its rows from, tested
