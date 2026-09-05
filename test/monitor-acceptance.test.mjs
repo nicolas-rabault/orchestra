@@ -189,7 +189,23 @@ test('each project names itself in the model; the served <title> is `orchestra` 
 });
 
 // ---- row 3 -------------------------------------------------------------------------------------
+// This row alone gets a PRIVATE `monitorPort`, not the shared 4380 default every other real bind in
+// this suite — and in test/cli.test.mjs, run CONCURRENTLY by `node --test test/*.test.mjs` — starts
+// its own search from. Reproduced by the reviewer by staging exactly this: an external
+// `orchestra monitor` (from that other file) holds part of the default band while THIS row's first
+// child binds, pushing it up to 4382; the external one exits and frees that band before this row's
+// restart, so the restart's own fresh search — starting from the same default, finding a LOWER port
+// free now — lands on 4381 instead. That is interleaving noise from an unrelated test file changing
+// what is free on the machine between the two binds, not a fact about restart stability, and it
+// would defeat ANY starting candidate this file shares with the other. So: `~/.orchestra/machine.json`
+// (this test's own temporary HOME, from `beforeEach` above) pins `monitorPort` to a candidate
+// nothing else in this codebase ever starts a search from. With the machine's port situation
+// unchanged between the two binds — because nothing else contends for it — the row still proves the
+// real thing: two real binds, a real kill, and the same port recorded both times.
 test('killing a monitor and restarting it returns the same port', async () => {
+  mkdirSync(join(process.env.HOME, '.orchestra'), { recursive: true });
+  writeFileSync(join(process.env.HOME, '.orchestra', 'machine.json'), JSON.stringify({ monitorPort: 24380 }));
+
   const p = project('steady');
   const first = startMonitor(p.root);
   const { port } = await first.said;
