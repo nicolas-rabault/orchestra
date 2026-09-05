@@ -63,6 +63,21 @@ main { display: grid; grid-template-columns: 340px 1fr; grid-template-rows: auto
 #tally .attention { border-color: var(--alert); color: var(--alert); }
 #tally .attention b { color: var(--alert); }
 
+/* ---- level 1: which project ----
+   One tab per orchestra on this machine, above the developer strip below it because that is the
+   order the two questions are asked in. Same pill as the developer tabs, one step larger — this is
+   the more consequential of the two choices: it decides what every other pixel on the page is
+   about, where the developer strip only slices the one project already on screen. */
+#projects { display: flex; flex-wrap: wrap; gap: 8px; }
+#projects button { display: flex; align-items: center; gap: 7px; padding: 5px 14px; background: none;
+  color: var(--dim); border: 1px solid var(--line); border-radius: 999px; font: 600 12px var(--sans); cursor: pointer; }
+#projects button:hover { color: var(--hi); border-color: var(--dim); }
+#projects button.on { color: var(--hi); border-color: var(--dim); background: var(--node); }
+/* How many of THIS project's questions are waiting on you — the same alarm colour the corner list
+   and the pulsing nodes wear, because it is the same fact counted for a project you are not
+   looking at right now. */
+#projects button b.attention { font: 600 11px var(--mono); color: var(--alert); }
+
 /* ---- the developer tabs ----
    Whose work the stage shows: local first and by default, then one per developer the shared board
    names while they have unfinished work. The active tab wears the node background rather than an
