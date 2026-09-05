@@ -8,7 +8,7 @@
 // handler still owns — the dev-server list — is proven below, against a fake `lsof` on PATH.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfigOrThrow } from '../lib/config.mjs';
@@ -81,15 +81,16 @@ test('still serves the model of a repository with nothing in it', async () => {
 test('serves a picture from inside the checkout, and answers 304 on its own etag', async () => {
   const f = fixture();
   writeFileSync(join(f.root, 'top.png'), 'not really a png, but a file');
-  const first = await ask(f, 'GET', '/api/image?p=top.png');
+  const first = await ask(f, 'GET', `/api/image?project=${f.cfg.id}&p=top.png`);
   assert.equal(first.code, 200);
   assert.equal(first.headers['content-type'], 'image/png');
-  const again = await ask(f, 'GET', '/api/image?p=top.png', { headers: { 'if-none-match': first.headers.etag } });
+  const again = await ask(f, 'GET', `/api/image?project=${f.cfg.id}&p=top.png`, { headers: { 'if-none-match': first.headers.etag } });
   assert.equal(again.code, 304);
 });
 
 test('serves no file the query string asks for outside the checkout', async () => {
-  const res = await ask(fixture(), 'GET', '/api/image?p=../../etc/passwd.png');
+  const f = fixture();
+  const res = await ask(f, 'GET', `/api/image?project=${f.cfg.id}&p=../../etc/passwd.png`);
   assert.equal(res.code, 400);
 });
 
@@ -179,11 +180,11 @@ test('an unknown path is a 404, not a 500', async () => {
 // one. No tick is spawned in either branch.
 test('an answer reports a beating conductor as awake, and says so honestly when there is none', async () => {
   const f = fixture();
-  const quiet = await ask(f, 'POST', '/api/answer', { body: JSON.stringify({ task: null, pending: null, answer: 'first' }) });
+  const quiet = await ask(f, 'POST', '/api/answer', { body: JSON.stringify({ project: f.cfg.id, task: null, pending: null, answer: 'first' }) });
   assert.deepEqual(JSON.parse(quiet.body), { ok: true, conductor: 'no-conductor' });
 
   writeBeat(f.root, { session: 'abcdef12-0000', pid: process.pid });
-  const awake = await ask(f, 'POST', '/api/answer', { body: JSON.stringify({ task: 'demo/D1', pending: 'q1', answer: 'second' }) });
+  const awake = await ask(f, 'POST', '/api/answer', { body: JSON.stringify({ project: f.cfg.id, task: 'demo/D1', pending: 'q1', answer: 'second' }) });
   assert.deepEqual(JSON.parse(awake.body), { ok: true, conductor: 'awake' });
 
   // Both answers are in the file, in order, stamped by `appendAnswer` and not by the route.
@@ -350,4 +351,68 @@ test('/projects.mjs is served, and a module that is not on the list is not', asy
   const nope = fakeRes();
   await handler(fakeReq('GET', '/discover.mjs'), nope);
   assert.equal(nope.code, 404);
+});
+
+// ---- the answer and image routes name their project ----------------------------------------------
+
+test('an answer goes to the project it names, and to no other', async () => {
+  const a = fixture('alpha');
+  const b = fixture('beta');
+  const res = fakeRes();
+  await handlerFor(a, b)(fakeReq('POST', '/api/answer', {
+    body: JSON.stringify({ project: a.cfg.id, task: 'demo/D1', pending: 'q1', answer: 'ship at 0.75' }),
+  }), res);
+  assert.equal(res.code, 200);
+  assert.equal(JSON.parse(res.body).ok, true);
+
+  const line = JSON.parse(readFileSync(join(a.root, '.orchestra', 'inbox.jsonl'), 'utf8').trim());
+  assert.equal(line.answer, 'ship at 0.75');
+  assert.equal(line.from, 'monitor');
+  assert.equal(existsSync(join(b.root, '.orchestra', 'inbox.jsonl')), false);
+});
+
+test('an answer naming a project that is not in the set is refused and writes nothing', async () => {
+  const a = fixture('alpha');
+  const res = fakeRes();
+  await handlerFor(a)(fakeReq('POST', '/api/answer', {
+    body: JSON.stringify({ project: 'ffffff', task: null, pending: null, answer: 'hello' }),
+  }), res);
+  assert.equal(res.code, 400);
+  assert.match(JSON.parse(res.body).error, /project/);
+  assert.equal(existsSync(join(a.root, '.orchestra', 'inbox.jsonl')), false);
+});
+
+test('an answer with no project at all is refused — there is no default project any more', async () => {
+  const res = fakeRes();
+  await handlerFor(fixture('alpha'))(fakeReq('POST', '/api/answer', {
+    body: JSON.stringify({ task: null, pending: null, answer: 'hello' }),
+  }), res);
+  assert.equal(res.code, 400);
+});
+
+test('an image is resolved against the project that names it', async () => {
+  const a = fixture('alpha');
+  mkdirSync(join(a.root, '.orchestra', 'images'), { recursive: true });
+  writeFileSync(join(a.root, '.orchestra', 'images', 'shot.png'), Buffer.from([137, 80, 78, 71]));
+  const res = fakeRes();
+  await handlerFor(a)(fakeReq('GET', `/api/image?project=${a.cfg.id}&p=.orchestra/images/shot.png`), res);
+  assert.equal(res.code, 200);
+  assert.equal(res.headers['content-type'], 'image/png');
+});
+
+test('an image path inside ANOTHER project is refused, not served', async () => {
+  const a = fixture('alpha');
+  const b = fixture('beta');
+  mkdirSync(join(b.root, '.orchestra', 'images'), { recursive: true });
+  const secret = join(b.root, '.orchestra', 'images', 'secret.png');
+  writeFileSync(secret, Buffer.from([137, 80, 78, 71]));
+  const res = fakeRes();
+  await handlerFor(a, b)(fakeReq('GET', `/api/image?project=${a.cfg.id}&p=${secret}`), res);
+  assert.equal(res.code, 400);
+});
+
+test('an image naming an unknown project is refused', async () => {
+  const res = fakeRes();
+  await handlerFor(fixture('alpha'))(fakeReq('GET', '/api/image?project=ffffff&p=.orchestra/images/shot.png'), res);
+  assert.equal(res.code, 400);
 });
