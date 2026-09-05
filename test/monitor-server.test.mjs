@@ -8,7 +8,7 @@
 // handler still owns — the dev-server list — is proven below, against a fake `lsof` on PATH.
 import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfigOrThrow } from '../lib/config.mjs';
@@ -118,6 +118,26 @@ test('refuses a malformed answer with a 400 rather than a crash, and writes noth
 });
 
 // ---- new here ------------------------------------------------------------------------------------
+
+// The XSS guarantee, restored STRUCTURALLY rather than by template escape. `escapeHtml` and its
+// `$`-replacer defence against `String.replaceAll` were deleted along with the `{{project}}`
+// substitution they existed for (§6: no project name is ever written into the served HTML any
+// more, so there is nothing left to escape) — but the two tests proving a project named
+// `<script>alert(1)</script>` names a tab rather than running went with them, and the property
+// itself still holds: nothing under `lib/monitor/public/` uses one of the four sinks that turn a
+// string into markup, so a project name can only ever reach the DOM through `el()`, which sets
+// `textContent`. `app.js` cannot be loaded here to prove that by running it —
+// `test/no-dependencies.test.mjs`'s own limit, since its `/`-rooted imports do not resolve in node
+// — so this scans the SOURCE instead, which needs no browser and no server.
+const DOM_SINKS = ['innerHTML', 'insertAdjacentHTML', 'outerHTML', 'document.write'];
+test('no script under lib/monitor/public/ writes markup — a project name has nowhere left to run', () => {
+  const files = readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.js') || f.endsWith('.mjs'));
+  assert.ok(files.length > 0, 'expected at least one script under lib/monitor/public/');
+  for (const file of files) {
+    const src = readFileSync(join(PUBLIC_DIR, file), 'utf8');
+    for (const sink of DOM_SINKS) assert.equal(src.includes(sink), false, `${file} must not use ${sink}`);
+  }
+});
 
 test('an answer larger than the 1 MB cap is refused as too large, not as "not JSON" — and the socket is destroyed', async () => {
   const f = fixture();
