@@ -95,13 +95,14 @@ command this plugin ships actually exists.
   page never does: when a beat under a minute old belongs to a live pid, it says so and that
   session's `orchestra watch-answers` loop hands over the answer within seconds; otherwise it says
   the answer is in the inbox and the next tick will read it, and it starts nothing itself. An
-  answer typed while nobody is beating therefore waits — for at most one heartbeat slot now
-  (`orchestra install-heartbeat`), never for ever, but it still waits, and that wait is the whole
-  cost, paid deliberately: wiring the delivery of an answer to CREATE a conductor instead of to
-  REACH the live one cost six conductor identities in half an hour on 2026-08-13 in planetCraft,
-  two `merge_agent` runs twelve seconds apart on one branch, and three answers left unread because
-  the register kept naming a reader that had already died. See `### The answer net, and what has no
-  net under it yet` for what still cannot be covered.
+  answer typed while nobody is beating therefore waits. Where `orchestra install-heartbeat` is
+  installed for this project, that wait has a floor of one heartbeat slot; where it is not, the
+  wait ends only when a person runs a tick by hand. Either way it still waits, and that wait is
+  the whole cost, paid deliberately: wiring the delivery of an answer to CREATE a conductor
+  instead of to REACH the live one cost six conductor identities in half an hour on 2026-08-13 in
+  planetCraft, two `merge_agent` runs twelve seconds apart on one branch, and three answers left
+  unread because the register kept naming a reader that had already died. See `### The answer
+  net, and what has no net under it yet` for what still cannot be covered.
 - **Never propose a cron entry for the heartbeat.** `orchestra install-heartbeat` renders a launchd
   agent (macOS) or a systemd user timer (Linux) — never a crontab entry, because a cron job runs
   outside the login session and cannot read the login keychain: every tick died on `Not logged in`,
@@ -421,11 +422,12 @@ started *after* the hold was issued.
    a signal-0.
 1. **Rehydrate.**
 
-   **The page.** `orchestra instances` lists every orchestra registered on this machine — name,
-   id, mode, root, URL, whether anything is listening there, worker count, a truncated conductor
-   session id and how long since its last beat, and how long since it reported itself. With
-   `doctor` and `init` it is one of the three subcommands that answer without a project config, so
-   it answers from anywhere. This project's row is where its port comes from, and that
+   **The page.** `orchestra instances` lists every orchestra registered on this machine, in the
+   order its row prints them — name, id, mode, URL, whether anything is listening there, worker
+   count, a truncated conductor session id, how long since its last beat, how long since it
+   reported itself, and root. With `doctor` and `init` it is one of the three subcommands that
+   answer without a project config, so it answers from anywhere. This project's row is where its
+   port comes from, and that
    port is stable across restarts: `monitor.port` defaults to `"auto"`, which is `4380 + (the
    project's six-hex id, mod 100)`, probed upward until one is free, and the port **actually
    bound** is what gets recorded.
@@ -788,11 +790,16 @@ started *after* the hold was issued.
    itself stale, launch nothing this tick and end here** — a cached board cannot say whether
    another developer has taken a task, and starting anyway overwrites their claim. Say so in the
    journal. Offline, a board is never served from cache, so this rule is online's.
-   **`guard-claim` holds the same line at the point that matters more.** It fails closed on a
-   cached board deliberately, rather than let an out-of-date read authorise the `git worktree add
-   -b <branch>` that starts a task — the gesture which starts the work is the gesture the guard
-   checks, so a conductor who launches on a stale read is stopped there even if this step's own
-   reasoning was missed.
+   **`guard-claim` holds the same line at the point that matters more, when it can fire.** It
+   fails closed on a cached board deliberately, rather than let an out-of-date read authorise the
+   `git worktree add -b <branch>` that starts a task — the gesture which starts the work is the
+   gesture the guard checks. But no store in this plugin caches a board today: `orchestra roadmap
+   board --json` either reaches its backend or fails outright, so `board.stale` is always absent
+   and this branch is wired but unreached (`hooks/guard-claim.mjs`'s own header says so, and it
+   stays rather than being dropped — `startVerdict`'s `stale` reason is already written and
+   tested, and a hook that dropped the field would have to be edited again the day a cache
+   lands). **This step's own reasoning is still what you are relying on, not an alarm**: the
+   guard cannot yet catch a stale read for you.
 8. **Launch, and the names.** Launch each row `orchestra ready` places in `launches` — already
    width-capped by "The machine's capacity" above. **Claim first, always**, for your own
    roadmaps too, now that every roadmap is published:
@@ -893,9 +900,11 @@ started *after* the hold was issued.
    an event here, whatever you are doing; worker turns you resumed notify you as their Bash tasks
    complete — a landing dispatched to `merge_agent` wakes you the very same way, its turn ending
    being no different from a worker's; a landing you run yourself needs no wake at all, since
-   `await` blocks in bounded chunks inside your own turn and re-running it is always correct; and
-   the heartbeat (`orchestra install-heartbeat`) guarantees a tick every hour whatever happens to
-   you, standing down while you are alive so it cannot become a second conductor beside you.
+   `await` blocks in bounded chunks inside your own turn and re-running it is always correct; and,
+   where `orchestra install-heartbeat` has been run for this project, the heartbeat guarantees a
+   tick every hour whatever happens to you, standing down while you are alive so it cannot become
+   a second conductor beside you. Where it has not, nothing wakes you and the fourth case above is
+   what going quiet on an unfinished roadmap actually looks like.
 
    An interactive conductor may additionally arm one Monitor polling `claude agents --json` for
    `orchestra-*` sessions leaving `busy` (2-minute interval, transitions only) — the fast path
@@ -1365,10 +1374,13 @@ was armed** — its first round announces nothing and only remembers what is alr
 left behind by **a tick that died before relaying it**, because the watch dies with the session
 too.
 
-**The net under it is the heartbeat, and it is a floor, never a wake-up call.** `orchestra
-install-heartbeat`'s hourly tick is `decideTick`'s own first override (`lib/register/tick.mjs`): an
-unconsumed answer in the inbox forces `run` even when every other row is terminal, so an answer
-typed while nobody is beating now waits at most one heartbeat slot rather than for ever. It is
-still a wait, not a delivery — see the Never in `## What is not here yet` for why that shape is
-deliberate and what the other shape cost. Never propose a cron entry as a substitute: a cron tick
-cannot read the login keychain, so it would catch nothing while reading as protection.
+**Where it is installed, the net under it is the heartbeat, and it is a floor, never a wake-up
+call.** `orchestra install-heartbeat`'s hourly tick is `decideTick`'s own first override
+(`lib/register/tick.mjs`): an unconsumed answer in the inbox forces `run` even when every other
+row is terminal, so an answer typed while nobody is beating waits at most one heartbeat slot
+rather than for ever — in a project that has run `install-heartbeat`. **Where it has not, there
+is still no net at all**: the wait ends only when a person runs a tick by hand, exactly as before
+this phase. Either way it is a wait, not a delivery — see the Never in `## What is not here yet`
+for why that shape is deliberate and what the other shape cost. Never propose a cron entry as a
+substitute: a cron tick cannot read the login keychain, so it would catch nothing while reading as
+protection.

@@ -92,10 +92,10 @@ init`, the ticket queue and the heartbeat — every phase of the extraction has 
   The page is the only writer of `.orchestra/inbox.jsonl`. It starts nothing: an answer posted on
   it reaches a live conductor through that session's `watch-answers` loop within seconds, and
   otherwise waits in the inbox for the next tick.
-- **`orchestra instances`** — every orchestra registered on this machine: name, id, mode, root,
-  URL, whether anything is listening there, worker count, a truncated conductor session id and how
-  long since its last beat, and how long since it reported itself. Like `doctor`, it answers
-  without a project config.
+- **`orchestra instances`** — every orchestra registered on this machine, in the order its row
+  prints them: name, id, mode, URL, whether anything is listening there, worker count, a truncated
+  conductor session id, how long since its last beat, how long since it reported itself, and root.
+  Like `doctor`, it answers without a project config.
 - **`orchestra archive|archive-images`** — move a finished run's prose out of the register, and
   sweep the photographs under `.orchestra/images/` that nothing live still names.
 - **`orchestra land <branch> [--detach] | await <branch> [--for=N] | queue-list`** — the merge gate:
