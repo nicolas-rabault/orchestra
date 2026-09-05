@@ -13,6 +13,7 @@ import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { readPayload, projectFor } from '../lib/guards/payload.mjs';
 import { isMainCheckout } from '../lib/guards/mainCheckout.mjs';
+import { canonicalPath, isUnderDir } from '../lib/guards/underDir.mjs';
 import { gitEnv } from '../lib/paths.mjs';
 
 const payload = readPayload();
@@ -46,8 +47,11 @@ const { root } = checkout;
 
 // `.orchestra/` is exempt: the register, the journal and the drafts live in the main checkout by
 // design (spec §3.2), and the conductor protocol has the conductor editing `state.json` there by
-// hand. A guard that blocked that would break the thing it is installed to protect.
-if (target === join(root, '.orchestra') || target.startsWith(`${join(root, '.orchestra')}/`)) process.exit(0);
+// hand. A guard that blocked that would break the thing it is installed to protect. `isUnderDir`
+// canonicalizes both sides — `root` is already git-resolved, but `target` is the payload's raw
+// path, and a bare string compare here silently fails through any symlinked ancestor (see
+// lib/guards/underDir.mjs's header).
+if (isUnderDir(join(root, '.orchestra'), target)) process.exit(0);
 
 // Untracked scratch in the main checkout is not an integration change. Nothing else is exempt —
 // a project-specific carve-out (the source this hook is ported from exempted its own `docs/`) is
@@ -57,7 +61,11 @@ try {
   process.exit(0); // ignored: untracked scratch, not an integration change
 } catch { /* not ignored — fall through to the refusal */ }
 
-const rel = relative(root, target);
+// Canonicalized, not the raw payload path: `relative()` below assumes both arguments are already
+// in the same form, and `root` always is (git-resolved). Without this, a target reached through a
+// symlinked ancestor produces a `../../../..` traversal instead of the real relative path — advice
+// that would do the wrong thing if followed.
+const rel = relative(root, canonicalPath(target));
 process.stderr.write(
   `Blocked: ${rel} is in the MAIN checkout, and main is integrate-only.\n`
   + '\n'

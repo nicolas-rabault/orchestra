@@ -9,7 +9,8 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
@@ -72,6 +73,29 @@ test('guard-main-edit: a path under .orchestra/ is ALLOWED', () => {
   const res = runHook(EDIT_HOOK, editPayload(r.root, join(r.root, '.orchestra', 'config.json')));
   assert.equal(res.status, 0);
   assert.equal(res.stderr, '');
+});
+
+// Branch review, finding 2: `test/helpers/fixture.mjs`'s `makeRepo` realpaths its root, so every
+// other test in this file hands the hook an already-canonical path — structurally blind to the one
+// input shape that defeats the raw string compare at guard-main-edit.mjs's `.orchestra/` exemption.
+// This test builds an UNRESOLVED symlinked ancestor on purpose: `linkDir` is a symlink to the real
+// repo, so `git -C linkDir rev-parse --git-common-dir` (what `root` is built from) returns the
+// REAL, canonical path, while a payload built from `linkDir` itself — exactly what a project living
+// under a symlinked directory (an aliased volume, a symlinked ~/Projects, or macOS's own
+// /tmp -> /private/tmp) hands this hook in the ordinary case — does not.
+test('guard-main-edit: a path under .orchestra/ reached through a symlinked ancestor is still ALLOWED', () => {
+  const r = repo();
+  const linkDir = mkdtempSync(join(tmpdir(), 'orchestra-link-'));
+  rmSync(linkDir, { recursive: true, force: true }); // clear the placeholder — symlinkSync needs the name free
+  symlinkSync(r.root, linkDir);
+  try {
+    const target = join(linkDir, '.orchestra', 'config.json');
+    const res = runHook(EDIT_HOOK, editPayload(linkDir, target));
+    assert.equal(res.status, 0);
+    assert.equal(res.stderr, '');
+  } finally {
+    unlinkSync(linkDir); // removes the symlink itself — rmSync's EISDIR check follows it into r.root
+  }
 });
 
 test('guard-main-edit: a gitignored path is ALLOWED', () => {

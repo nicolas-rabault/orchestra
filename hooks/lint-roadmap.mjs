@@ -23,6 +23,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { readPayload, projectFor } from '../lib/guards/payload.mjs';
 import { ORCHESTRA_BIN } from '../lib/guards/orchestraBin.mjs';
+import { isUnderDir } from '../lib/guards/underDir.mjs';
 
 const payload = readPayload();
 if (!payload) process.exit(0);
@@ -40,12 +41,7 @@ try { text = readFileSync(path, 'utf8'); } catch { process.exit(0); }
 const frontmatter = /^\uFEFF?\s*---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(text);
 const declaresRoadmap = frontmatter ? /^roadmap:\s*\S/m.test(frontmatter[1]) : false;
 
-const under = (dir) => {
-  if (!dir) return false;
-  const abs = resolve(cfg.root, dir);
-  const target = resolve(path);
-  return target === abs || target.startsWith(`${abs}/`);
-};
+const under = (dir) => Boolean(dir) && isUnderDir(resolve(cfg.root, dir), path);
 
 const isRoadmap = under(cfg.roadmaps.drafts) || under(cfg.roadmaps.published) || declaresRoadmap;
 if (!isRoadmap) process.exit(0);
