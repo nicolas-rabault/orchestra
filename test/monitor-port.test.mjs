@@ -1,7 +1,10 @@
 // lib/monitor/port.mjs: binding the monitor's port. One page serves this machine now, so the only
 // question left here is stepping upward when something else already holds the port —
 // `candidatePort`, `resolvePort` and `pinConflict` answered the per-project allocation question and
-// are gone with it (see lib/machine.mjs and lib/cli/monitor.mjs for what replaced them).
+// are gone with it (see lib/machine.mjs and lib/cli/monitor.mjs for what replaced them). `pinned`
+// mode is gone too: it existed only for a config-pinned `monitor.port`, and that key is gone with
+// the rest — the one production caller (`lib/monitor/server.mjs`) always wants the step-upward
+// behaviour, so there is nothing left to exercise a refuse-instead-of-step path.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
@@ -18,23 +21,10 @@ test('listenOnFreePort steps past a port a real listener holds, and resolves wit
   const taken = obstacle.address().port;
   const server = createServer();
   try {
-    const bound = await listenOnFreePort(server, { port: taken, pinned: false });
+    const bound = await listenOnFreePort(server, { port: taken });
     assert.notEqual(bound, taken);
     assert.equal(server.address().port, bound);
     assert.ok(server.listening);
-  } finally {
-    await closeServer(server);
-    await closeServer(obstacle);
-  }
-});
-
-test('listenOnFreePort rejects instead of stepping when pinned and the port is taken', async () => {
-  const obstacle = createServer();
-  await listenPort0(obstacle);
-  const taken = obstacle.address().port;
-  const server = createServer();
-  try {
-    await assert.rejects(listenOnFreePort(server, { port: taken, pinned: true }), /monitor\.port/);
   } finally {
     await closeServer(server);
     await closeServer(obstacle);
