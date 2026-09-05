@@ -536,7 +536,7 @@ git commit -m "feat(monitor): the project set, resolved per request from the reg
 
 **Files:**
 - Modify: `lib/monitor/server.mjs`
-- Modify: `test/monitor-routes.test.mjs` (the existing route suite; adapt every `createHandler` call)
+- Modify: `test/monitor-server.test.mjs` (the existing route suite; adapt every `createHandler` call)
 - Modify: `test/p4-acceptance.test.mjs:handlerFor` only — leave its rows for Task 8
 
 **Interfaces:**
@@ -547,7 +547,7 @@ git commit -m "feat(monitor): the project set, resolved per request from the reg
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `test/monitor-routes.test.mjs` (and change its existing `createHandler({ cfg, ... })` calls to
+Add to `test/monitor-server.test.mjs` (and change its existing `createHandler({ cfg, ... })` calls to
 the new shape — a small helper at the top of that file, `handlerFor(...projects)`, keeps the diff
 short):
 
@@ -646,7 +646,7 @@ const handlerFor = (...ps) => createHandler({ projects: () => ps.map(ctx), port:
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `node --test test/monitor-routes.test.mjs`
+Run: `node --test test/monitor-server.test.mjs`
 Expected: FAIL — the model has no `machine`/`projects` keys and `/` still carries `{{project}}`.
 
 - [ ] **Step 3: Make the handler plural**
@@ -763,7 +763,7 @@ to `<title>orchestra</title>` and delete the `{{project}}` div's placeholder, le
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `node --test test/monitor-routes.test.mjs`
+Run: `node --test test/monitor-server.test.mjs`
 Expected: PASS.
 
 - [ ] **Step 5: Fix `p4-acceptance.test.mjs`'s handler helper only**
@@ -786,7 +786,7 @@ Everything else PASSES. Note which fail; Task 8 fixes exactly those.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add lib/monitor/server.mjs lib/monitor/public/index.html test/monitor-routes.test.mjs test/p4-acceptance.test.mjs
+git add lib/monitor/server.mjs lib/monitor/public/index.html test/monitor-server.test.mjs test/p4-acceptance.test.mjs
 git commit -m "feat(monitor): the model goes plural, one lsof for the machine, and the title stops naming a project"
 ```
 
@@ -796,7 +796,7 @@ git commit -m "feat(monitor): the model goes plural, one lsof for the machine, a
 
 **Files:**
 - Modify: `lib/monitor/server.mjs` (the two routes)
-- Modify: `test/monitor-routes.test.mjs`
+- Modify: `test/monitor-server.test.mjs`
 
 **Interfaces:**
 - Consumes: the `projects` function from Task 4.
@@ -871,7 +871,7 @@ test('an image naming an unknown project is refused', async () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `node --test test/monitor-routes.test.mjs`
+Run: `node --test test/monitor-server.test.mjs`
 Expected: FAIL — the answer route writes to whichever project it used to hold, and the image route
 ignores `project`.
 
@@ -911,13 +911,13 @@ The answer route, after the existing body checks and before `appendAnswer`:
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `node --test test/monitor-routes.test.mjs`
+Run: `node --test test/monitor-server.test.mjs`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/monitor/server.mjs test/monitor-routes.test.mjs
+git add lib/monitor/server.mjs test/monitor-server.test.mjs
 git commit -m "feat(monitor): an answer and an image name their project, resolved against the live set"
 ```
 
