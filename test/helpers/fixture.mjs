@@ -43,3 +43,28 @@ Demo roadmap prose.
 
 **Acceptance.** A test asserts it.
 `;
+
+// A pull-request review task, in the grammar, for the local destination's suites. Hand-written
+// rather than derived from ROADMAP: a task's own `Roadmap` field must agree with the frontmatter
+// and its branch's last segment must start with its lowercased id.
+export const PR_ROADMAP = `---
+roadmap: pr
+destination: local
+---
+
+Open pull requests, swept 2026-09-07.
+
+### PR91 — merge: bump npm_and_yarn group across 1 directory
+
+- **Roadmap** pr
+- **Order** 1
+- **Deps** —
+- **Touches** \`README.md\`
+- **Branch** \`pr91-review\`
+- **Design** no
+- **Lane** —
+
+**Why.** Dependabot, green CI, scoped bump.
+
+**Acceptance.** PR #91 is merged on GitHub and \`git log main\` carries its commit subjects.
+`;
