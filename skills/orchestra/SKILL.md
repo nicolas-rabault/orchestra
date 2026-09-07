@@ -28,7 +28,8 @@ The three exceptions are `doctor` itself, `orchestra instances` and `orchestra i
 need a project config to answer — `instances` because it answers about the MACHINE rather than
 about a project, `init` because it is the command that writes the config in the first place. Once
 a project has one, read off `doctor` `mode`, `name`, `id`, `language`, `mainBranch`, `worktrees`,
-`branchTests`, `docs.specs`, `docs.plans`, `docs.results`, `briefExtra` and `queue`, and nothing
+`branchTests`, `docs.specs`, `docs.plans`, `docs.results`, `briefExtra` and `queue` — plus
+`pr.ledger` and `pr.direction` when this tick has a pull-request review row on it — and nothing
 else.
 
 ## Onboarding a new project (`orchestra init`)
@@ -823,8 +824,11 @@ started *after* the hold was issued.
    claude --bg -n orchestra-<project id>-<task slug> --model <model> --dangerously-skip-permissions "<brief>"
    ```
    `<worktrees>` is the `worktrees` config (`orchestra doctor`'s own row; default
-   `.orchestra/worktrees`). **Do not run a dependency install here.** The source project's launch
-   did; a portable protocol cannot know whether a fresh worktree needs one, so if the project
+   `.orchestra/worktrees`). **A row carrying a `base` is cut from that sha instead of from the main
+   branch** — a pull-request review row always carries one, and `## Pull-request review rows` below
+   says why. The `-b` form is unchanged either way, so `guard-claim` fires the same. **Do not run a
+   dependency install here.** The source project's launch did; a portable protocol cannot know
+   whether a fresh worktree needs one, so if the project
    needs a per-worktree bootstrap the worker's brief says so — that is one of the things
    `briefExtra` is for.
 
@@ -1147,11 +1151,80 @@ launch: <id> — <title> [fable] on <branch>
 for a design row, `[opus]` for any other. So the choice is the roadmap's, made when the task was
 written — not a judgment call the conductor makes at launch time.
 
+## Pull-request review rows
+
+A sixth thing this protocol conducts, and it is not a sixth KIND of row: a pull request is an
+ordinary task. Spec: `docs/specs/2026-09-07-pr-review-in-orchestra-design.md`. The `pr-sweep` skill
+writes the roadmap and `pr-triage` is what its workers follow.
+
+**What one is.** A row on the standing `pr` roadmap, published `destination: local` so it reaches
+neither the issue tracker nor anything the repository carries. Its ID is `PR<number>`, its branch is
+`pr<number>-review`, and its register row carries **`base`** — the sha of the pull request's own
+head, fetched by the sweep (`git fetch origin pull/<N>/head`). `base` is the only field on that row
+no command writes.
+
+**The launch differs in exactly one token**, and step 8's launch line names it:
+
+```sh
+git worktree add <worktrees>/<slug> -b <branch> <base>
+```
+
+`<base>` instead of the project's main branch. The `-b` form is unchanged, so `guard-claim` fires
+exactly as it does for anything else, `orchestra roadmap claim` comes first exactly as it does for
+anything else, and the worktree is the pull request as its author wrote it. **A row with no `base`
+is not launchable**: cutting from main would give the worker your own code to review. Say so and
+fetch it rather than launching anyway.
+
+Everything else is the protocol you already run. The framing pass IS the sweep's own step 6 — the
+board, then the grouped questions, with `options` on every `pending[]` item — so a review row
+arrives with its forks already answered, and its one interruption is the hands-on gate: the
+maintainer opens the server the worker started and tries the pull request themselves.
+
+**How a row ends.** Never by anything anybody types.
+
+| The worker's verdict | What happens | Status |
+|---|---|---|
+| `merge` | the maintainer clicks Merge on GitHub; the row's recorded commit subjects reach main | `landed`, derived, on a later tick |
+| `review` | a pending review is left; the ball is with the maintainer, then the author | `review` until the PR moves |
+| `decline` | a direction file is written and a decline note drafted to paste | `dropped` |
+| `dismissed` | one ledger line and nothing else | `dropped` |
+
+The ledger's word is `dismissed`, not `dismiss`: `orchestra pr log` accepts `review`, `merge`,
+`decline` and `dismissed`, and refuses anything else rather than writing it.
+
+Three mechanical consequences, each verified against the derivation and none of them obvious:
+
+- **`landed` needs two things you own.** The row's `subjects` must carry the PR's commit subjects
+  (record them the way step 6 has you record a branch's, before the row can end), and THIS
+  checkout's main must have fetched the merge — `gatherGit` reads local refs and nothing fetches for
+  you. Until it does, a merged PR still reads `claimed`.
+- **`dropped` is terminal and stops the scheduler** (`orchestra ready` skips it, `orchestra archive`
+  files the row away), but the board derives from git, which has no `dropped` to derive: so
+  `orchestra roadmap board` prints one `correction:` line for such a row until the next sweep drops
+  the task or `archive` takes the row. That is noise, not a disagreement. Say so at the checkpoint;
+  do not "fix" the row by changing its status back.
+- **Delete the worktree and the `pr<number>-review` ref when a row ends**, on every verdict. No gate
+  runs on a review row, so nothing else will, and a leftover ref keeps the board reading `claimed`
+  and collides with the next sweep's fetch of the same PR.
+
+**The one thing you never do: merge the pull request, or run `orchestra land` on a review row.** The
+gate is for branches this project owns. `pr-triage`'s first hard rule is the worker's and it is
+yours: the only write anywhere on GitHub is a PENDING review, private to the maintainer. No merge,
+no close, no label, no assignee, no comment. Orchestra having a merge gate does not soften it.
+
+**The squash-merge hole, stated rather than discovered.** A squash whose commit subject the
+maintainer rewrote is a subject the register never recorded, so §2's derivation cannot see the
+merge and the row reads `claimed` after a real one. The next sweep catches it — it reads the pull
+request's state from GitHub, not from git — so the failure is bounded by one sweep interval and is
+never silent. It is deliberately not worth code: recording a second identity for the same commit
+would be a second source of truth for a fact GitHub already answers.
+
 ## Worker briefs
 
 Every launch and every hand-over below fills a brief from the same nine substitutions, plus — for a
 relaunch or a hand-over only — `<the project's main branch>` (`orchestra doctor`'s `mainBranch` row)
-and `<n>`, the turn count. One table, read once:
+and `<n>`, the turn count, and — for a pull-request review row only — the last three rows of the
+table. One table, read once:
 
 | Placeholder | Filled from |
 |---|---|
@@ -1164,13 +1237,16 @@ and `<n>`, the turn count. One table, read once:
 | `{specsDir}` | `orchestra doctor`'s `docs.specs` row |
 | `{plansDir}` | `orchestra doctor`'s `docs.plans` row |
 | `{briefExtra}` | `orchestra doctor`'s `briefExtra` row, pasted verbatim. Empty means the paragraph is omitted entirely |
+| `{pr}` | the pull request's number — the digits of the row's `PR<number>` id, which is also what its branch names |
+| `{repo}` | `gh repo view --json nameWithOwner -q .nameWithOwner`, or the `repo` field `orchestra pr scan --json` already prints. Never a repository name you typed |
+| `{base}` | the row's `base`: the sha of the pull request's head, written by the sweep. A row without one is not launchable |
 
 `{briefExtra}` is the replacement for the source brief's appeals to one project's own subject map:
 it is where a project states the rules a prompt cannot derive on its own — where its code lives,
 what a worker must never touch, whether a fresh worktree needs a bootstrap step (step 8, above,
 already runs no dependency install, for exactly that reason).
 
-Fill the nine placeholders and pass the result as the `claude --bg` prompt — step 8, above, gives
+Fill the placeholders and pass the result as the `claude --bg` prompt — step 8, above, gives
 the rest of the launch line. Execution brief (the execution model):
 
 ```
@@ -1207,8 +1283,29 @@ recommended approach stated. Do not write implementation code. State your done-r
 message (see the protocol above — messaging the conductor does not work); your session ends there.
 ```
 
-Relaunch brief (dead session, intact worktree): the original brief — execution or design, whichever
-the row was launched with — prefixed with:
+Review brief (the execution model, because a review row's `Design` is always `no`) — see
+`## Pull-request review rows` above for what a review row is and how it ends:
+
+```
+You are reviewing pull request #{pr} on {repo}, in this worktree, checked out at the PR's own head.
+Task {task} — {title}. Your roadmap excerpt, verbatim:
+{excerpt}
+Follow the pr-triage skill exactly; its hard rules are yours. Never publish anything on GitHub
+except a PENDING review. Never merge, close, label or assign. Never write a direction principle the
+maintainer did not state.
+Before anything else: git fetch origin pull/{pr}/head, and say whether it has moved since {base}.
+{briefExtra}
+Write to me in {language}.
+Protocol: your conductor will message you a hello. SENDING A MESSAGE BACK DOES NOT WORK. State your
+report or question as your FINAL MESSAGE and stop.
+When this PR ships something a human reads or runs, start the dev server and report the port it
+ACTUALLY bound plus its pid: the maintainer tests it themselves at the hands-on gate.
+Record your verdict before you stop:
+  orchestra pr log {pr} <verdict> --head <sha> --comment <id> --note "…"
+```
+
+Relaunch brief (dead session, intact worktree): the original brief — execution, design or review,
+whichever the row was launched with — prefixed with:
 
 ```
 A previous session worked this task and died. Its worktree is intact. Before anything else: read

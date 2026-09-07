@@ -63,6 +63,30 @@ under `roadmaps.published` offline — gitignored, and never committed by orches
 issues online. The grammar and the lint are the same either way, and `orchestra roadmap board`
 lists an unpublished draft under `unpublished:` so it cannot be mistaken for work anybody can see.
 
+### The frontmatter
+
+A roadmap file opens with YAML frontmatter naming its slug, and optionally its destination:
+
+```yaml
+---
+roadmap: pr
+destination: local
+---
+```
+
+- **`roadmap:`** is the slug, and `publish` needs it to find or create this roadmap's programme
+  issue. `lib/roadmap/lint.mjs` refuses a file without one.
+- **`destination:`** overrides where this one roadmap publishes. **`local` is the only value**, and
+  anything else is a shape error reported by line, not a lint rule you can argue with. It means
+  published to `roadmaps.published` — gitignored, committed by nothing — **whatever the project's
+  mode**: an online project's development roadmaps still become issues, and this one does not become
+  anything anybody else can see. Offline it selects the store the mode already had, so it changes
+  nothing there. Omit it and the destination is the project's mode, which is every roadmap that
+  exists today.
+
+A roadmap swept from a repository's open pull requests is what this is for: a review must add
+nothing to the repository it is reviewing, and must not file a public issue per pull request.
+
 A published roadmap is **nominative**: only its owner's orchestra may take its tasks, until the
 owner runs `orchestra roadmap open <roadmap>`. Ownership is the programme issue's author (online)
 or the machine that published it (offline), and is not something a task declares — which is why

@@ -40,6 +40,14 @@ config at all.)
     `roadmaps.published` at a committed directory and commits them itself — `publish` never will.
   - **online** — one programme issue plus one issue per task, and the drafting file is deleted.
     From that moment the issues *are* the roadmap.
+  - **local** — the roadmap's own frontmatter says `destination: local`, and then it publishes to
+    `<roadmaps.published>/<slug>.md` **whatever the mode is**, because a destination is a property
+    of the ROADMAP where the mode is a property of the project. Visible to this machine and to
+    nothing else: not the issue tracker, not the repository, which carries neither the file nor a
+    commit for it. Offline that is the store the mode already picks and asking for it changes
+    nothing. It is what a pull-request sweep's roadmap uses (`skills/pr-sweep`), so an online
+    project reviewing its own PRs does not file a public issue for each one. `local` is the only
+    value the frontmatter accepts.
 
 Either way, `publish` also enrols every task in the register, because publishing is the moment a
 roadmap becomes schedulable and nothing else in the system notices.

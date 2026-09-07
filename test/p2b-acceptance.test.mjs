@@ -77,11 +77,14 @@ const OUTLINE = [
   '### The answer net, and what has no net under it yet',
 ];
 
-// The nine substitutions §6 fixes for the briefs. They are also the ONLY single-word braces the
-// document may contain: a config key named in prose is a backticked key name, never a placeholder,
-// and a tenth placeholder is a promise the conductor has nothing to fill from.
+// The nine substitutions §6 fixes for the briefs, plus the three a PULL-REQUEST REVIEW row adds
+// (2026-09-07-pr-review-in-orchestra-design.md §7): `pr` and `repo` the design names, and `base`,
+// which its own brief text uses and which nothing else could fill. They are also the ONLY
+// single-word braces the document may contain: a config key named in prose is a backticked key
+// name, never a placeholder, and a placeholder off this list is a promise the conductor has nothing
+// to fill from.
 const PLACEHOLDERS = ['branch', 'task', 'title', 'excerpt', 'language', 'branchTests',
-  'specsDir', 'plansDir', 'briefExtra'];
+  'specsDir', 'plansDir', 'briefExtra', 'pr', 'repo', 'base'];
 
 // Every path and command of the source project. A survivor here is transformation 1 or 2 left undone
 // — and a false invocation in a protocol is worse than a false comment, because a worker types it.

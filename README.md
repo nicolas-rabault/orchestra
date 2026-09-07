@@ -59,9 +59,18 @@ written in — this one happens to be Rust:
     { "name": "suite", "cmd": "cargo test" },
     { "name": "visual", "cmd": "make gate-visual",
       "skipWhenAllPathsMatch": ["docs/**", "**/*.md", "tests/**"] }
-  ]
+  ],
+  "pr": { "ledger": ".orchestra/pr-log.jsonl", "direction": ".orchestra/direction" }
 }
 ```
+
+`pr.ledger` is the append-only record of what was reviewed, at which head and with what verdict;
+`pr.direction` is the directory holding the principles a decline writes down. Both default under
+`.orchestra/`, so a review run keeps its memory out of the project's own tree — a fresh clone starts
+with none, deliberately. **Neither path is in the `.orchestra/.gitignore` that `init` writes today**,
+which covers the register, the drafts, the published roadmaps and the worktrees; ignore them
+yourself, or point `pr.direction` at `docs/direction` and commit the principles like anything else,
+which is the other reason it is a key rather than a fixed path.
 
 Gates run in the order written — cheapest first is the project's own call, not a rule this plugin
 enforces — and `skipWhenAllPathsMatch` skips a gate only when every changed path matches one of its
@@ -91,7 +100,18 @@ has landed:
 - **`orchestra doctor`** — the resolved configuration, and how a project with no config is told
   what to write. It also warns when a config still carries a leftover `monitor.port` key, which
   nothing reads any more now that one page serves the whole machine.
-- **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve|sync>`**.
+- **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve|sync>`**. A roadmap may
+  declare `destination: local` in its frontmatter and then publishes under `roadmaps.published`
+  whatever the mode is — visible to this machine only, which is what a pull-request sweep uses.
+- **`orchestra pr <scan|log>`** — `scan` is the read-only metadata pass over every open pull
+  request, each one routed into a group and folded against the ledger, `--json` for the machine-
+  readable form; `log` appends one ledger record (`review`, `merge`, `decline`, `dismissed`) with
+  the clock measured and an unknown verdict refused. **Neither writes anything on GitHub**, and
+  nothing in this plugin ever does beyond a pending review a person submits themselves.
+- **`/pr-sweep` and `/pr-triage`** — the two skills that carry the judgement: the sweep routes every
+  open PR, publishes the batch as a `destination: local` roadmap and asks the framing questions; the
+  triage deep-reviews one PR and drafts a **pending** review. The conductor runs the rows, one
+  background worker per pull request on a worktree cut from its own head.
 - **`orchestra journal|inbox|beat|lock|watch-answers`** — the register: one line with a measured
   clock, the answers a user posted on the page, who holds the baton, and one conductor at a time.
 - **`orchestra ready|tick-gate|yield-check`** — the launch plan, whether a heartbeat should tick at
