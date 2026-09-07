@@ -11,9 +11,13 @@ For the full design and specification, see [docs/specs/2026-09-02-orchestra-plug
 ## Install
 
 ```sh
-claude plugin marketplace add ~/Projects/orchestra
+claude plugin marketplace add nicolas-rabault/orchestra
 claude plugin install orchestra@orchestra
 ```
+
+The repository is private, so `add` clones it with whatever git credentials the machine already
+carries — a `gh auth login` over HTTPS is enough. A local checkout serves as a marketplace just as
+well, which is how to develop the plugin: `claude plugin marketplace add ~/Projects/orchestra`.
 
 Nothing to build and nothing to install alongside it: every module imports only node builtins, and
 a test enforces that.
