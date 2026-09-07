@@ -51,6 +51,7 @@ test('size is measured on the diff, not on the file count', () => {
 test('a bot PR nobody has looked at is a settled clear', () => {
   const [row] = route([pull({ number: 91, author: 'dependabot[bot]' })]);
   assert.equal(row.bot, true);
+  assert.equal(row.moved, false);
   assert.equal(row.group, 'settled');
 });
 
