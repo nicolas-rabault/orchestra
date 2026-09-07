@@ -8,9 +8,9 @@
 // faster than shelling out to `bin/orchestra`, which already has its own dispatcher-level tests.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
+import { makeRepo, ROADMAP, PR_ROADMAP } from './helpers/fixture.mjs';
 import { makeFakeGh } from './helpers/gh.mjs';
 import { loadConfig } from '../lib/config.mjs';
 import { makeStore } from '../lib/store/index.mjs';
@@ -313,4 +313,47 @@ test('publish with no path takes the first draft in sorted order, and publishes 
   writeDraft(r.root, cfg, 'alpha-notes.md', ROADMAP.replaceAll('demo', 'alpha'));
   const { text } = capture(() => roadmapCommand({ cfg, args: ['publish'] }));
   assert.match(text, /published alpha: alpha\/D1/);
+});
+
+test('board shows the pr roadmap beside the development ones, and lists a draft once', () => {
+  const { r, cfg } = offlineProject();
+  mkdirSync(join(r.root, cfg.roadmaps.drafts), { recursive: true });
+
+  writeFileSync(join(r.root, cfg.roadmaps.drafts, 'demo.md'), ROADMAP);
+  capture(() => roadmapCommand({ cfg, args: ['publish'] }));
+
+  writeFileSync(join(r.root, cfg.roadmaps.drafts, 'pr.md'), PR_ROADMAP);
+  capture(() => roadmapCommand({ cfg, args: ['publish'] }));
+
+  const { text } = capture(() => roadmapCommand({ cfg, args: ['board'] }));
+  assert.match(text, /demo\/D1/);
+  assert.match(text, /pr\/PR91/);
+  assert.ok(!/unpublished:/.test(text), 'both drafts were consumed by their publishes');
+
+  // Both are enrolled, so `ready` can schedule either.
+  const ids = readState(r.root).tasks.map((t) => t.id);
+  assert.deepEqual(ids.sort(), ['demo/D1', 'pr/PR91']);
+});
+
+test('an unpublished draft is reported exactly once', () => {
+  const { r, cfg } = offlineProject();
+  mkdirSync(join(r.root, cfg.roadmaps.drafts), { recursive: true });
+  writeFileSync(join(r.root, cfg.roadmaps.drafts, 'demo.md'), ROADMAP);
+  const { text } = capture(() => roadmapCommand({ cfg, args: ['board'] }));
+  assert.equal(text.match(/unpublished: demo/g).length, 1);
+});
+
+test('publish routes on the frontmatter, not on the mode', () => {
+  // Online is where the routing is observable: without it this publish would file issues.
+  const { r, cfg, gh } = onlineProject('nico');
+  mkdirSync(join(r.root, cfg.roadmaps.drafts), { recursive: true });
+  writeFileSync(join(r.root, cfg.roadmaps.drafts, 'pr.md'), PR_ROADMAP);
+  capture(() => roadmapCommand({ cfg, args: ['publish'], deps: { gh } }));
+
+  assert.ok(existsSync(join(r.root, cfg.roadmaps.published, 'pr.md')));
+  assert.equal(gh.calls.filter((c) => c.includes('issue')).length, 0, 'nothing was filed on GitHub');
+
+  // And the board shows it beside the issues, which is the union this task adds.
+  const { text } = capture(() => roadmapCommand({ cfg, args: ['board'], deps: { gh } }));
+  assert.match(text, /pr\/PR91/);
 });
