@@ -454,7 +454,7 @@ first duty is to say nothing. Three gates, cheapest first: no config; no `.orche
 `conductor.inboxSeen` is a single shared watermark with no owner: whoever reads these answers is
 expected to stamp past them, and from that moment nobody else is ever told they existed. Measured
 2026-08-12 in planetCraft — a second session stamped and five answers (a design ruling, a failed
-playtest, a merge approval, a launch ruling, a question) were never delivered to the conductor the
+hands-on check, a merge approval, a launch ruling, a question) were never delivered to the conductor the
 user was actually talking to. The register cannot prevent it, because it named a session that had
 already been dead for half an hour on 2026-08-13 while three more answers rotted. The beat can: it
 is written every two seconds by a loop that lives exactly as long as the session holding the baton.

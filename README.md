@@ -47,15 +47,17 @@ three exceptions are `doctor`, `orchestra instances`, which answers about the ma
 about a project, and `orchestra init` itself, which is the command that writes the file in the
 first place.
 
-The config's most important key is `gates`, the merge gate's own checklist for a landing:
+The config's most important key is `gates`, the merge gate's own checklist for a landing. **A gate
+is a shell command and nothing more**, so the plugin has no opinion about what the project is
+written in — this one happens to be Rust:
 
 ```jsonc
 {
   "mode": "offline",
   "gates": [
-    { "name": "deadcode", "cmd": "npm run knip" },
-    { "name": "suite",    "cmd": "npm test" },
-    { "name": "visual",   "cmd": "npm run gate:visual",
+    { "name": "lint",  "cmd": "cargo clippy -- -D warnings" },
+    { "name": "suite", "cmd": "cargo test" },
+    { "name": "visual", "cmd": "make gate-visual",
       "skipWhenAllPathsMatch": ["docs/**", "**/*.md", "tests/**"] }
   ]
 }
@@ -63,9 +65,11 @@ The config's most important key is `gates`, the merge gate's own checklist for a
 
 Gates run in the order written — cheapest first is the project's own call, not a rule this plugin
 enforces — and `skipWhenAllPathsMatch` skips a gate only when every changed path matches one of its
-globs; an unreadable or empty diff runs the gate rather than skip it. `init` proposes a `deadcode`
-or `lint` gate before `suite` when it finds one, from what it detects in `package.json`; adding
-`visual`, or anything a detector cannot see, is by hand afterwards.
+globs; an unreadable or empty diff runs the gate rather than skip it. `init` proposes a `suite`
+gate from whichever of `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod` or a Makefile
+`test:` target it finds, plus a `deadcode` or `lint` gate ahead of it where `package.json` names
+one; adding `visual`, or anything a detector cannot see, is by hand afterwards. A project it
+recognises nothing in still adopts orchestra — it just lands with no gate until one is written in.
 
 Then, once, per project:
 
@@ -81,7 +85,7 @@ guard hooks, `orchestra init`, the ticket queue and the heartbeat — every phas
 has landed:
 
 - **`/orchestra`** — the conductor protocol: the nevers, the journal, the framing pass, the nine
-  steps of a tick, the playtest gate, and the worker briefs as templates a project fills from its
+  steps of a tick, the hands-on gate, and the worker briefs as templates a project fills from its
   own config (`briefExtra` is where it pastes its own hard rules).
 - **`/roadmap`** — the skill: the grammar, the board, and the nine roadmap subcommands.
 - **`orchestra doctor`** — the resolved configuration, and how a project with no config is told

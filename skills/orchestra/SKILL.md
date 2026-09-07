@@ -37,9 +37,9 @@ else.
 `.orchestra/config.json`, `.orchestra/.gitignore`, and appends `templates/CLAUDE-rules.md` to the
 project's `CLAUDE.md` (or creates it) — see `lib/cli/init.mjs` for exactly what each of those
 holds. What it cannot do is guess: `detect(root)` only proposes a gate or a branch-test command it
-found real evidence of (a script in `package.json`, a `Cargo.toml`, a `pyproject.toml`, a Makefile
-`test:` target), and anything it did not find goes in its `missing` list rather than being
-invented — a gate that does not run is a gate that refuses every landing.
+found real evidence of (a script in `package.json`, a `Cargo.toml`, a `pyproject.toml`, a `go.mod`,
+a Makefile `test:` target), and anything it did not find goes in its `missing` list rather than
+being invented — a gate that does not run is a gate that refuses every landing.
 
 Ask, in this order:
 
@@ -112,7 +112,7 @@ command this plugin ships actually exists.
 
 ## The six nevers
 
-1. Never merge a row that ships **a page a human reads or a gameplay change** without the user
+1. Never merge a row that ships **something a human looks at or uses** without the user
    having looked at it. That look is the one interruption the row is allowed (see The framing
    pass), and it is not a formality: in planetCraft, on 2026-08-12/14, three serious defects were
    caught by exactly that look and by nothing else, every one of them past a green 4 900-test
@@ -125,14 +125,18 @@ command this plugin ships actually exists.
    handoff).
 3. Never write into a worktree you did not launch — **unless all three of these hold: its session
    is absent from `claude agents --json`; no file under it has changed in 60 minutes
-   (`/usr/bin/find <wt> -newermt '-60 minutes' -not -path '*/node_modules/*' -type f | head -1`);
-   and its branch is behind its own last report.** Then take it over with the relaunch brief and
-   record it in a `note` — do not ask. If any of the three is unclear, ask. (Measured 2026-08-12
-   in planetCraft: asking cost two hours forty-four minutes on evidence stricter than this, and
-   the answer was "yes, take all four", in six minutes. The probe uses the absolute
-   `/usr/bin/find` on purpose: a PATH-rewriting hook in the source project dropped `-newermt` from
-   the bare name.)
-4. Never start a dev server before a task reaches the playtest gate.
+   (`(cd <wt> && git ls-files -co --exclude-standard -z | xargs -0 sh -c '/usr/bin/find "$@"
+   -newermt "-60 minutes" -type f' sh | head -1)`); and its branch is behind its own last
+   report.** Then take it over with the relaunch brief and record it in a `note` — do not ask. If
+   any of the three is unclear, ask. (Measured 2026-08-12 in planetCraft: asking cost two hours
+   forty-four minutes on evidence stricter than this, and the answer was "yes, take all four", in
+   six minutes. The probe uses the absolute `/usr/bin/find` on purpose: a PATH-rewriting hook in
+   the source project dropped `-newermt` from the bare name. And it asks GIT for the file list
+   rather than walking the tree, because the set to ignore is "whatever this project gitignores" —
+   `node_modules/`, `target/`, `.venv/`, `__pycache__/`, a build directory — and only git knows
+   which of those this project has. A dependency tree freshly installed by a dead worker would
+   otherwise read as sixty seconds of activity in any language.)
+4. Never start a dev server before a task reaches the hands-on gate.
 5. Never trust `.orchestra/state.json` over git — for a LOCAL task; git wins there, correct the
    register. A SHARED task, online, is the opposite: another developer's landing closes its issue
    but that commit never reaches your local main, so git under-reports it forever — the closed
@@ -216,7 +220,7 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    reads back.
 
 2. **Write an `id` on every `pending[]` item you append** — `"<lowercased row id>-<kind>-<n>"`,
-   e.g. `"c2-playtest-1"`. Without it the page falls back to hashing the row id, kind and ask —
+   e.g. `"c2-hands-on-1"`. Without it the page falls back to hashing the row id, kind and ask —
    fine until two pending items on the same row share both kind and wording, or the wording is
    edited later and the hash drifts out from under it. The explicit id survives both.
 
@@ -236,7 +240,7 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    step).
 
    ```json
-   {"id":"c2-playtest-1","kind":"playtest","askedAt":"2026-08-13T17:57:00Z","ask":"…","options":[
+   {"id":"c2-hands-on-1","kind":"hands-on","askedAt":"2026-08-13T17:57:00Z","ask":"…","options":[
      {"letter":"A","text":"keep the snap"},{"letter":"B","text":"loosen it to 2 blocks"}]}
    ```
 
@@ -244,7 +248,7 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    never invents a choice, because a button the user clicks is sent back as their decision. Every
    `ask` in the register today is a one-sentence summary with no options in it at all, so today
    the page shows a free-text box and nothing else, on every question. An item that genuinely
-   puts no choice — a playtest instruction, an FYI — carries no `options`, and that is correct.
+   puts no choice — a hands-on instruction, an FYI — carries no `options`, and that is correct.
 
    **A QUESTION THAT IS NOT IN `pending[]` DOES NOT EXIST.** The page shows exactly the pending
    items and nothing else; a question you only wrote in chat is invisible there, so the user
@@ -282,7 +286,7 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    stolen one is the dangerous failure.** The hook only shows you answers newer than `inboxSeen`,
    whoever wrote it. If another session read the inbox first and stamped, your user's answers are
    consumed and you will never be told they existed. Measured 2026-08-12 in planetCraft: a second
-   conductor stamped `20:10:33.311Z`, and FIVE answers — a design ruling, a failed playtest, a
+   conductor stamped `20:10:33.311Z`, and FIVE answers — a design ruling, a failed hands-on check, a
    merge approval, a launch ruling and a question — were never delivered to the conductor the user
    was actually talking to. A worker sat fifty minutes on a verdict that had already arrived, and
    three others were launched against a "keep the box quiet" nobody had read. **So: whenever
@@ -327,10 +331,10 @@ it on. In planetCraft, across one roadmap: thirteen merge approvals asked, thirt
 refused, zero defects caught. Three human looks at a page, three serious defects caught, every one
 past a green suite. So:
 
-- a row that ships **a page a human reads or a gameplay change** → its one interruption is the
-  **playtest gate**, unchanged;
-- a row that ships neither → **no interruption**: it lands once every configured gate is green
-  (`gates`).
+- a row that ships **something a human looks at or uses** → its one interruption is the
+  **hands-on gate**, unchanged;
+- a row that ships nothing of the sort → **no interruption**: it lands once every configured gate
+  is green (`gates`).
 
 Everything else you decide yourself, from the recorded decisions, the roadmap and the project's own
 rules, which reach a worker as `briefExtra`. **Every such decision is journalled as a `ruling`** —
@@ -580,9 +584,10 @@ started *after* the hold was issued.
    `waiting` (or stopped) → run the cycle with a continue-nudge; conversation gone entirely →
    relaunch (same `worktrees` directory, original brief plus "read what is already committed and
    dirty first", model re-evaluated — a done design relaunches on the execution model). To tell a
-   dead-quiet worktree from a working one, mtimes: `/usr/bin/find <worktree> -newermt '-20 minutes'
-   -not -path '*/node_modules/*' -type f | head -1` (absolute `/usr/bin/find`; a PATH-rewriting
-   hook in the source project drops `-newermt` from the bare name). That is a different question
+   dead-quiet worktree from a working one, mtimes — never 3's probe with its window shortened:
+   `(cd <worktree> && git ls-files -co --exclude-standard -z | xargs -0 sh -c '/usr/bin/find "$@"
+   -newermt "-20 minutes" -type f' sh | head -1)` (never 3's header says why it is spelled this
+   way: the absolute `/usr/bin/find`, and git rather than a tree walk). That is a different question
    from never 3's 60-minute probe, which asks whether you may write into a worktree you did not
    launch — this probe only asks whether the worktree is alive.
 
@@ -612,8 +617,8 @@ started *after* the hold was issued.
 
    **TWO 600-SECOND CEILINGS, AND THEY ARE NOT THE SAME ONE.** Both were paid for on 2026-08-25 in
    planetCraft, and confusing them sends you to the wrong fix:
-   - *the worker's own internal wait ceiling* — a worker that waits on something long (a playtest
-     bot, a bench, a served page) has its turn cut at 600 s while the thing it was waiting on
+   - *the worker's own internal wait ceiling* — a worker that waits on something long (a long
+     check, a bench, a served page) has its turn cut at 600 s while the thing it was waiting on
      survives, being a separate process. RP3 lost its turn this way with both its servers still up.
      Prefix its launch or its resume with `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` whenever the
      brief makes it wait.
@@ -997,6 +1002,10 @@ technical detail in a `<sub>` footer):
 > <sub>Technical: <the numbers and names, for when the user wants them>
 > Pictures: <repo-relative path(s) to any screenshot the question is about></sub>
 
+The trailing `server :<port>` is present only on a row that actually serves something. A CLI, a
+library or a firmware image drops it, and the one command that shows the change goes in the body
+instead — see The hands-on gate.
+
 Relay the user's answer back to the worker verbatim, plus whatever context the worker needs.
 
 ### A question about a picture must carry the picture
@@ -1018,26 +1027,32 @@ naming in either. Ask a worker that reports a measurement from a frame to write 
 where it says what it measured; a note that says "it looks wrong now" with no path is a claim the
 user cannot check.
 
-## The playtest gate
+## The hands-on gate
 
-When a worker reports built, first ask what the row actually ships. **If it ships no page a human
-reads and no gameplay change, there is no gate**: it lands once every configured gate is green
-(`gates`), the `landing` line goes in the journal, and the checkpoint carries it (never #1).
-Seven of the sixteen rows of the dev-loop roadmap, in planetCraft, shipped nothing a human reads,
-and every one of their approvals was granted unread.
+When a worker reports built, first ask what the row actually ships. **If it ships nothing a human
+looks at or uses, there is no gate**: it lands once every configured gate is green (`gates`), the
+`landing` line goes in the journal, and the checkpoint carries it (never #1). Seven of the sixteen
+rows of the dev-loop roadmap, in planetCraft, shipped nothing of the sort, and every one of their
+approvals was granted unread.
 
-Otherwise: tell the worker to start its dev server — **the project's own dev command; the worker
-knows it and you do not need to** — and to report the port it actually bound plus its pid. Set the
-row to `review`, and add a `pending[]` item — `kind: "playtest"` — naming the port (the Decision
-Template's own `server :<port>`). **The user's validation of the page IS the approval** — do not
-then ask a second time for the merge; that second question is the one this roadmap paid for
-thirteen times over, in planetCraft (see The framing pass, and the one interruption). What follows
-validation is step 6's business (see The tick): record the branch's commit `subjects` in the row
-BEFORE the hand-off — that is what makes landed detection work. The hand-off is the two commands
-above, and a landing deletes the worktree and the ref.
+Otherwise: tell the worker to put the thing in front of the user — **with the project's own
+command; the worker knows it and you do not need to** — and to report exactly how it is reached.
+Two shapes, and the row is one or the other: a project that SERVES something reports the port it
+actually bound plus its pid; a CLI, a library, a firmware image or a data pipeline reports the one
+command that shows the change, to be run from the worktree. Set the row to `review`, and add a
+`pending[]` item — `kind: "hands-on"` — carrying whichever it is: a port fills the Decision
+Template's own `server :<port>`, and a command goes in the ask itself, where the user can copy it.
+**The user's validation IS the approval** — do not then ask a second time for the merge; that
+second question is the one this roadmap paid for thirteen times over, in planetCraft (see The
+framing pass, and the one interruption). What follows validation is step 6's business (see The
+tick): record the branch's commit `subjects` in the row BEFORE the hand-off — that is what makes
+landed detection work. The hand-off is the two commands above, and a landing deletes the worktree
+and the ref.
 
-**Never hand out a URL you have not fetched AND READ.** Not `curl` — it cannot reach a localhost
-server this shell can see listening. Fetch it and look at the body:
+**Never hand out a URL you have not fetched AND READ**, and never a command you have not run.
+For a URL, not `curl` — it cannot reach a localhost server this shell can see listening. Fetch it
+and look at the body (`node` here is the PLUGIN's own runtime, always present wherever `orchestra`
+runs, and says nothing about what the project is written in):
 
 ```sh
 node -e 'fetch(process.argv[1],{signal:AbortSignal.timeout(4000)}).then(r=>r.text())
@@ -1050,10 +1065,10 @@ except the one that matters. Measured 2026-08-13 in planetCraft: an ask sent the
 path, nothing flagged it, and he lost a whole test run to it. **Any dev server with a catch-all
 route does this**, so reading the first 200 characters is the entire check.
 
-**And when a worktree is deleted, kill its dev server and close any page open on it, explicitly.**
-A server whose directory has been removed keeps serving — which reads as a live page showing stale
-code, and is indistinguishable from a working one until someone trusts it. Servers are killed **by
-pid**, never by pattern.
+**And when a worktree is deleted, kill whatever server it started and close any page open on it,
+explicitly.** A server whose directory has been removed keeps serving — which reads as a live page
+showing stale code, and is indistinguishable from a working one until someone trusts it. Servers
+are killed **by pid**, never by pattern.
 
 **Three rules `{branchTests}` — the subset gate — cannot enforce for you**, all paid for on
 2026-08-14 in planetCraft:
@@ -1077,15 +1092,23 @@ is what refused a landing on 2026-08-25 in planetCraft: one orphan was found and
 afternoon, its worktree deleted that morning, and another was still listening forty hours later,
 from the main checkout, when the run was reviewed.
 
+**Run it from the main checkout**, and a second time from `worktrees` if the project puts its
+worktrees outside it: a listener is selected by its WORKING DIRECTORY, not by its process name.
+The source project matched `node` alone, which is a statement about one toolchain — a Rust, Python
+or Go dev server holding a port out of a deleted worktree does exactly the same damage and would
+never have appeared. Everything listening from outside this project's trees is somebody else's and
+is not printed at all, which is what keeps the machine's own daemons out of the output.
+
 ```sh
-lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk '$1=="node"{print $2"\t"$9}' | sort -u |
+lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $2"\t"$9}' | sort -u |
 while IFS=$'\t' read -r pid addr; do
-  cmd=$(ps -o command= -p "$pid"); case "$cmd" in *orchestra*monitor*) continue;; esac
+  case "$(ps -o command= -p "$pid" 2>/dev/null)" in *orchestra*monitor*) continue;; esac
   cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | grep '^n' | head -1 | cut -c2-)
-  if   [ -z "$cwd" ];       then v="NO CWD -> ask"
-  elif [ ! -d "$cwd" ];     then v="ORPHAN -> kill"
-  elif [ "$cwd" = "$PWD" ]; then v="MAIN CHECKOUT -> ask, never kill"
-  else v="OTHER TREE -> leave"; fi
+  case "$cwd" in
+    "$PWD")   v="MAIN CHECKOUT -> ask, never kill";;
+    "$PWD"/*) [ -d "$cwd" ] && v="WORKTREE -> leave" || v="ORPHAN -> kill";;
+    *)        continue;;
+  esac
   echo "pid=$pid port=${addr##*:} age=$(ps -o etime= -p $pid|tr -d ' ')  $v"
 done
 ```
@@ -1168,10 +1191,11 @@ Protocol: your conductor will message you a hello. SENDING A MESSAGE BACK DOES N
 session cannot resolve the conductor's address, measured three times, and a report sent that way
 reaches nobody. Instead: STATE YOUR REPORT OR QUESTION AS YOUR FINAL MESSAGE AND STOP. The conductor
 watches for your session leaving the working state and resumes you, and what you printed comes back
-on that resume. Design question → state it and stop until answered. Built → say so; start a dev
-server only when told, and report the port it ACTUALLY bound plus its pid (servers are killed by pid
-here, never by pattern). You never merge, and whether your branch needs a human look first is your
-conductor's call, not yours.
+on that resume. Design question → state it and stop until answered. Built → say so; put it in
+front of me only when told, with the project's own command, and report exactly how it is reached —
+the port you ACTUALLY bound plus its pid if you started a server, otherwise the one command that
+shows the change (servers are killed by pid here, never by pattern). You never merge, and whether
+your branch needs a human look first is your conductor's call, not yours.
 ```
 
 Design brief (the design model): the same header and rules as above, then:
@@ -1233,7 +1257,7 @@ got to into its row's `note`, and stop it. Then launch a **NEW** session on the 
 the Handover brief above — **never `--resume`**, which keeps precisely the context this is trying
 to drop. Journal it as a `note` with the turn count, so a later measurement can judge what the
 hand-over actually cost. Keep both limits: do not do this to more than one row until that number
-exists, and never to a row in the middle of a playtest gate.
+exists, and never to a row in the middle of a hands-on gate.
 
 ## The stand-down tick
 

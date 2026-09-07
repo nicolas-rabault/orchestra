@@ -238,7 +238,7 @@ survived:
 | 8 | exit code and CLI status are non-evidence; the filesystem is the witness | (the tick, step 3) | `NON-EVIDENCE` and `exit 144` |
 | 9 | an undelivered relay is an obligation | (the tick, step 3) | `UNDELIVERED:` and `8 h`/`eight hours` |
 | 10 | the decision template, and the picture rule | `## The decision template` + `### A question about a picture must carry the picture` | `Where it stands`; `thumbnail` |
-| 11 | the playtest gate; never hand out an unfetched URL | `## The playtest gate` | `Never hand out a URL you have not fetched` |
+| 11 | the hands-on gate; never hand out an unfetched URL | `## The hands-on gate` | `Never hand out a URL you have not fetched` |
 | 12 | the dev-server sweep | `### The dev-server sweep` | `ORPHAN is the only verdict that kills` |
 | 13 | the conductor beat and the lock | (the tick, steps 0–1) | `conductor.beat.json` and `orchestra lock acquire` |
 | 14 | the stand-down tick, its ticket sweep and its archiving | `## The stand-down tick` | `orchestra archive --write`, `orchestra archive-images --write`, `S1` |
@@ -319,7 +319,7 @@ const SECTIONS = [
     anchors: [/Where it stands/] },
   { item: 'the picture rule',
     heading: '### A question about a picture must carry the picture', anchors: [/thumbnail/] },
-  { item: 'the playtest gate and the unfetched URL', heading: '## The playtest gate',
+  { item: 'the hands-on gate and the unfetched URL', heading: '## The hands-on gate',
     anchors: [/Never hand out a URL you have not fetched/] },
   { item: 'the dev-server sweep', heading: '### The dev-server sweep',
     anchors: [/ORPHAN is the only verdict that kills/] },
@@ -344,7 +344,7 @@ const OUTLINE = [
   '## Preflight (once per machine, before the first launch)',
   '## The decision template',
   '### A question about a picture must carry the picture',
-  '## The playtest gate',
+  '## The hands-on gate',
   '### The dev-server sweep',
   '## Design→execution handoff (design tasks)',
   '## Worker briefs',
@@ -706,7 +706,7 @@ Port source 156–184. The command becomes `orchestra inbox`; "by the hook" beco
 `orchestra-inbox` hook, once it exists". Keep the whole stolen-stamp passage: the cursor is a single
 shared watermark with no owner; a forgotten stamp is the safe failure and a stolen one the dangerous
 failure; the 2026-08-12 measurement (a second conductor stamped `20:10:33.311Z` and FIVE answers — a
-design ruling, a failed playtest, a merge approval, a launch ruling and a question — were never
+design ruling, a failed hands-on check, a merge approval, a launch ruling and a question — were never
 delivered to the conductor the user was talking to; a worker sat fifty minutes on a verdict that had
 already arrived, and three others were launched against a "keep the box quiet" nobody had read); and
 the instruction: whenever `inboxSeen` is ahead of the last value **you** wrote, do not trust the
@@ -747,7 +747,7 @@ Stage `skills/orchestra/SKILL.md`, message:
 - Produces: §6 item 5 green.
 
 **Why now.** It is the section that decides whether a question is asked at all, so the decision
-template (Task 10) and the playtest gate (Task 11) both lean on it. It is short and self-contained,
+template (Task 10) and the hands-on gate (Task 11) both lean on it. It is short and self-contained,
 which makes it the right place to settle how a `ruling` is journalled here.
 
 - [ ] **Step 1: Port the section**
@@ -760,8 +760,8 @@ re-asked**.
 
 Keep the arithmetic that sets the budget: thirteen merge approvals asked, thirteen granted, none
 refused, zero defects caught; three human looks at a page, three serious defects caught, every one
-past a green suite. Keep the two-way rule (a row that ships a page a human reads or a gameplay
-change → the playtest gate; a row that ships neither → no interruption).
+past a green suite. Keep the two-way rule (a row that ships something a human looks at or
+uses → the hands-on gate; a row that ships nothing of the sort → no interruption).
 
 Substitutions:
 
@@ -1561,10 +1561,10 @@ Stage `skills/orchestra/SKILL.md`, message:
 
 ---
 
-### Task 11: the playtest gate, and the dev-server sweep
+### Task 11: the hands-on gate, and the dev-server sweep
 
 **Files:**
-- Modify: `skills/orchestra/SKILL.md` (append `## The playtest gate` and `### The dev-server sweep`)
+- Modify: `skills/orchestra/SKILL.md` (append `## The hands-on gate` and `### The dev-server sweep`)
 - Source: lines 716–786
 
 **Interfaces:**
@@ -1577,8 +1577,8 @@ is checkable only if it has one.
 
 - [ ] **Step 1: Write the gate**
 
-Port source 716–732. Keep the first question — what does the row actually ship? If it ships no page
-a human reads and no gameplay change, **there is no gate**: it lands on green gates, the `landing`
+Port source 716–732. Keep the first question — what does the row actually ship? If it ships nothing
+a human looks at or uses, **there is no gate**: it lands on green gates, the `landing`
 goes in the journal, and the digest carries it. Keep the measurement: seven of the sixteen rows of
 the dev-loop roadmap were in that class and every one of their approvals was granted unread.
 
@@ -1668,7 +1668,7 @@ Expected: §6 items 11 and 12 green. Thirteen of fourteen; only item 14 remains.
 - [ ] **Step 6: Commit**
 
 Stage `skills/orchestra/SKILL.md`, message:
-`docs(orchestra): the playtest gate, the unfetched URL, and the sweep for servers nobody remembers`
+`docs(orchestra): the hands-on gate, the unfetched URL, and the sweep for servers nobody remembers`
 
 ---
 
@@ -1803,7 +1803,7 @@ Keep the procedure: past ~120 turns on a row you are willing to experiment on, a
 commit, write where it got to into its row's `note`, and stop it. Then launch a **NEW** session on
 the same worktree with the handover brief — **never `--resume`**, which keeps precisely the context
 this is trying to drop. Journal it as a `note` with the turn count. Keep both limits: do not do this
-to more than one row until that number exists, and never to a row in the middle of a playtest gate.
+to more than one row until that number exists, and never to a row in the middle of a hands-on gate.
 
 - [ ] **Step 5: Run the acceptance and the suite**
 
@@ -1998,7 +1998,7 @@ acceptance test cannot see:
    harness", "this repository" — each must name planetCraft or say "the project this protocol comes
    from".
 3. **Is any rule stated twice, in two voices?** The known candidates: the `curl`/`lsof` rule (step 1
-   and the playtest gate — the source states it twice on purpose, once per subject, so keep both but
+   and the hands-on gate — the source states it twice on purpose, once per subject, so keep both but
    make sure they do not contradict); the `cd` hazard (step 2 and step 8); the beat's two facts
    (step 0, step 1, the stand-down tick); `pending[]` being honoured on any row (the journal and the
    stand-down tick). Two statements of one rule are fine; two *different* statements are not.
@@ -2038,7 +2038,7 @@ Phase 1 shipped the roadmap layer, phase 2a the register and the machine budget,
 protocol that drives them:
 
 - **`/orchestra`** — the conductor protocol: the nevers, the journal, the framing pass, the nine
-  steps of a tick, the playtest gate, and the worker briefs as templates a project fills from its
+  steps of a tick, the hands-on gate, and the worker briefs as templates a project fills from its
   own config (`briefExtra` is where it pastes its own hard rules).
 - **`/roadmap`** — the skill: the grammar, the board, and the eight roadmap subcommands.
 - **`orchestra doctor`** — the resolved configuration, and the only command that answers in a
@@ -2100,7 +2100,7 @@ this phase's own.
 7. **Does the document contradict itself across tasks?** The known seams: the `curl`/`lsof` rule
    (twice), the `cd` hazard (twice), the beat's live-versus-conducting distinction (three times),
    `pending[]` honoured on any row (twice), and who performs a landing (the nevers, step 6, the
-   playtest gate).
+   hands-on gate).
 8. **Is a reviewer's claim verified before it is paid for?** A central P1 finding was refuted by a
    thirty-second measurement. For this phase the equivalent is a claim about what a subcommand
    prints: run it in the fixture before rewriting a sentence to match a guess.

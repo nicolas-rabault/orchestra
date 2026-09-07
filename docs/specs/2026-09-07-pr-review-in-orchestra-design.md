@@ -219,7 +219,7 @@ Write to me in {language}.
 Protocol: <the shared protocol paragraph — report as your FINAL message, messaging back does not
 work>.
 When this PR ships something a human reads or runs, start the dev server and report the port it
-ACTUALLY bound plus its pid: the maintainer tests it themselves at the playtest gate.
+ACTUALLY bound plus its pid: the maintainer tests it themselves at the hands-on gate.
 Record your verdict before you stop:
   orchestra pr log {pr} <verdict> --head <sha> --comment <id> --note "…"
 ```
@@ -232,7 +232,7 @@ recorded on their rows and never re-asked. It is written as `pending[]` items ca
 so the page renders one button per choice.
 
 Each row then gets **one interruption for its whole life**, and for a PR row that interruption is
-the playtest gate: the maintainer opens the server the worker started and tests the PR. That is the
+the hands-on gate: the maintainer opens the server the worker started and tests the PR. That is the
 same budget every other row has, spent on the one thing a human does better than a suite.
 
 ### How a row ends
