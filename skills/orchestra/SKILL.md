@@ -48,8 +48,9 @@ Ask, in this order:
 2. **`mode`** — the one key with no default, so ask it even when detection found everything else:
    - `online` — roadmaps are GitHub issues, so every developer on the repository sees who is
      working on what (needs the `gh` CLI, authenticated).
-   - `offline` — roadmaps are committed markdown under `docs/roadmaps`, and "is somebody already
-     working on this" is answered for this machine only.
+   - `offline` — roadmaps are markdown under `.orchestra/roadmaps`, gitignored and never committed
+     by orchestra itself, and "is somebody already working on this" is answered for this machine
+     only.
 3. **Everything named in `missing`**, one at a time, only if detection actually left it empty:
    - `suite` — no recognised test command at all. Ask what runs the whole suite, if anything does
      yet. A project with nothing here can still adopt orchestra; it just lands without a gate.

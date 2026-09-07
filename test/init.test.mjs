@@ -233,7 +233,7 @@ test('initProject: writes .orchestra/.gitignore with exactly the paths the plugi
   const lines = text.split('\n').filter(Boolean).filter((l) => !l.startsWith('#'));
   assert.deepEqual(lines, [
     'state.json', 'journal.jsonl', 'inbox.jsonl', 'archive.jsonl', 'conductor.beat.json',
-    'tick.lock', '.queue.lock', 'drafts/', 'worktrees/', 'images/', 'gate/', 'tick.sh',
+    'tick.lock', '.queue.lock', 'drafts/', 'roadmaps/', 'worktrees/', 'images/', 'gate/', 'tick.sh',
     '*.log', '*.err', '*.tmp',
   ]);
   // Neither of the two committed paths under `.orchestra/` is ignored.
@@ -263,6 +263,10 @@ test('initProject: the written .gitignore actually hides every real atomic-write
   writeFileSync(join(r.root, '.orchestra', 'state.json.12345.tmp'), '{}');
   writeFileSync(join(r.root, '.orchestra', 'conductor.beat.json.6789.tmp'), '{}');
   writeFileSync(join(r.root, '.orchestra', 'tick.log.tmp'), 'log rotation in flight\n');
+  // A published roadmap belongs to the same class: `publish` writes it and never commits it, so
+  // the ignore line is the only thing keeping it out of somebody else's next commit.
+  mkdirSync(join(r.root, '.orchestra', 'roadmaps'));
+  writeFileSync(join(r.root, '.orchestra', 'roadmaps', 'demo.md'), '---\nroadmap: demo\n---\n');
   mkdirSync(join(r.root, '.orchestra', '.queue.lock'));
   writeFileSync(join(r.root, '.orchestra', '.queue.lock', 'pid'), '99999');
 

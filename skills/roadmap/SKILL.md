@@ -1,6 +1,6 @@
 ---
 name: roadmap
-description: Write, check and manage a project's roadmaps with the orchestra plugin — drafted as markdown, then published either as GitHub issues (online mode) or as committed markdown (offline mode). Status is always derived, never written. Use when the user asks to write a roadmap, add or take a task, file a bug as a task, see the board, claim or release a task, open or reserve a roadmap, or publish a programme.
+description: Write, check and manage a project's roadmaps with the orchestra plugin — drafted as markdown, then published either as GitHub issues (online mode) or as local markdown files (offline mode). Status is always derived, never written. Use when the user asks to write a roadmap, add or take a task, file a bug as a task, see the board, claim or release a task, open or reserve a roadmap, or publish a programme.
 ---
 
 # The roadmap CLI — one grammar, two destinations
@@ -33,9 +33,11 @@ config at all.)
   precisely so it cannot be mistaken for work anyone knows about, and nothing will schedule it.
 - **`publish`** is the frontier. What it produces depends on the mode, and that is the only thing
   the mode changes:
-  - **offline** — the draft moves to `<roadmaps.published>/<slug>.md` (default `docs/roadmaps/`),
-    is committed, and the drafting file is gone. From that moment the committed file *is* the
-    roadmap.
+  - **offline** — the draft moves to `<roadmaps.published>/<slug>.md` (default
+    `.orchestra/roadmaps/`, gitignored) and the drafting file is gone. From that moment that file
+    *is* the roadmap. Nothing is committed: one machine, one register, one owner, so a roadmap is
+    this checkout's own working state. A project that wants its roadmaps shared points
+    `roadmaps.published` at a committed directory and commits them itself — `publish` never will.
   - **online** — one programme issue plus one issue per task, and the drafting file is deleted.
     From that moment the issues *are* the roadmap.
 

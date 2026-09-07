@@ -58,10 +58,10 @@ instead.
 A project's drafts directory (`roadmaps.drafts` in `.orchestra/config.json`, `.orchestra/drafts` by
 default) is where a roadmap is written and linted; a draft never gets committed. It does not exist
 for anyone else — or for orchestra — until `orchestra roadmap publish` has published it, and the
-drafting file is deleted then. What publishing produces depends on the project's mode: committed
-markdown under `roadmaps.published` offline, GitHub issues online — the grammar and the lint are
-the same either way, and `orchestra roadmap board` lists an unpublished draft under `unpublished:`
-so it cannot be mistaken for work anybody can see.
+drafting file is deleted then. What publishing produces depends on the project's mode: markdown
+under `roadmaps.published` offline — gitignored, and never committed by orchestra itself — GitHub
+issues online. The grammar and the lint are the same either way, and `orchestra roadmap board`
+lists an unpublished draft under `unpublished:` so it cannot be mistaken for work anybody can see.
 
 A published roadmap is **nominative**: only its owner's orchestra may take its tasks, until the
 owner runs `orchestra roadmap open <roadmap>`. Ownership is the programme issue's author (online)

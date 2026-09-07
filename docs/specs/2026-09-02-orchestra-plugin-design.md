@@ -24,10 +24,12 @@ Code **plugin** that any project can install, with orchestra running in one of t
    argument is hooks: the hard rules (main is integrate-only, never the bare full suite, never an
    unclaimed task) are held by the machine, and a plugin is the only artifact that carries skills,
    agents and hooks together into an arbitrary project.
-2. **Offline storage: gitignored draft → `publish` commits it.** A roadmap is drafted in a
-   gitignored directory and `publish` moves it to `docs/roadmaps/<slug>.md` and commits it. Same
-   grammar, same `lint`, same `board` as online. The roadmap is in history, reviewable, and travels
-   between machines by git without ever touching GitHub.
+2. **Offline storage: gitignored draft → gitignored publish.** A roadmap is drafted in a gitignored
+   directory and `publish` moves it to `.orchestra/roadmaps/<slug>.md`, gitignored in its turn, and
+   commits nothing. Same grammar, same `lint`, same `board` as online. Offline mode is one machine,
+   one register, one owner, so a roadmap is that checkout's own working state and the repository
+   carries none of it; a project that wants its roadmaps shared points `roadmaps.published` at a
+   committed directory and commits them itself.
 3. **Scope: core plus the ticket queue.** Core is orchestra, the monitor, the merge gate, roadmap in
    both modes, the hooks and the worker briefs; the ticket queue comes with it so the stand-down
    tick's S1/S2 sweep works out of the box. The execution queue (multi-machine routing) and retex
@@ -108,7 +110,7 @@ One file in the target project. Everything that was hardcoded becomes a line in 
   "language": "français",                     // seeds conductor.language in the register
   "mainBranch": "main",
   "worktrees": ".orchestra/worktrees",
-  "roadmaps": { "drafts": ".orchestra/drafts", "published": "docs/roadmaps" },
+  "roadmaps": { "drafts": ".orchestra/drafts", "published": ".orchestra/roadmaps" },
   "docs": { "specs": "docs/specs", "plans": "docs/plans", "results": "docs/results" },
 
   "branchTests": "npm run test:branch",       // what a worker runs each iteration
@@ -181,8 +183,8 @@ against this interface.
 
 |  | **online** (`GithubStore`) | **offline** (`FileStore`) |
 |---|---|---|
-| canonical text | one programme issue plus one issue per task | `docs/roadmaps/<slug>.md`, committed |
-| `publish` | creates/updates the issues, deletes the draft | moves the draft to `roadmaps.published`, `git add` + commit |
+| canonical text | one programme issue plus one issue per task | `.orchestra/roadmaps/<slug>.md`, gitignored |
+| `publish` | creates/updates the issues, deletes the draft | moves the draft to `roadmaps.published`, and makes no git write at all |
 | status | derived from the issue (`status:` labels, open/closed) | derived from git and the register |
 | ownership, `open`, `reserve` | the programme issue's author; an `open` label | one machine: everything is yours. The commands explain why they do nothing and exit 0 |
 | `claim` | assignee plus a claim stamp, visible to every other machine | a register row plus the branch ref — *the interlock that actually held*, by the protocol's own account |

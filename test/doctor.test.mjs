@@ -37,7 +37,7 @@ test('doctor says nothing about monitor.port when a config never set it', () => 
 test('doctor prints the pull-request rows', () => {
   const r = repo({ mode: 'offline' });
   const text = doctorText(loadConfig(r.root));
-  assert.match(text, /roadmaps\.local\s+\.orchestra\/roadmaps\s+\(default\)/);
+  assert.match(text, /roadmaps\.published\s+\.orchestra\/roadmaps\s+\(default\)/);
   assert.match(text, /pr\.direction\s+\.orchestra\/direction\s+\(default\)/);
   r.cleanup();
 });

@@ -34,8 +34,9 @@ Both skills move into this plugin and lose everything specific to one repository
   nothing else.
 - **The recommendation lives in the title and the `Why`**, and reaches the user as a framing-pass
   question with `options`. No badge, no field.
-- **A third destination**: the sweep's roadmap is local and uncommitted. It is a per-roadmap
-  property, not a per-project mode.
+- **A per-roadmap destination**: the sweep's roadmap publishes to files this checkout keeps to
+  itself, never to GitHub, whatever the project's mode. It is a per-roadmap property, not a
+  per-project mode — and offline mode's own destination is already exactly that one.
 - **One standing roadmap**, slug `pr`, rewritten by each sweep — not one roadmap per sweep.
 
 ## 2. Why the existing lifecycle fits without being bent
@@ -72,13 +73,12 @@ skills/pr-triage/SKILL.md     the triage, generic
 lib/pr/scan.mjs               the gh metadata pass, folded against the ledger
 lib/pr/ledger.mjs             one line, one measured clock
 lib/cli/pr.mjs                orchestra pr scan | orchestra pr log
-lib/store/local.mjs           the file store without the git commit
 ```
 
-Three config keys, because nothing here may hardcode a path:
+No new store: `roadmaps.published` already defaults to `.orchestra/roadmaps`, gitignored, and the
+file store already commits nothing — §4. Two config keys, because nothing here may hardcode a path:
 
 ```jsonc
-"roadmaps": { "drafts": …, "published": …, "local": ".orchestra/roadmaps" },
 "pr": { "ledger": ".orchestra/pr-log.jsonl", "direction": ".orchestra/direction" }
 ```
 
@@ -93,13 +93,14 @@ nothing to the repository it is reviewing.
 
 `makeStore` ([`lib/store/index.mjs`](../../lib/store/index.mjs)) resolves a backend from
 `cfg.mode`, which makes a destination a property of the PROJECT. A sweep roadmap needs one that is
-a property of the ROADMAP: this project's development roadmaps still publish as issues or as
-committed markdown, and its `pr` roadmap publishes to neither.
+a property of the ROADMAP: an online project's development roadmaps publish as issues, and its `pr`
+roadmap must publish to neither GitHub nor anything the repository carries.
 
-- **`lib/store/local.mjs`** is `makeFileStore` with `publishedDir = cfg.roadmaps.local` and no
-  `git add` / `git commit`. Its `claim`, `release`, `openRoadmap`, `reserve`, `sync` and `overlay`
-  are the file store's, unchanged and for the same reason: a local roadmap has, by construction,
-  nobody to tell.
+- **There is no third store.** The file store already writes under `roadmaps.published`
+  (`.orchestra/roadmaps`, gitignored) and already commits nothing, so `destination: local` selects
+  the FILE STORE whatever the project's mode — and in an offline project it selects the store that
+  mode already had. Its `claim`, `release`, `openRoadmap`, `reserve`, `sync` and `overlay` need no
+  variant: a local roadmap has, by construction, nobody to tell.
 - **A draft declares its destination in frontmatter**, next to the `roadmap:` slug that
   [`lib/store/draft.mjs`](../../lib/store/draft.mjs) already reads:
 
@@ -109,10 +110,11 @@ committed markdown, and its `pr` roadmap publishes to neither.
   ```
 
   Absent, the destination is the project's mode, which is every roadmap that exists today.
-- **`publish` routes on it. `board` and `enrol` union both stores**, so `orchestra roadmap board`
-  shows the `pr` roadmap beside the development ones and `orchestra ready` schedules them together
-  under one machine budget. A local roadmap's rows carry no overlay, so they derive from git and the
-  register — §2.
+- **`publish` routes on it. Online, `board` and `enrol` union both stores**, so `orchestra roadmap
+  board` shows the `pr` roadmap beside the development ones and `orchestra ready` schedules them
+  together under one machine budget. Offline there is nothing to union: one store holds both, and
+  the `pr` roadmap is one more file beside the development ones. Either way a local roadmap's rows
+  carry no overlay, so they derive from git and the register — §2.
 
 `orchestra roadmap board` gains no new line kind. A local roadmap is not `unpublished:` — it is
 published, to a place only this machine can see, which is the same thing offline mode already says
@@ -120,7 +122,7 @@ about every roadmap it has.
 
 ## 5. One standing roadmap
 
-The sweep rewrites `<roadmaps.local>/pr.md` every time it runs. It does not write one roadmap per
+The sweep rewrites `<roadmaps.published>/pr.md` every time it runs. It does not write one roadmap per
 sweep, for two reasons that are both load-bearing:
 
 1. A task's key is `<roadmap>/<ID>` and an ID must be unused **by every roadmap**, not just by its
@@ -270,9 +272,9 @@ not.
 
 ## 9. Tests
 
-- **`lib/store/local.mjs`** — publishes without committing; `board` unions local and mode stores;
-  a republish rewrites in place and preserves keys; `destination:` frontmatter routes, and its
-  absence falls back to the mode.
+- **The local destination** — `board` unions the file and mode stores online; a republish rewrites
+  in place and preserves keys; `destination:` frontmatter routes to the file store, and its absence
+  falls back to the mode.
 - **`orchestra pr log`** — measured clock, refused verdict, missing-newline repair, one complete
   line per append.
 - **`orchestra pr scan`** — against a recorded `gh` fixture: grouping, the ledger fold, and a PR
