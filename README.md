@@ -68,6 +68,10 @@ written in — this one happens to be Rust:
 `pr.direction` is the directory holding the principles a decline writes down. Both default under
 `.orchestra/` and both are in the `.orchestra/.gitignore` that `init` writes, so **a review run adds
 nothing to the repository it is reviewing** — which is the founding constraint of the whole feature.
+A project initialised before those two entries existed does not have them: `git check-ignore
+.orchestra/pr-log.jsonl .orchestra/direction/` says whether yours does, and adding the two missing
+lines to `.orchestra/.gitignore` by hand is the repair (`init` refuses on a project that already has
+a config, and `--force` would rewrite that config too).
 A fresh clone therefore starts with no memory, deliberately. A project that would rather share its
 principles points `pr.direction` at `docs/direction` and commits them like anything else, which is
 the reason it is a key rather than a fixed path.

@@ -11,7 +11,8 @@ You are triaging a pull request for the maintainer. They decide, you prepare.
 has never heard of, so the three facts it needs are read at the start of every run:
 
 ```sh
-"${CLAUDE_PLUGIN_ROOT}/bin/orchestra" doctor      # `root`, `pr.direction`, `briefExtra`
+"${CLAUDE_PLUGIN_ROOT}/bin/orchestra" doctor      # `root` and `pr.direction`
+cat <root>/.orchestra/config.json                 # `briefExtra`, whole
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 ```
 
@@ -20,7 +21,11 @@ REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
   `doctor`'s own `root` row, **never against the directory you are standing in**: a review runs in a
   worktree that is deleted when the row ends, and a principle written there dies with it.
 - **`briefExtra`** is where the project states the rules a prompt cannot derive. It is half of the
-  blast radius in step 2, and the project's own `CLAUDE.md` is the other half.
+  blast radius in step 2, and the project's own `CLAUDE.md` is the other half. **Read it from
+  `.orchestra/config.json` under `doctor`'s `root`, never off `doctor` itself**: that row is a
+  one-line summary, truncated at 60 characters with a trailing ` …`, and there is no
+  `doctor --json`. A worker that reads the row gets a stub of the rules it was told to judge
+  against.
 
 From here on `orchestra <subcommand>` means `"${CLAUDE_PLUGIN_ROOT}/bin/orchestra" <subcommand>`,
 and `bin/orchestra` at the root of the plugin's own directory when `CLAUDE_PLUGIN_ROOT` is unset.
@@ -77,12 +82,12 @@ Before any verdict, write for the maintainer:
 - **What it actually changes.** The real mechanism, not the PR title. If the body and
   the diff disagree, say so, that is a finding.
 - **Blast radius.** Which features can break. **You do not know this project by heart, so read it
-  rather than guess**: `briefExtra` from `orchestra doctor` states the rules a prompt cannot derive,
-  and the project's own `CLAUDE.md` states its architecture — which module is shared, which state is
-  global, which file everything imports. Name the blast radius from those two, by module. If neither
-  says anything about the files this PR touches, say that plainly instead of inventing a coupling:
-  "the project documents no shared state covering these files" is itself a finding, both about the
-  PR and about the project.
+  rather than guess**: `briefExtra`, read from `.orchestra/config.json`, states the rules a prompt
+  cannot derive, and the project's own `CLAUDE.md` states its architecture — which module is
+  shared, which state is global, which file everything imports. Name the blast radius from those
+  two, by module. If neither says anything about the files this PR touches, say that plainly
+  instead of inventing a coupling: "the project documents no shared state covering these files" is
+  itself a finding, both about the PR and about the project.
 - **Size and shape.** Focused fix, or a dump of unrelated work in one branch.
 
 Plain language means no jargon the maintainer has to decode. Short.

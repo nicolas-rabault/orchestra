@@ -36,6 +36,7 @@ POST fail or silently merge into the old draft.
 
 ```bash
 ME=$(gh api user -q .login)
+STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)   # the watermark step 4's leak check compares against
 gh api "repos/$REPO/pulls/N/reviews" \
   -q ".[] | select(.user.login==\"$ME\" and .state==\"PENDING\") | .id"
 ```
@@ -107,11 +108,18 @@ step 1.
 Then confirm nothing leaked into the public thread:
 
 ```bash
-gh api "repos/$REPO/issues/N/comments" -q ".[] | select(.user.login==\"$ME\") | .id"
+gh api "repos/$REPO/issues/N/comments" \
+  -q ".[] | select(.user.login==\"$ME\" and .created_at > \"$STARTED\") | .id"
 ```
 
-Must be empty. If not, you published something: tell the user immediately and offer
-to delete it.
+Must be empty. If not, THIS RUN published something: tell the user immediately and
+offer to delete it.
+
+`$STARTED` is load-bearing, not decoration. `$ME` is the maintainer's own account, and
+maintainers comment on their own pull requests routinely — the sweep's own watermark
+filters `me` out for exactly that reason. Without the timestamp this fires on every PR
+they ever replied to and offers to delete a legitimate comment, and a safety check that
+cries wolf is one that gets ignored.
 
 ## 422 troubleshooting
 

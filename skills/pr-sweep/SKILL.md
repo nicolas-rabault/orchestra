@@ -24,8 +24,8 @@ confidence is low, in which case say so and ask.
 Every command below is `orchestra <subcommand>`, which means
 `"${CLAUDE_PLUGIN_ROOT}/bin/orchestra" <subcommand>`, and `bin/orchestra` at the root of the
 plugin's own directory when `CLAUDE_PLUGIN_ROOT` is unset. **`orchestra doctor` first, always**: it
-gives you `root`, `worktrees`, `roadmaps.drafts`, `roadmaps.published`, `pr.direction` and
-`briefExtra`, and nothing in this skill hardcodes a path or a repository name.
+gives you `root`, `worktrees`, `roadmaps.drafts`, `roadmaps.published` and `pr.direction`, and
+nothing in this skill hardcodes a path or a repository name.
 
 ## Hard rules
 
@@ -52,6 +52,27 @@ Every `pr-triage` hard rule applies here too, plus:
    questions are the maintainer's words, recorded, not your inference.
 
 ## Step 1: scan
+
+**Preflight, before anything writes.** The ledger and the direction memory must be IGNORED by git,
+or this sweep adds them to the repository it is reviewing:
+
+```sh
+git check-ignore <pr.ledger> <pr.direction>/      # both paths must come back
+```
+
+`git check-ignore` prints the paths that ARE ignored and exits 0 when ANY of them is, so the exit
+code proves nothing: read the output and require BOTH lines. If either is missing, this project ran
+`orchestra init` before those two entries existed in the `.orchestra/.gitignore` that `init` writes.
+**Add the two missing lines to that file yourself** — `pr-log.jsonl` and `direction/`, one per line,
+matching the two defaults — and check again. Do NOT reach for `orchestra init` to repair it: it
+refuses outright on a project that already has a config, and `--force` rewrites `config.json` from
+the template plus detection, which drops every key the project added by hand. Two ignore lines are
+not worth a lost configuration.
+
+Skip this and the sweep's own ledger and every principle it learns sit in `git status` as untracked,
+one `git add .` from the commit this whole flow exists not to make. A project that has moved
+`pr.direction` out from under `.orchestra/` on purpose (`docs/direction`, committed) is answering a
+different question: check the ledger alone there.
 
 ```sh
 orchestra pr scan --json
@@ -163,17 +184,17 @@ DO FIRST, settled by direction (2)
   #91  dependabot   CI pass   npm_and_yarn bump          -> MERGE   dependabot rule
   #82  dependabot   CI pass   setup-node 6.4 to 7.0      -> MERGE   dependabot rule
 
-QUICK WINS, 4 small fixes from cn0303 (4)
+QUICK WINS, 4 small fixes from octocat (4)
   #89  +43/-1    close the log file if inference fails   -> REVIEW  focused, likely mergeable
   #87  +77/-2    only flag an update when behind         -> REVIEW
   ...
 
 AUTHOR MOVED, they are waiting on you (2)
-  #64  EAOZONE    new commits since your review          -> REVIEW  re-read the 4 points you raised
-  #59  pgsharma   new replies since your review          -> REVIEW  one file, probably a reply not a rework
+  #64  monalisa   new commits since your review          -> REVIEW  re-read the 4 points you raised
+  #59  hubot      new replies since your review          -> REVIEW  one file, probably a reply not a rework
 
 BLOCKED ON YOUR RULING (1)
-  #81  robertchoi  +9339/-4223  a second hardware target alongside the first
+  #81  octodev     +9339/-4223  a second hardware target alongside the first
        needs the second-target question answered first
 
 waiting on author (4)   #73 #72 #68 #14
@@ -345,10 +366,11 @@ are never re-asked.
 
 ## Step 8: hand over
 
-**No subagents, and no launches.** The conductor takes it from here: `orchestra ready` puts every
-`todo` row in its launch plan, capped by the machine's budget, and launches one background session
-per row with the review brief. Say plainly in your report that this is what happens next, and how
-many rows are waiting.
+**No subagents, and no launches.** The conductor takes it from here. `orchestra ready` COMPUTES
+the plan and prints it — it starts nothing: a `todo` row reaches the ready set only once every dep
+it names has landed and its lane is free, and the machine's budget then caps how many of them are
+listed. The conductor's own step 8 is what launches one background session per row with the review
+brief. Say plainly in your report that this is what happens next, and how many rows are waiting.
 
 **A row the maintainer settled at the framing pass needs no worker, and it already has a row**,
 because step 5 published one before the questions were asked. Every one of these cases is the same
@@ -366,8 +388,8 @@ optional: a row left `todo` is a row `orchestra ready` will launch.
   ```
   Tell them it is theirs to click. This row ends `dropped` rather than `landed`, and that is honest:
   nothing reviewed it and nothing recorded its title, in either of its squashed forms, or its
-  commit subjects, so there is nothing for the derivation to find on main. The next scan will show the PR gone from the open list once they have
-  clicked.
+  commit subjects, so there is nothing for the derivation to find on main. The next scan will show
+  the PR gone from the open list once they have clicked.
 
 Both `--head` and `--comment` come from the scan, never refetched: the watermark must record what
 was actually looked at, not what the PR looks like a minute later.
