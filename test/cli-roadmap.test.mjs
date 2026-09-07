@@ -357,3 +357,45 @@ test('publish routes on the frontmatter, not on the mode', () => {
   const { text } = capture(() => roadmapCommand({ cfg, args: ['board'], deps: { gh } }));
   assert.match(text, /pr\/PR91/);
 });
+
+// CRITICAL, from the final whole-branch review. `board`, `enrol` and `sync` were unioned across
+// both destinations and `claim`, `release`, `open` and `reserve` were left on the MODE store — so
+// online, every key of a `destination: local` roadmap was put to GitHub, which has never heard of
+// it. `claim` came back `{ok:false, holder:null}` and printed "held by someone else", which
+// `skills/orchestra/SKILL.md` reads as a reason to drop the row: every pull-request review row
+// dropped at launch, blamed on a holder that does not exist.
+test('claim, release, open and reserve route on the destination, and file nothing on GitHub', () => {
+  const { r, cfg, gh } = onlineProject('nico');
+  mkdirSync(join(r.root, cfg.roadmaps.drafts), { recursive: true });
+  writeFileSync(join(r.root, cfg.roadmaps.drafts, 'pr.md'), PR_ROADMAP);
+  capture(() => roadmapCommand({ cfg, args: ['publish'], deps: { gh } }));
+
+  assert.match(capture(() => roadmapCommand({ cfg, args: ['claim', 'pr/PR91'], deps: { gh } })).text, /claimed pr\/PR91/);
+  assert.match(capture(() => roadmapCommand({ cfg, args: ['release', 'pr/PR91'], deps: { gh } })).text, /released pr\/PR91/);
+  // A local roadmap has, by construction, nobody to tell — so `open` and `reserve` answer with the
+  // file store's own noop rather than with GitHub's "no programme issue names the roadmap".
+  assert.match(capture(() => roadmapCommand({ cfg, args: ['open', 'pr'], deps: { gh } })).text, /open: nothing to do — offline mode: one machine/);
+  assert.match(capture(() => roadmapCommand({ cfg, args: ['reserve', 'pr'], deps: { gh } })).text, /reserve: nothing to do — offline mode: one machine/);
+
+  assert.equal(gh.state.length, 0, 'nothing was filed on GitHub');
+  assert.deepEqual(gh.calls, [], 'and nothing was written to it either');
+});
+
+// The other half of the same routing, and the one that keeps the fix from being "send everything to
+// the file store": a SHARED key in the very same project still reaches GitHub. The file store's
+// `claim` returns `{ok: true}` unconditionally, so the printed line alone cannot tell the two
+// stores apart — the assignee on the issue is what does.
+test('a shared key still reaches GitHub, beside a local roadmap in the same project', () => {
+  const { r, cfg, gh } = onlineProject('nico');
+  mkdirSync(join(r.root, cfg.roadmaps.drafts), { recursive: true });
+  writeFileSync(join(r.root, cfg.roadmaps.drafts, 'pr.md'), PR_ROADMAP);
+  capture(() => roadmapCommand({ cfg, args: ['publish'], deps: { gh } }));
+
+  const task = parseRoadmap(ROADMAP).tasks[0];
+  gh.state.push({
+    number: 5, title: taskTitle(task), state: 'open', labels: [LABELS.task], assignees: [], author: 'nico',
+  });
+
+  assert.match(capture(() => roadmapCommand({ cfg, args: ['claim', 'demo/D1'], deps: { gh } })).text, /claimed demo\/D1/);
+  assert.deepEqual(gh.state.find((i) => i.number === 5).assignees, ['nico']);
+});
