@@ -12,6 +12,7 @@ import { monitorCommand, instancesCommand } from '../lib/cli/monitor.mjs';
 import { ticketsCommand } from '../lib/cli/tickets.mjs';
 import { installHeartbeatCommand } from '../lib/cli/heartbeat.mjs';
 import { initCommand } from '../lib/cli/init.mjs';
+import { prCommand } from '../lib/cli/pr.mjs';
 
 register('doctor', { machine: true, run: ({ cfg }) => doctor(cfg) });
 // `machine: true`: it is the command that WRITES `.orchestra/config.json` in the first place, so
@@ -33,6 +34,7 @@ register('land', { run: landCommand });
 register('await', { run: awaitCommand });
 register('queue-list', { run: queueListCommand });
 register('tickets', { run: ticketsCommand });
+register('pr', { run: prCommand });
 // Not `machine: true`: this installs the timer FOR a project, so it needs that project's own
 // config (its root, its id) exactly as `land` and `ready` do — it has no answer to give outside one.
 register('install-heartbeat', { run: installHeartbeatCommand });
