@@ -210,7 +210,8 @@ Two paragraphs of your own: what this sweep found, and the order it recommends.
 
 **Why.** Dependabot, green CI, scoped bump. `dependabot-default-merge.md` settles it: merge.
 
-**Acceptance.** PR #91 is merged on GitHub and `git log main` carries its commit subjects.
+**Acceptance.** PR #91 is merged on GitHub and `git log main` carries one of the subjects the row
+records: a commit subject, the PR title, or that title with ` (#91)` appended.
 ```
 
 - **`destination: local`** is what keeps this roadmap off the issue tracker in an online project. It
@@ -234,8 +235,10 @@ Two paragraphs of your own: what this sweep found, and the order it recommends.
   the PR changes that this checkout already has, prefix the rest with `new `, and write `—` when
   that leaves nothing. It blocks nothing either way.
 - **`Why`** carries the recommendation and the reason, citing the direction file by name when one
-  settles it. **`Acceptance`** names the instrument: for a merge, the PR merged and its subjects on
-  main; for a review, the pending review drafted and the verdict in the ledger.
+  settles it. **`Acceptance`** names the instrument: for a merge, the PR merged and one of the
+  row's recorded subjects on main — its commit subjects, its title, and that title with ` (#<N>)`
+  appended, which is what GitHub's default squash actually writes; for a review, the pending review
+  drafted and the verdict in the ledger.
 
 Then:
 
@@ -362,16 +365,17 @@ optional: a row left `todo` is a row `orchestra ready` will launch.
   orchestra pr log <N> merge --head <headRefOid> --comment <lastOtherCommentId> --note "why"
   ```
   Tell them it is theirs to click. This row ends `dropped` rather than `landed`, and that is honest:
-  nothing reviewed it and nothing recorded its title or its commit subjects, so there is nothing for
-  the derivation to find on main. The next scan will show the PR gone from the open list once they have
+  nothing reviewed it and nothing recorded its title, in either of its squashed forms, or its
+  commit subjects, so there is nothing for the derivation to find on main. The next scan will show the PR gone from the open list once they have
   clicked.
 
 Both `--head` and `--comment` come from the scan, never refetched: the watermark must record what
 was actually looked at, not what the PR looks like a minute later.
 
 A `merge` the maintainer wants CONFIRMED is not this case — it is the ordinary one. Its row keeps
-its worker, the conductor records the PR's title and its commit subjects on the row (protocol step
-6, and `## Pull-request review rows` for why the title is the load-bearing half), and it then
+its worker, the conductor records the PR's title in both the forms a squash can write — `<title>`
+and `<title> (#<N>)` — plus its commit subjects on the row (protocol step 4, and
+`## Pull-request review rows` for why the title is the load-bearing half), and it then
 reads `landed` on its own once the maintainer clicks and this checkout has fetched main. Nobody
 types that status.
 

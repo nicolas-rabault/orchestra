@@ -672,6 +672,13 @@ started *after* the hold was issued.
    to the user immediately in the Decision Template; *non-blocking* (ready to test, an approval,
    an FYI) → append to that row's `pending` in `state.json`.
 
+   **A review worker reporting a `merge` verdict is the one moment anything writes `subjects`, and
+   you are the only writer**: on that report, write the pull request's title in both the forms a
+   squash can produce — `<title>` and `<title> (#<N>)` — plus the branch's commit subjects, onto
+   that row's `subjects` in `state.json`. No gate runs on a review row, so step 6's recorder never
+   sees it; a row that reaches its merge with `subjects: []` can never derive `landed`
+   (`## Pull-request review rows`).
+
    The page is the writer of `.orchestra/inbox.jsonl`, so this command now has something to print:
    the oldest answers nobody has taken yet, whether they answer a `pending[]` item or are a free
    remark. The hook adds a third path when it can fire, but a session's own first turn is exactly
@@ -705,6 +712,12 @@ started *after* the hold was issued.
    batches. Your job is to say there is a batch, not to wait for him to come and find one.
 6. **Landings.** For every row the reconcile just moved to `landed`: tell the user at the next
    checkpoint, and continue — the launch step below picks up whatever the landing unblocked.
+
+   **A pull-request review row never enters the procedure below.** Its `landed` is DERIVED, from a
+   merge the maintainer clicked on GitHub and this checkout has since fetched — so tell the user at
+   the checkpoint like any other landing, and then stop. `orchestra land` is never called on a
+   review row, no gate runs on one, and nothing in this step deletes its worktree or its ref
+   (`## Pull-request review rows`, which says when they do go and what you do own instead).
 
    **When the user approves a merge, this is the hand-off — and you still never merge BY HAND: that
    rule outlives its enforcement, and `guard-main-commit` is what holds it now — it refuses `git
@@ -1035,9 +1048,11 @@ user cannot check.
 
 When a worker reports built, first ask what the row actually ships. **If it ships nothing a human
 looks at or uses, there is no gate**: it lands once every configured gate is green (`gates`), the
-`landing` line goes in the journal, and the checkpoint carries it (never #1). Seven of the sixteen
-rows of the dev-loop roadmap, in planetCraft, shipped nothing of the sort, and every one of their
-approvals was granted unread.
+`landing` line goes in the journal, and the checkpoint carries it (never #1) — **except a
+pull-request review row, which never lands and runs no gate at all**: nothing here owns that
+branch, so the maintainer clicks Merge on GitHub and the row's `landed` derives on its own
+(`## Pull-request review rows`). Seven of the sixteen rows of the dev-loop roadmap, in planetCraft,
+shipped nothing of the sort, and every one of their approvals was granted unread.
 
 Otherwise: tell the worker to put the thing in front of the user — **with the project's own
 command; the worker knows it and you do not need to** — and to report exactly how it is reached.
@@ -1051,7 +1066,9 @@ second question is the one this roadmap paid for thirteen times over, in planetC
 framing pass, and the one interruption). What follows validation is step 6's business (see The
 tick): record the branch's commit `subjects` in the row BEFORE the hand-off — that is what makes
 landed detection work. The hand-off is the two commands above, and a landing deletes the worktree
-and the ref.
+and the ref — **on a review row there is no hand-off**: nothing lands, the worktree and the ref
+stay until the row is terminal, and the subjects to record are the pull request's
+(`## Pull-request review rows`).
 
 **Never hand out a URL you have not fetched AND READ**, and never a command you have not run.
 For a URL, not `curl` — it cannot reach a localhost server this shell can see listening. Fetch it
@@ -1189,7 +1206,7 @@ this reason.
 
 | The worker's verdict | What happens | Status |
 |---|---|---|
-| `merge` | the maintainer clicks Merge on GitHub; the row's recorded subjects — the PR title among them — reach main | `landed`, derived, on a later tick |
+| `merge` | the maintainer clicks Merge on GitHub; one of the row's recorded subjects — the PR title, with and without ` (#<N>)` — reaches main | `landed`, derived, on a later tick |
 | `review` | a pending review is left; the ball is with the maintainer, then the author | `review` until the PR moves |
 | `decline` | a direction file is written and a decline note drafted to paste | `dropped` |
 | `dismissed` | one ledger line and nothing else | `dropped` |
@@ -1200,12 +1217,15 @@ The ledger's word is `dismissed`, not `dismiss`: `orchestra pr log` accepts `rev
 Three mechanical consequences, each verified against the derivation and none of them obvious:
 
 - **`landed` needs two things you own.** First, the row's `subjects` must carry **the pull
-  request's TITLE alongside the branch's commit subjects** — record them the way step 6 has you
-  record a branch's, before the row can end. The title is not optional and it is not decoration:
-  GitHub's squash-merge writes the PR title as the commit's subject, so a row recorded without it
-  misses `deriveLocalStatus`'s match on EVERY squash-merged pull request, not on the one edge case
-  below. Second, THIS checkout's main must have fetched the merge — `gatherGit` reads local refs and
-  nothing fetches for you. Until both hold, a merged PR still reads `claimed`.
+  request's TITLE IN BOTH ITS SQUASHED FORMS — `<title>` and `<title> (#<N>)` — alongside the
+  branch's commit subjects**, written at the moment step 4 names: the worker's `merge` verdict. No
+  gate runs on a review row, so nothing else will ever write them. Both forms, because
+  `deriveLocalStatus` matches an exact string and **GitHub's DEFAULT squashed subject is the title
+  with the number appended**; a repository whose `squash_merge_commit_title` is set the other way
+  writes the title alone. Recording both costs one array element and is right either way, where
+  recording one misses `deriveLocalStatus`'s match on the ordinary squash merge, not on the edge
+  case below. Second, THIS checkout's main must have fetched the merge — `gatherGit` reads local
+  refs and nothing fetches for you. Until both hold, a merged PR still reads `claimed`.
 - **`dropped` is terminal and stops the scheduler** (`orchestra ready` skips it, `orchestra archive`
   files the row away), but the board derives from git, which has no `dropped` to derive: so
   `orchestra roadmap board` prints one `correction:` line for such a row until the next sweep drops
@@ -1227,9 +1247,11 @@ gate is for branches this project owns. `pr-triage`'s first hard rule is the wor
 yours: the only write anywhere on GitHub is a PENDING review, private to the maintainer. No merge,
 no close, no label, no assignee, no comment. Orchestra having a merge gate does not soften it.
 
-**The squash-merge hole, stated rather than discovered.** Recording the title is what makes an
-ORDINARY squash derivable: GitHub writes the PR title as the squashed commit's subject and the row
-carries it. What is left is narrower — a squash whose subject the maintainer REWROTE in the merge
+**The squash-merge hole, stated rather than discovered.** Recording the title in both its forms is
+what makes an ORDINARY squash derivable: GitHub's default squashed subject is the PR title with
+` (#<N>)` appended, a repository configured the other way writes the title alone, and the row
+carries both so neither configuration has to be known. What is left is narrower — a squash whose
+subject the maintainer REWROTE in the merge
 box is a subject the register never recorded, so §2's derivation cannot see the merge and the row
 reads `claimed` after a real one. The next sweep catches it — it reads the pull
 request's state from GitHub, not from git — so the failure is bounded by one sweep interval and is
