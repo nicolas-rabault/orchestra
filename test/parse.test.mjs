@@ -49,3 +49,16 @@ test('unclosed frontmatter is reported', () => {
 test('FIELD_NAMES is the whole grammar and holds no status field', () => {
   assert.deepEqual(FIELD_NAMES, ['Roadmap', 'Order', 'Deps', 'Touches', 'Branch', 'Design', 'Lane']);
 });
+
+test('frontmatter declares a destination, and only "local" is known', () => {
+  const withDest = parseRoadmap('---\nroadmap: pr\ndestination: local\n---\n');
+  assert.equal(withDest.destination, 'local');
+  assert.equal(withDest.errors.length, 0);
+
+  // Absent is the shape every roadmap has today: publish falls back to the project's mode.
+  assert.equal(parseRoadmap('---\nroadmap: demo\n---\n').destination, null);
+
+  const bad = parseRoadmap('---\nroadmap: pr\ndestination: elsewhere\n---\n');
+  assert.equal(bad.errors.length, 1);
+  assert.match(bad.errors[0].message, /unknown destination "elsewhere"/);
+});
