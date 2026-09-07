@@ -2923,7 +2923,7 @@ unblocked.
 
 - [ ] **Step 4: Rewrite the four remaining "(`gates`, phase 3)" sites**
 
-They are in never #1, the framing pass, the playtest gate, and step 6's refused-gate paragraph. Each
+They are in never #1, the framing pass, the hands-on gate, and step 6's refused-gate paragraph. Each
 becomes "(`gates`)" or "the project's own `gates` entry" — the parenthetical named a phase, not a
 fact, and the fact is unchanged.
 
@@ -2951,7 +2951,7 @@ is phase 5's). Leave the stale-board rule exactly as it stands.
 
 - the tick's closing paragraph: "the landing re-invokes you once phase 3 brings it" → the landing
   re-invokes you, now, when `await` returns;
-- the playtest gate's "The hand-off itself is phase 3's" → the hand-off is the two commands above,
+- the hands-on gate's "The hand-off itself is phase 3's" → the hand-off is the two commands above,
   and a landing deletes the worktree and the ref.
 
 - [ ] **Step 8: Re-run the grep, and the P2b acceptance**
@@ -3104,7 +3104,7 @@ read whole.
 3. **Did a fix land only halfway?** In P2b one task added a correction twenty lines below the
    sentence it contradicted, and both halves were locally coherent. The seams to read here: who
    records a landing's subjects (the gate in Task 6, the conductor in the skill's step 6 — both, on
-   purpose, and one sentence must say so); who performs a landing (the nevers, step 6, the playtest
+   purpose, and one sentence must say so); who performs a landing (the nevers, step 6, the hands-on
    gate); what `sync` does offline (the roll-call, step 7, the README, `lib/store/files.mjs`).
 4. **Is any measurement implied of the reader's machine?** "262 s on a quiet machine and 1652 s under
    load", "23 of 27 scenes", "22 of 41 landed rows", "73 rerere entries" — every one belongs to

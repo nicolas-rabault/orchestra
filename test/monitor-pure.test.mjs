@@ -364,7 +364,7 @@ test('nodesOf draws nothing for a developer the board no longer names', () => {
 // ---------------------------------------------------------------------------------------------
 
 {
-  const item = { kind: 'playtest', ask: 'does it tremble standing still, or only while moving?' };
+  const item = { kind: 'hands-on', ask: 'does it tremble standing still, or only while moving?' };
   const answerModel = (pending) => buildModel({
     project: { name: 'p', root: '/r', mode: 'offline', branch: 'main', id: 'abc123', port: 4380 },
     cfg: { id: 'abc123', worktrees: '.orchestra/worktrees', mainBranch: 'main' },
@@ -449,8 +449,8 @@ test('nodesOf draws nothing for a developer the board no longer names', () => {
 const listNode = (over = {}) => ({ key: 'lod/C2', id: 'C2', pending: [], ...over });
 
 test('openQuestions lists one row per unanswered question, and says how many pictures it carries', () => {
-  const nodes = [listNode({ pending: [{ id: 'q1', kind: 'playtest', ask: 'look at this', answer: null, images: [{ rel: 'top.png' }] }] })];
-  assert.deepEqual(openQuestions(nodes), [{ key: 'lod/C2', id: 'C2', item: 'q1', kind: 'playtest', ask: 'look at this', images: 1 }]);
+  const nodes = [listNode({ pending: [{ id: 'q1', kind: 'hands-on', ask: 'look at this', answer: null, images: [{ rel: 'top.png' }] }] })];
+  assert.deepEqual(openQuestions(nodes), [{ key: 'lod/C2', id: 'C2', item: 'q1', kind: 'hands-on', ask: 'look at this', images: 1 }]);
 });
 
 // The same rule the red pulse is drawn from: a task with one question answered and one still open

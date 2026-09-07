@@ -130,9 +130,9 @@ One file in the target project. Everything that was hardcoded becomes a line in 
 ```
 
 Defaults are supplied for every key except `mode`; `orchestra init` proposes the rest by detecting
-`package.json`, `Makefile`, `Cargo.toml` or `pyproject.toml`, and **asks rather than guessing** for
-anything it did not find. `orchestra doctor` prints the resolved configuration and names every key
-that fell back to a default.
+`package.json`, `Makefile`, `Cargo.toml`, `pyproject.toml` or `go.mod`, and **asks rather than
+guessing** for anything it did not find. `orchestra doctor` prints the resolved configuration and
+names every key that fell back to a default.
 
 **The absence of this file is the plugin's off switch.** Every hook, and every subcommand except
 `init`, `doctor` and `instances` (which are machine-level and answer without a project), is a
@@ -280,7 +280,7 @@ the journal's four keys and the tool that takes the clock; `pending[]` with `id`
 cursor and the stolen-stamp failure; the framing pass and the one interruption per row; the resume
 cycle and the fact that `SendMessage` does not wake a `--bg` worker; the two distinct 600-second
 ceilings; exit code and CLI status both being non-evidence with the filesystem as the only witness;
-undelivered relays as an obligation; the decision template and the picture rule; the playtest gate
+undelivered relays as an obligation; the decision template and the picture rule; the hands-on gate
 and never handing out an unfetched URL; the dev-server sweep; the conductor beat and the lock; the
 stand-down tick with its ticket sweep and its archiving.
 
@@ -456,8 +456,8 @@ every cron tick dies on `Not logged in` — eight consecutive ticks did, and sev
 - **retex.** Its contract is that a recommendation must name a metric the tool computes and a
   threshold that metric can fail; those metrics are `planetCraft`'s. The stand-down tick's retex step
   runs only if a `capabilities.retex` command is configured, and is skipped silently otherwise.
-- **The visual gate, the clocks, the council, the playtest.** Project instruments. The visual gate
-  survives only as an example `gates` entry in the README.
+- **The visual gate, the clocks, the council, the hands-on gate.** Project instruments. The visual
+  gate survives only as an example `gates` entry in the README.
 
 ## 14. Testing
 

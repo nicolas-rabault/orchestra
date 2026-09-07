@@ -650,7 +650,7 @@ Expected: FAIL — the three modules do not exist.
 - [ ] **Step 3: Port the three modules**
 
 `lib/register/inbox.mjs` from `tools/orchestra/monitor/inbox.mjs`, minus `appendAnswer`, plus
-`inboxPath`. Keep verbatim: the `PENDING_GRACE_MS` paragraph (a playtest gate asked twice in the same
+`inboxPath`. Keep verbatim: the `PENDING_GRACE_MS` paragraph (a hands-on gate asked twice in the same
 words carries the SAME hashed id, so last round's reply would be delivered as the answer to this
 round's question), the instants-not-strings paragraph, and the OR-is-a-deliberate-asymmetry
 paragraph.

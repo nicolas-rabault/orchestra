@@ -100,6 +100,16 @@ test('detect: pyproject.toml — pytest proposed', () => {
   assert.deepEqual(det.gates, [{ name: 'suite', cmd: 'pytest' }]);
 });
 
+test('detect: go.mod — go test ./... proposed', () => {
+  const d = tmpDir();
+  writeFileSync(join(d, 'go.mod'), 'module example.com/demo\n\ngo 1.22\n');
+  const det = detect(d);
+  assert.equal(det.buildSystem, 'go');
+  assert.deepEqual(det.gates, [{ name: 'suite', cmd: 'go test ./...' }]);
+  assert.equal(det.branchTests, null);
+  assert.deepEqual(det.missing, ['branchTests']);
+});
+
 test('detect: a Makefile with a test: target — make test proposed', () => {
   const d = tmpDir();
   writeFileSync(join(d, 'Makefile'), 'build:\n\techo building\n\ntest: build\n\techo testing\n');

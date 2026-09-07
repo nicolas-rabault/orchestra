@@ -19,9 +19,9 @@
 // beat decides, and the register only answers when no beat is live. `conductor.inboxSeen` is a
 // single shared watermark with no owner: whoever reads these answers is expected to stamp past
 // them, and from that moment nobody else is ever told they existed. Measured 2026-08-12 in
-// planetCraft — a second session stamped and five answers (a design ruling, a failed playtest, a
-// merge approval, a launch ruling, a question) were never delivered to the conductor the user was
-// actually talking to. The register alone was not enough to prevent it: it named a session that had
+// planetCraft — a second session stamped and five answers (a design ruling, a failed hands-on
+// check, a merge approval, a launch ruling, a question) were never delivered to the conductor the
+// user was actually talking to. The register alone was not enough to prevent it: it named a session that had
 // already been dead for half an hour on 2026-08-13, while three more answers rotted behind it.
 // The beat can, because it is written every two seconds by a loop that lives exactly as long as the
 // session holding the baton, so when one is live it decides, and a session that is not it is shown

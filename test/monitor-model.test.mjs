@@ -234,7 +234,7 @@ test('buildModel badges a register row with no roadmap block, and one no session
 });
 
 test('buildModel raises attention on a row with an open pending item, and gives the item an id', () => {
-  const pending = [{ kind: 'playtest', ask: 'compare :5307 · A) keep · B) loosen' }];
+  const pending = [{ kind: 'hands-on', ask: 'compare :5307 · A) keep · B) loosen' }];
   const m = buildModel({ ...base, register: [regRow({ pending })] });
   assert.equal(waitsOnUser(m.nodes[0]), true);
   assert.equal(m.nodes[0].pending[0].id, pendingId('C2', pending[0]));
@@ -246,9 +246,9 @@ test('buildModel raises attention on a row with an open pending item, and gives 
 // at best. The inbox already holds the answer and `unconsumed` already knows whether orchestra has
 // taken it — this is those two, read.
 {
-  const item = { id: 'c2-playtest-1', kind: 'playtest', ask: 'does it still tremble?' };
+  const item = { id: 'c2-hands-on-1', kind: 'hands-on', ask: 'does it still tremble?' };
   const said = (over = {}) => ({ entries: [{ ts: '2026-08-12T09:00:00.000Z', task: 'C2',
-    pending: 'c2-playtest-1', answer: 'no, it is steady', from: 'monitor', ...over }], skipped: 0 });
+    pending: 'c2-hands-on-1', answer: 'no, it is steady', from: 'monitor', ...over }], skipped: 0 });
   const model = (over) => buildModel({ ...base, register: [regRow({ pending: [item] })], ...over });
 
   test('buildModel: an unanswered item shouts while nothing has answered it', () => {
@@ -580,7 +580,7 @@ test('invokeCommand builds the session name and worktree slug from cfg, and drop
 // ---------------------------------------------------------------------------------------------
 
 test('buildModel hangs an ask\'s pictures on the pending item that asks about them, resolved against the task\'s worktree', () => {
-  const pending = [{ kind: 'playtest', ask: 'which arm reads better? c1-main.png vs top.png' }];
+  const pending = [{ kind: 'hands-on', ask: 'which arm reads better? c1-main.png vs top.png' }];
   const m = buildModel({ ...base, register: [regRow({ pending })], findImage: stubFind });
   assert.deepEqual(m.nodes[0].pending[0].images.map((i) => i.rel), [
     'lod/c2-derived-switch:c1-main.png',
