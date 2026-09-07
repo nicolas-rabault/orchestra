@@ -606,3 +606,18 @@ test('buildModel claims no image either way when no resolver was given', () => {
   assert.deepEqual(m.nodes[0].noteImages, []);
   assert.deepEqual(m.nodes[0].pending[0].images, []);
 });
+
+test('the launch block branches from the row\'s base when it has one', () => {
+  const m = buildModel({ ...base, register: [regRow({ session: null, base: 'deadbee' })] });
+  const [node] = m.nodes;
+  assert.equal(node.base, 'deadbee');
+  assert.equal(node.invoke.kind, 'launch');
+  assert.match(node.invoke.lines[0], /-b lod\/c2-derived-switch deadbee$/);
+});
+
+test('a row with no base still branches from the main branch', () => {
+  const m = buildModel({ ...base, register: [regRow({ session: null })] });
+  const [node] = m.nodes;
+  assert.equal(node.base, null);
+  assert.match(node.invoke.lines[0], /-b lod\/c2-derived-switch main$/);
+});
