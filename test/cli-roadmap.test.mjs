@@ -351,7 +351,7 @@ test('publish routes on the frontmatter, not on the mode', () => {
   capture(() => roadmapCommand({ cfg, args: ['publish'], deps: { gh } }));
 
   assert.ok(existsSync(join(r.root, cfg.roadmaps.published, 'pr.md')));
-  assert.equal(gh.calls.filter((c) => c.includes('issue')).length, 0, 'nothing was filed on GitHub');
+  assert.equal(gh.state.length, 0, 'nothing was filed on GitHub');
 
   // And the board shows it beside the issues, which is the union this task adds.
   const { text } = capture(() => roadmapCommand({ cfg, args: ['board'], deps: { gh } }));
