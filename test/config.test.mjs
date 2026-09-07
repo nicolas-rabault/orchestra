@@ -152,3 +152,28 @@ test('a group replaced by null does not crash loadConfig, and validate reports i
   assert.doesNotThrow(() => loadConfig(r.root));
   assert.throws(() => loadConfigOrThrow(r.root), (e) => e.message.includes('"roadmaps"'));
 });
+
+test('roadmaps.local and pr.* resolve to defaults and are reported as defaulted', () => {
+  const r = repo({ mode: 'offline' });
+  const cfg = loadConfig(r.root);
+  assert.equal(cfg.roadmaps.local, '.orchestra/roadmaps');
+  assert.equal(cfg.pr.ledger, '.orchestra/pr-log.jsonl');
+  assert.equal(cfg.pr.direction, '.orchestra/direction');
+  // Leaf entries, never a bare group name: `defaultedKeys` reports one per unset key so `doctor`
+  // can mark the individual rows.
+  assert.ok(cfg.defaulted.includes('roadmaps.local'));
+  assert.ok(cfg.defaulted.includes('pr.ledger'));
+  assert.ok(cfg.defaulted.includes('pr.direction'));
+  r.cleanup();
+});
+
+test('a project may point pr.direction at a committed directory', () => {
+  const r = repo({ mode: 'offline', config: { pr: { direction: 'docs/direction' } } });
+  const cfg = loadConfig(r.root);
+  assert.equal(cfg.pr.direction, 'docs/direction');
+  // The group merges key by key, so the sibling it did not set still defaults.
+  assert.equal(cfg.pr.ledger, '.orchestra/pr-log.jsonl');
+  assert.ok(!cfg.defaulted.includes('pr.direction'));
+  assert.ok(cfg.defaulted.includes('pr.ledger'));
+  r.cleanup();
+});
