@@ -242,9 +242,9 @@ test('initProject: writes .orchestra/.gitignore with exactly the paths the plugi
   const text = readFileSync(join(d, '.orchestra', '.gitignore'), 'utf8');
   const lines = text.split('\n').filter(Boolean).filter((l) => !l.startsWith('#'));
   assert.deepEqual(lines, [
-    'state.json', 'journal.jsonl', 'inbox.jsonl', 'archive.jsonl', 'conductor.beat.json',
-    'tick.lock', '.queue.lock', 'drafts/', 'roadmaps/', 'worktrees/', 'images/', 'gate/', 'tick.sh',
-    '*.log', '*.err', '*.tmp',
+    'state.json', 'journal.jsonl', 'inbox.jsonl', 'archive.jsonl', 'pr-log.jsonl',
+    'conductor.beat.json', 'tick.lock', '.queue.lock', 'drafts/', 'roadmaps/', 'direction/',
+    'worktrees/', 'images/', 'gate/', 'tick.sh', '*.log', '*.err', '*.tmp',
   ]);
   // Neither of the two committed paths under `.orchestra/` is ignored.
   assert.equal(lines.includes('config.json'), false);
@@ -279,6 +279,30 @@ test('initProject: the written .gitignore actually hides every real atomic-write
   writeFileSync(join(r.root, '.orchestra', 'roadmaps', 'demo.md'), '---\nroadmap: demo\n---\n');
   mkdirSync(join(r.root, '.orchestra', '.queue.lock'));
   writeFileSync(join(r.root, '.orchestra', '.queue.lock', 'pid'), '99999');
+
+  const status = r.git('status', '--porcelain');
+  assert.equal(status.trim(), '', `expected git status to report nothing untracked, got:\n${status}`);
+});
+
+test('initProject: the written .gitignore hides the pull-request ledger and the direction memory', () => {
+  // `cfg.pr.ledger` and `cfg.pr.direction` default under `.orchestra/`, and the whole point of that
+  // default is stated in `lib/config.mjs` and in the pr-review spec: a review run adds NOTHING to
+  // the repository it is reviewing. The first cut of GITIGNORE named neither, so a sweep's ledger
+  // and every direction principle a decline wrote were `??` in `git status` and one `git add .`
+  // away from being committed into somebody else's repository. Same idiom as the test above: a real
+  // repo, a real `init`, the real files, and `git status` must report nothing.
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  initProject(r.root, { mode: 'offline' });
+  r.git('add', '.orchestra/config.json', '.orchestra/.gitignore', 'CLAUDE.md');
+  r.git('commit', '-q', '-m', 'opt in');
+
+  // Written exactly where the defaults put them, so the assertion is about the shipped config and
+  // not about a path this test invented.
+  writeFileSync(join(r.root, DEFAULTS.pr.ledger), '{"pr":91,"verdict":"merge"}\n');
+  mkdirSync(join(r.root, DEFAULTS.pr.direction));
+  writeFileSync(join(r.root, DEFAULTS.pr.direction, 'DIRECTION.md'), '# Principles\n');
+  writeFileSync(join(r.root, DEFAULTS.pr.direction, 'no-committed-build-output.md'), '# A rule\n');
 
   const status = r.git('status', '--porcelain');
   assert.equal(status.trim(), '', `expected git status to report nothing untracked, got:\n${status}`);

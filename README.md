@@ -66,11 +66,11 @@ written in — this one happens to be Rust:
 
 `pr.ledger` is the append-only record of what was reviewed, at which head and with what verdict;
 `pr.direction` is the directory holding the principles a decline writes down. Both default under
-`.orchestra/`, so a review run keeps its memory out of the project's own tree — a fresh clone starts
-with none, deliberately. **Neither path is in the `.orchestra/.gitignore` that `init` writes today**,
-which covers the register, the drafts, the published roadmaps and the worktrees; ignore them
-yourself, or point `pr.direction` at `docs/direction` and commit the principles like anything else,
-which is the other reason it is a key rather than a fixed path.
+`.orchestra/` and both are in the `.orchestra/.gitignore` that `init` writes, so **a review run adds
+nothing to the repository it is reviewing** — which is the founding constraint of the whole feature.
+A fresh clone therefore starts with no memory, deliberately. A project that would rather share its
+principles points `pr.direction` at `docs/direction` and commits them like anything else, which is
+the reason it is a key rather than a fixed path.
 
 Gates run in the order written — cheapest first is the project's own call, not a rule this plugin
 enforces — and `skipWhenAllPathsMatch` skips a gate only when every changed path matches one of its
