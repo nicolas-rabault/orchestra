@@ -1177,14 +1177,19 @@ fetch it rather than launching anyway.
 
 Everything else is the protocol you already run. The framing pass IS the sweep's own step 6 — the
 board, then the grouped questions, with `options` on every `pending[]` item — so a review row
-arrives with its forks already answered, and its one interruption is the hands-on gate: the
-maintainer opens the server the worker started and tries the pull request themselves.
+arrives with its forks already answered. Its one interruption, **when it has one**, is the hands-on
+gate: a pull request that ships something a human looks at or uses gets the same treatment as any
+other such row — the maintainer opens the server the worker started and tries the PR themselves. A
+pull request that ships nothing of the sort gets no interruption at all, exactly as
+`## The hands-on gate` says of everything else; its verdict and its pending review are reported at
+the checkpoint like any other report. The review brief's own dev-server line is conditional for
+this reason.
 
 **How a row ends.** Never by anything anybody types.
 
 | The worker's verdict | What happens | Status |
 |---|---|---|
-| `merge` | the maintainer clicks Merge on GitHub; the row's recorded commit subjects reach main | `landed`, derived, on a later tick |
+| `merge` | the maintainer clicks Merge on GitHub; the row's recorded subjects — the PR title among them — reach main | `landed`, derived, on a later tick |
 | `review` | a pending review is left; the ball is with the maintainer, then the author | `review` until the PR moves |
 | `decline` | a direction file is written and a decline note drafted to paste | `dropped` |
 | `dismissed` | one ledger line and nothing else | `dropped` |
@@ -1194,27 +1199,39 @@ The ledger's word is `dismissed`, not `dismiss`: `orchestra pr log` accepts `rev
 
 Three mechanical consequences, each verified against the derivation and none of them obvious:
 
-- **`landed` needs two things you own.** The row's `subjects` must carry the PR's commit subjects
-  (record them the way step 6 has you record a branch's, before the row can end), and THIS
-  checkout's main must have fetched the merge — `gatherGit` reads local refs and nothing fetches for
-  you. Until it does, a merged PR still reads `claimed`.
+- **`landed` needs two things you own.** First, the row's `subjects` must carry **the pull
+  request's TITLE alongside the branch's commit subjects** — record them the way step 6 has you
+  record a branch's, before the row can end. The title is not optional and it is not decoration:
+  GitHub's squash-merge writes the PR title as the commit's subject, so a row recorded without it
+  misses `deriveLocalStatus`'s match on EVERY squash-merged pull request, not on the one edge case
+  below. Second, THIS checkout's main must have fetched the merge — `gatherGit` reads local refs and
+  nothing fetches for you. Until both hold, a merged PR still reads `claimed`.
 - **`dropped` is terminal and stops the scheduler** (`orchestra ready` skips it, `orchestra archive`
   files the row away), but the board derives from git, which has no `dropped` to derive: so
   `orchestra roadmap board` prints one `correction:` line for such a row until the next sweep drops
   the task or `archive` takes the row. That is noise, not a disagreement. Say so at the checkpoint;
   do not "fix" the row by changing its status back.
-- **Delete the worktree and the `pr<number>-review` ref when a row ends**, on every verdict. No gate
-  runs on a review row, so nothing else will, and a leftover ref keeps the board reading `claimed`
-  and collides with the next sweep's fetch of the same PR.
+- **Delete the worktree and the `pr<number>-review` ref only once the row is TERMINAL** — `dropped`
+  after a `decline` or a `dismissed`, or `landed` once the merge has derived. No gate runs on a
+  review row, so nothing else will delete them, and a leftover ref on a terminal row keeps the board
+  deriving `claimed` and collides with the next sweep's fetch of the same PR.
+  **On `merge` before it has landed, and on `review`, the ref is load-bearing and stays.** It is
+  what `deriveLocalStatus` reads as `claimed`, so deleting it early is precisely what manufactures a
+  phantom relaunch: `reconcileTasks` sees the ref gone, writes the row back to `todo` with
+  `ref gone; check worktree before relaunch`, `computeReadySet` admits it to the ready set, and the
+  tick prints a `launch:` line for a pull request the maintainer has already been asked about. A
+  second worker then drafts a second pending review on a PR that already has one.
 
 **The one thing you never do: merge the pull request, or run `orchestra land` on a review row.** The
 gate is for branches this project owns. `pr-triage`'s first hard rule is the worker's and it is
 yours: the only write anywhere on GitHub is a PENDING review, private to the maintainer. No merge,
 no close, no label, no assignee, no comment. Orchestra having a merge gate does not soften it.
 
-**The squash-merge hole, stated rather than discovered.** A squash whose commit subject the
-maintainer rewrote is a subject the register never recorded, so §2's derivation cannot see the
-merge and the row reads `claimed` after a real one. The next sweep catches it — it reads the pull
+**The squash-merge hole, stated rather than discovered.** Recording the title is what makes an
+ORDINARY squash derivable: GitHub writes the PR title as the squashed commit's subject and the row
+carries it. What is left is narrower — a squash whose subject the maintainer REWROTE in the merge
+box is a subject the register never recorded, so §2's derivation cannot see the merge and the row
+reads `claimed` after a real one. The next sweep catches it — it reads the pull
 request's state from GitHub, not from git — so the failure is bounded by one sweep interval and is
 never silent. It is deliberately not worth code: recording a second identity for the same commit
 would be a second source of truth for a fact GitHub already answers.

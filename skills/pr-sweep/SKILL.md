@@ -263,7 +263,7 @@ Neither is enforced by code. Both cost a running worker if you get them wrong.
 - **Reconcile against GitHub, and write `dropped` for a PR closed without merging.** This sweep is
   the ONLY thing that can see that. The status derivation has no input that changes when a PR
   closes, so such a row sits `claimed` for ever otherwise. A row whose PR is no longer in
-  `orchestra pr scan`'s open list, and whose commit subjects are not on main, is a PR that was
+  `orchestra pr scan`'s open list, and whose recorded subjects are not on main, is a PR that was
   closed unmerged: set its register row's `status` to `dropped`, drop the task from the rewritten
   roadmap, delete its worktree and its `pr<N>-review` ref, and say so at the checkpoint.
 
@@ -362,15 +362,16 @@ optional: a row left `todo` is a row `orchestra ready` will launch.
   orchestra pr log <N> merge --head <headRefOid> --comment <lastOtherCommentId> --note "why"
   ```
   Tell them it is theirs to click. This row ends `dropped` rather than `landed`, and that is honest:
-  nothing reviewed it and nothing recorded its commit subjects, so there is nothing for the
-  derivation to find on main. The next scan will show the PR gone from the open list once they have
+  nothing reviewed it and nothing recorded its title or its commit subjects, so there is nothing for
+  the derivation to find on main. The next scan will show the PR gone from the open list once they have
   clicked.
 
 Both `--head` and `--comment` come from the scan, never refetched: the watermark must record what
 was actually looked at, not what the PR looks like a minute later.
 
 A `merge` the maintainer wants CONFIRMED is not this case — it is the ordinary one. Its row keeps
-its worker, the conductor records the PR's commit subjects on the row (protocol step 6), and it then
+its worker, the conductor records the PR's title and its commit subjects on the row (protocol step
+6, and `## Pull-request review rows` for why the title is the load-bearing half), and it then
 reads `landed` on its own once the maintainer clicks and this checkout has fetched main. Nobody
 types that status.
 
