@@ -1,10 +1,10 @@
 # Orchestra
 
-A Claude Code plugin that conducts a project's development with background worker sessions, a monitoring page, and a one-at-a-time merge gate. Roadmaps live on GitHub or as committed markdown.
+A Claude Code plugin that conducts a project's development with background worker sessions, a monitoring page, and a one-at-a-time merge gate. Roadmaps live on GitHub or as local markdown files.
 
 **Two modes:**
 - **Online:** Roadmaps published as GitHub issues in any repository
-- **Offline:** Roadmaps stored as committed markdown files
+- **Offline:** Roadmaps stored as markdown files under `.orchestra/roadmaps`, gitignored
 
 For the full design and specification, see [docs/specs/2026-09-02-orchestra-plugin-design.md](docs/specs/2026-09-02-orchestra-plugin-design.md).
 
@@ -28,8 +28,14 @@ a test enforces that.
 orchestra init --mode offline   # or --mode online, if roadmaps should be GitHub issues
 ```
 
-`offline` keeps roadmaps as committed markdown; `online` publishes them as GitHub issues and needs
-the `gh` CLI. `init` writes `.orchestra/config.json` (detecting a build system and proposing gates
+`offline` keeps roadmaps as markdown under `.orchestra/roadmaps` — gitignored, and **never
+committed by orchestra itself**: offline mode is one machine, one register, one owner, so a roadmap
+is this checkout's working state rather than something the repository carries. A project that wants
+its roadmaps shared points `roadmaps.published` at a committed directory (`docs/roadmaps`, say) and
+commits them itself; `publish` writes the file and stops there either way. `online` publishes them
+as GitHub issues and needs the `gh` CLI.
+
+`init` writes `.orchestra/config.json` (detecting a build system and proposing gates
 where it can, asking rather than guessing at everything it cannot), `.orchestra/.gitignore`, and
 appends the project's hard rules to `CLAUDE.md`. Run `orchestra init --detect --json` first to see
 what it would propose without writing anything, and `orchestra doctor` afterwards to see the

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync,
 } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
 import { loadConfig } from '../lib/config.mjs';
@@ -39,8 +38,9 @@ test('drafts are visible and are NOT tasks', () => {
   assert.deepEqual(ctx.store.list(), []);
 });
 
-test('publish moves the draft, commits it, and makes its tasks visible', () => {
+test('publish moves the draft, touches git not at all, and makes its tasks visible', () => {
   const ctx = offline();
+  const head = ctx.r.git('rev-parse', 'HEAD').trim();
   const p = draft(ctx);
   const res = ctx.store.publish(p);
   assert.equal(res.slug, 'demo');
@@ -51,11 +51,11 @@ test('publish moves the draft, commits it, and makes its tasks visible', () => {
   assert.equal(readFileSync(published, 'utf8'), ROADMAP);
   assert.ok(!existsSync(p), 'the draft is gone');
 
-  const log = execFileSync('git', ['log', '--oneline', '-1'], { cwd: ctx.r.root, encoding: 'utf8' });
-  assert.match(log, /roadmap: publish demo/);
-
-  const tracked = execFileSync('git', ['ls-files', ctx.cfg.roadmaps.published], { cwd: ctx.r.root, encoding: 'utf8' });
-  assert.match(tracked, /demo\.md/);
+  // A publish is a local act: no commit of its own, and nothing left staged for somebody else's
+  // next one. The file lives under `.orchestra/`, which `orchestra init` gitignores.
+  assert.equal(ctx.r.git('rev-parse', 'HEAD').trim(), head);
+  assert.equal(ctx.r.git('diff', '--cached', '--name-only').trim(), '');
+  assert.equal(ctx.r.git('ls-files', ctx.cfg.roadmaps.published).trim(), '');
 
   assert.deepEqual(ctx.store.list().map((t) => t.key), ['demo/D1']);
   assert.deepEqual(ctx.store.programmes().map((p2) => p2.slug), ['demo']);
@@ -94,27 +94,12 @@ test('the overlay is EMPTY offline — the board derives from git and the regist
   assert.equal(ctx.store.overlay().size, 0);
 });
 
-test('republishing a byte-identical draft is a clean no-op: no error, no second commit, draft still removed', () => {
+test('republishing a byte-identical draft is a clean no-op: no error, draft still removed', () => {
   const ctx = offline();
   ctx.store.publish(draft(ctx));
-  const commitCount = () => execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: ctx.r.root, encoding: 'utf8' }).trim();
-  const before = commitCount();
   const p2 = draft(ctx);
   assert.doesNotThrow(() => ctx.store.publish(p2));
-  assert.equal(commitCount(), before, 'a byte-identical republish makes no new commit');
-  assert.ok(!existsSync(p2), 'the draft is gone even though nothing was committed');
-});
-
-test('after a successful publish the working tree is clean for the published path, and the draft is gone', () => {
-  const ctx = offline();
-  const p = draft(ctx);
-  ctx.store.publish(p);
-  const status = execFileSync(
-    'git', ['status', '--porcelain', '--', ctx.cfg.roadmaps.published],
-    { cwd: ctx.r.root, encoding: 'utf8' },
-  );
-  assert.equal(status, '');
-  assert.ok(!existsSync(p));
+  assert.ok(!existsSync(p2), 'the draft is gone');
 });
 
 test('a draft whose filename disagrees with its frontmatter slug is listed and published under the frontmatter slug', () => {
