@@ -267,14 +267,36 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    are sitting right there — especially then, because a question asked mid-conversation is exactly
    the one that never gets written down.
 
-   **And withdraw a pending item the moment its question dies.** An item you leave behind after
-   the user has answered it in chat, or after events have overtaken it, stays on the page as a
-   live question — and they will answer it, hours later, in good faith. In planetCraft on
-   2026-08-12 a launch question from 17:43 was answered at 22:09 with "keep the box quiet" while
-   the same user had told the conductor in chat at 17:56 to prioritise three tracks; the two
-   readings were both coherent and the conductor could only hand the contradiction back. Clearing
-   the item at 17:56 would have prevented all of it. When a chat answer arrives, clear the item it
-   answers in the same write.
+   **And retire a pending item the moment its question dies — MOVE IT, never delete it.** An item
+   you leave behind in `pending[]` after the user has answered it in chat, or after events have
+   overtaken it, stays on the page as a live question — and they will answer it, hours later, in
+   good faith. In planetCraft on 2026-08-12 a launch question from 17:43 was answered at 22:09 with
+   "keep the box quiet" while the same user had told the conductor in chat at 17:56 to prioritise
+   three tracks; the two readings were both coherent and the conductor could only hand the
+   contradiction back. Retiring the item at 17:56 would have prevented all of it. When a chat answer
+   arrives, move the item it answers in the same write.
+
+   **The destination is `answered[]`, an array on the same row, and the item arrives there with the
+   `askedAt` it already had plus an `answeredAt`** — UTC, taken and not typed, exactly as `askedAt`
+   was. Keep only what a clock needs, `id`, `kind`, `askedAt`, `answeredAt`: the words are in the
+   journal, and the register is rewritten every tick.
+
+   ```json
+   "answered": [{"id":"c2-playtest-1","kind":"playtest",
+                 "askedAt":"2026-08-13T17:57:00Z","answeredAt":"2026-08-13T18:11:42Z"}]
+   ```
+
+   Deleting the item instead destroys the ask side of the only stamped pair in orchestra a model
+   never wrote: how long a question waits on the user becomes unmeasurable. In planetCraft that made
+   `retex verify` return `not-comparable` on the same row for two consecutive programmes — and that
+   latency is the entire justification of the tick's notification rule (step 5), 8 to 15 minutes
+   when the user knows something is waiting against 2 to 8 hours when they do not. Moving the item
+   costs one line and keeps the pair.
+
+   **The non-negotiable half is held more strongly by the move than it was by the deletion**, not
+   less: the page renders `pending[]`, so a question that has left it cannot be offered again — the
+   invariant is structural instead of resting on the page filtering correctly. Never keep an
+   answered item in `pending[]` with a flag on it.
 
    Two additions the plugin's code earns: `pending[]` is read by **more than the page** — by
    `orchestra ready` (its `WAITING:` line, which reports unanswered items older than thirty
@@ -285,7 +307,8 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
 
 3. **When answers reach you — by the `orchestra-inbox` hook or by
    `orchestra inbox` — stamp `conductor.inboxSeen`** with the newest timestamp you were shown, in
-   the same write that clears the answered `pending[]` items. Forget it and the same answers come
+   the same write that moves the answered `pending[]` items into `answered[]`. Forget it and the
+   same answers come
    back next tick — a repeated relay, never a lost one. The stamp is a single shared watermark, so
    it says only "somebody has read this far": never stamp past a batch you have not actually
    relayed to its worker.
@@ -726,7 +749,8 @@ started *after* the hold was issued.
    defect the user had already described, and three tasks launched half an hour after the user had
    said to keep the machine quiet. Here the fresh session that meets that same gate is the
    heartbeat tick. Whether the text arrives by hook or by this command, the obligation is the
-   same one: relay verbatim, clear the `pending[]` item, journal an `answer`, stamp
+   same one: relay verbatim, move the `pending[]` item into `answered[]` with its `answeredAt`,
+   journal an `answer`, stamp
    `conductor.inboxSeen` — the journal's third obligation is this same mechanic seen from the
    cursor's side.
 

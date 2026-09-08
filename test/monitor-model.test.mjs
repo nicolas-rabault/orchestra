@@ -611,3 +611,39 @@ test('a row with no base still branches from the main branch', () => {
   assert.equal(node.base, null);
   assert.match(node.invoke.lines[0], /-b lod\/c2-derived-switch main$/);
 });
+
+// ---- an answered question keeps its clock, and `answered[]` is authority over `pending[]` ----
+// The conductor MOVES a dead item into `answered[]` rather than deleting it, so the
+// `askedAt`/`answeredAt` pair a retrospective measures survives — the one stamped pair in orchestra
+// no model ever wrote. The register is rewritten whole at every tick, so "moved into `answered[]`,
+// still listed in `pending[]`" is a real transient state; if the page trusted `pending[]` alone it
+// would put a dead question back on screen for as long as that write lasts. That is the shape of
+// the 2026-08-12 contradiction: a question answered in chat at 17:56, answered again from the page
+// at 22:09, both readings coherent.
+{
+  const item = { id: 'c2-hands-on-1', kind: 'hands-on', ask: 'does it still tremble?',
+    askedAt: '2026-08-12T09:00:00.000Z' };
+  const retired = { id: 'c2-hands-on-1', kind: 'hands-on',
+    askedAt: '2026-08-12T09:00:00.000Z', answeredAt: '2026-08-12T09:25:00.000Z' };
+
+  test('buildModel: an item retired into answered[] is not rendered, even while pending[] still lists it', () => {
+    const [node] = buildModel({ ...base,
+      register: [regRow({ pending: [item], answered: [retired] })] }).nodes;
+    assert.deepEqual(node.pending, []);
+    assert.equal(waitsOnUser(node), false);
+  });
+
+  test('buildModel: a sibling question that was NOT answered still shows', () => {
+    const open = { id: 'c2-question-2', kind: 'question', ask: 'merge it?' };
+    const [node] = buildModel({ ...base,
+      register: [regRow({ pending: [item, open], answered: [retired] })] }).nodes;
+    assert.deepEqual(node.pending.map((p) => p.id), ['c2-question-2']);
+    assert.equal(waitsOnUser(node), true);
+  });
+
+  test('buildModel: a row with no answered[] at all is unchanged', () => {
+    const [node] = buildModel({ ...base, register: [regRow({ pending: [item] })] }).nodes;
+    assert.deepEqual(node.pending.map((p) => p.id), ['c2-hands-on-1']);
+    assert.equal(waitsOnUser(node), true);
+  });
+}

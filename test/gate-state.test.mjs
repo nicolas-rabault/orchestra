@@ -255,15 +255,29 @@ test('the worktree and the branch are two independent cleanups', () => {
   const calls = [];
   const notes = S.cleanupAfterLanding({
     branch: 'b', worktree: '/w',
-    hasUncommittedTracked: () => false,
-    untrackedFiles: () => ['scratch.txt'],
+    dirtyFiles: () => [],
     removeWorktree: () => { calls.push('rm'); return false; },
     deleteBranch: () => { calls.push('del'); return true; },
     provenMerged: () => true,
     unsetUpstream: () => true,
   });
   assert.deepEqual(calls, ['rm', 'del']);
-  assert.match(notes[0], /worktree \/w kept .*scratch\.txt/);
+  assert.match(notes[0], /worktree \/w kept — git refused/);
+});
+
+test('a dirty worktree is removed anyway, and the note names what went with it', () => {
+  // The landing's precondition proved this tree clean under the lock; only the rebase and the gates
+  // have written to it since. Keeping it for a coverage report kept the landed branch alive with it.
+  const notes = S.cleanupAfterLanding({
+    branch: 'b', worktree: '/w',
+    dirtyFiles: () => ['coverage.txt', 'src/a.js'],
+    removeWorktree: () => true,
+    deleteBranch: () => true,
+    provenMerged: () => true,
+    unsetUpstream: () => true,
+  });
+  assert.deepEqual(notes,
+    ['worktree /w removed with 2 uncommitted file(s) the gates left behind: coverage.txt, src/a.js']);
 });
 
 test('a pinned upstream is proven past, never forced past', () => {
@@ -274,8 +288,7 @@ test('a pinned upstream is proven past, never forced past', () => {
   let unpinned = false;
   const notes = S.cleanupAfterLanding({
     branch: 'b', worktree: '/w',
-    hasUncommittedTracked: () => false,
-    untrackedFiles: () => [],
+    dirtyFiles: () => [],
     removeWorktree: () => true,
     deleteBranch: () => { calls.push('del'); return unpinned; },
     provenMerged: () => true,
@@ -288,8 +301,7 @@ test('a pinned upstream is proven past, never forced past', () => {
 test('a branch that is not the main branch tip is reported, not forced', () => {
   const notes = S.cleanupAfterLanding({
     branch: 'b', worktree: '/w',
-    hasUncommittedTracked: () => false,
-    untrackedFiles: () => [],
+    dirtyFiles: () => [],
     removeWorktree: () => true,
     deleteBranch: () => false,
     provenMerged: () => false,
