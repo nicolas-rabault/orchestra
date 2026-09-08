@@ -34,10 +34,11 @@ config at all.)
 - **`publish`** is the frontier. What it produces depends on the mode, and that is the only thing
   the mode changes:
   - **offline** — the draft moves to `<roadmaps.published>/<slug>.md` (default
-    `.orchestra/roadmaps/`, gitignored) and the drafting file is gone. From that moment that file
-    *is* the roadmap. Nothing is committed: one machine, one register, one owner, so a roadmap is
-    this checkout's own working state. A project that wants its roadmaps shared points
-    `roadmaps.published` at a committed directory and commits them itself — `publish` never will.
+    `.orchestra/roadmaps/`, excluded from this clone) and the drafting file is gone. From that
+    moment that file *is* the roadmap. Nothing is committed: one machine, one register, one owner,
+    so a roadmap is this checkout's own working state. A project that wants its roadmaps shared
+    points `roadmaps.published` at a committed directory and commits them itself — `publish` never
+    will.
   - **online** — one programme issue plus one issue per task, and the drafting file is deleted.
     From that moment the issues *are* the roadmap.
 
