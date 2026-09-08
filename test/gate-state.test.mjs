@@ -100,6 +100,54 @@ test('only a dirty file the branch also changes can clash', () => {
   assert.deepEqual(S.clashingPaths(['a'], ['b']), []);
 });
 
+test('offlineTraces: a clean branch has nothing', () => {
+  assert.deepEqual(S.offlineTraces({
+    paths: ['src/a.js'],
+    commits: [{ sha: 'abc1234def', body: 'feat: a thing\n\nA body.\n' }],
+    diff: '+++ b/src/a.js\n@@ -1,0 +1,1 @@\n+const a = 1;\n',
+  }), []);
+});
+
+test('offlineTraces: a commit message names the tool', () => {
+  const found = S.offlineTraces({ commits: [{ sha: 'abc1234def', body: 'chore: run orchestra land\n' }] });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].where, 'commit abc1234');
+});
+
+test('offlineTraces: an added line names the tool, located in the new file', () => {
+  const diff = [
+    '+++ b/docs/plan.md',
+    '@@ -1,2 +1,4 @@',
+    ' context one',
+    ' context two',
+    '+a plain line',
+    '+scheduled by orchestra',
+    '',
+  ].join('\n');
+  const found = S.offlineTraces({ diff });
+  assert.deepEqual(found, [{ where: 'docs/plan.md:4', text: 'scheduled by orchestra' }]);
+});
+
+test('offlineTraces: a REMOVED line is not a trace — deleting the block is the fix, not the crime', () => {
+  const diff = '+++ b/CLAUDE.md\n@@ -1,2 +1,1 @@\n context\n-## Working with orchestra\n';
+  assert.deepEqual(S.offlineTraces({ diff }), []);
+});
+
+test('offlineTraces: a force-added path under the excluded directory', () => {
+  const found = S.offlineTraces({ paths: ['.orchestra/tickets.jsonl'] });
+  assert.deepEqual(found, [{ where: 'path .orchestra/tickets.jsonl', text: '.orchestra/tickets.jsonl' }]);
+});
+
+test('offlineTraces: merge_agent counts, and the match is case-insensitive', () => {
+  assert.equal(S.offlineTraces({ commits: [{ sha: 'f00ba12345', body: 'hand to Merge_Agent' }] }).length, 1);
+});
+
+test('offlineTraces: the +++ header itself is not an added line', () => {
+  // Otherwise every file under the excluded directory would be reported twice, once as a path and
+  // once as its own diff header.
+  assert.deepEqual(S.offlineTraces({ diff: '+++ b/.orchestra/x\n@@ -0,0 +1 @@\n+ok\n' }), []);
+});
+
 test('a glob matches within a segment, and ** spans segments including none', () => {
   const m = (g, p) => S.globToRegExp(g).test(p);
   assert.equal(m('docs/**', 'docs/a.md'), true);
