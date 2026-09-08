@@ -448,6 +448,35 @@ test('initProject online: unchanged — the block is appended to CLAUDE.md', () 
 });
 
 // ---------------------------------------------------------------------------------
+// The online → offline flip. A project that ran `init --mode online` already has the block
+// committed in CLAUDE.md and `.orchestra/config.json` + `.orchestra/.gitignore` already tracked.
+// Flipping to offline can only clean the working tree — the two remaining fixes each need a
+// commit, and orchestra writing that commit is the very trace this mode forbids.
+// ---------------------------------------------------------------------------------
+
+test('flip online → offline: the block leaves CLAUDE.md, and what must be committed is named', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  initProject(r.root, { mode: 'online' });
+  r.git('add', '-A'); r.git('commit', '-q', '-m', 'opt in');
+
+  const rep = initProject(r.root, { mode: 'offline', force: true });
+  assert.equal(rep.claude.action, 'rules-file+removed');
+  assert.doesNotMatch(readFileSync(join(r.root, 'CLAUDE.md'), 'utf8'), /Working with orchestra/);
+  assert.deepEqual(rep.tracked.sort(), ['.orchestra/.gitignore', '.orchestra/config.json']);
+  assert.match(rep.message, /git rm --cached/);
+  // Orchestra never writes the commit that finishes this.
+  assert.notEqual(r.git('status', '--porcelain').trim(), '');
+});
+
+test('flip: a CLAUDE.md that only ever held the block is emptied, not deleted', () => {
+  const d = tmpDir();
+  initProject(d, { mode: 'online' });
+  initProject(d, { mode: 'offline', force: true });
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8').trim(), '');
+});
+
+// ---------------------------------------------------------------------------------
 // The CLI, spawned for real — `bin/orchestra init`. `init` is `machine: true`, so every case here
 // runs in a project with no config at all except the `--force` one, which needs an existing config
 // to overwrite.
