@@ -116,24 +116,38 @@ decides anything. Every decision worth a test is in ./state.mjs", so the matcher
 `lib/gate/state.mjs`:
 
 ```js
-export const TRACE = /orchestra|merge_agent/i;
+export const TRACE = /orchestra(?![A-Za-z])|merge_agent/i;
 export function offlineTraces({ paths, commits, diff }) // → [{ where, text }]
 ```
+
+`TRACE` matches the tool's own **identifiers**, not generic English, and the negative lookahead is
+what draws that line. `orchestra land`, `run orchestra`, `orchestra-<id>` and
+`.orchestra/config.json` are traces; `orchestrator`, `orchestrate`, `orchestrated`, `orchestration`
+and `Orchestral` are ordinary words that a container-orchestration, CI, data-pipeline or music
+project writes all day. A plain substring would refuse every landing that so much as touched
+`src/orchestrator.ts` — the `paths` check alone would do it — and the decision recorded in §1 leaves
+no key to turn that off, so the refusal's "reword and land again" would be asking for a domain
+directory to be renamed. `merge_agent` carries no lookahead of its own, so `merge_agents` in the
+plural still matches: it is the same identifier.
 
 `land.mjs` supplies the three inputs, all against the rebased branch:
 
 - `paths` — `git diff --name-only <main>...<branch>`, so a force-added file under `.orchestra/`
   cannot slip past the exclusion.
-- `commits` — `git log --format=%H%x00%B%x00 <main>..<branch>`, every message the fast-forward
-  will carry. The trailing NUL is what makes a multi-paragraph body splittable; `%B` alone is not.
+- `commits` — `git log -z --format=%H%x00%B <main>..<branch>`, every message the fast-forward will
+  carry. `-z` is what makes a multi-paragraph body splittable: it terminates each *entry* with a NUL
+  instead of a newline, so the whole output splits into alternating sha and body fields. A trailing
+  `%x00` in the format would emit a second NUL per entry and leave the reader pairing fields around
+  the empty strings between them.
 - `diff` — `git diff <main>...<branch>`, of which only **added** lines are scanned (`^\+`, never
   the `+++` header), located by the `+++ b/<path>` in force. A deletion that removes the word is
   not a trace, which matters for §6's removal of the `CLAUDE.md` block.
 
 Refusal follows the shape a refusing gate already uses a few lines below: `mark(p, branch, 'held',
 …)` with a reason naming `offline-trace`, then `return S.EXIT.refused`. Stderr lists each offending
-place as `<file>:<line>` or `commit <short sha>` with the matching text, capped at the first ten
-with a count of the rest. The check is skipped entirely when `cfg.mode !== 'offline'`.
+place with the matching text, in one of three shapes — `<file>:<line>` for an added line, `commit
+<short sha>` for a message, and `path <p>` for a changed file whose own name says it — capped at the
+first ten with a count of the rest. The check is skipped entirely when `cfg.mode !== 'offline'`.
 
 ## 6. The rules reach agents through the brief
 
@@ -143,10 +157,18 @@ never committed — and the conductor's brief step in `skills/orchestra/SKILL.md
 file's content when it exists. One template, two deliveries: appended to `CLAUDE.md` online,
 carried by the brief offline.
 
-`templates/CLAUDE-rules.md` gains one rule, which is the early warning §5 refuses late on:
+`templates/CLAUDE-rules.md` gains one rule, which is the early warning §5 refuses late on. One
+template and two deliveries means the rule reaches ONLINE projects too, appended to a committed
+`CLAUDE.md` whose own heading is `## Working with orchestra` and which names `merge_agent` and
+`orchestra land` two bullets above — so the rule scopes itself in its own text rather than the
+template being split in two, and §1's "Online mode is unchanged" survives:
 
-> **Nothing that is committed names orchestra** — not a commit message, not a spec, not a plan, not
-> a comment. The work is the project's; the tool that scheduled it is not part of the record.
+> **Offline mode only: nothing that is committed names orchestra** — not a commit message, not a
+> spec, not a plan, not a comment. The work is the project's; the tool that scheduled it is not part
+> of the record. The merge gate refuses a landing that breaks this, naming each offending place as
+> `<file>:<line>` for an added line, `commit <sha>` for a message, or `path <p>` for a file whose
+> own name says it. Online this rule does not apply: the roadmap is public GitHub issues, and
+> visibility is the point there.
 
 **Flipping online → offline.** `init --force --mode offline` finds the block already in `CLAUDE.md`,
 and possibly already committed. It removes the block from the file — a working-tree edit — and
@@ -171,9 +193,21 @@ Online, the row is absent.
 
 - A commit made by a human directly on the main branch, outside the gate. No hook and no process
   sees it.
-- History that already holds a trace. `doctor` reports it, `init` names it, and neither rewrites it.
+- History that already holds a trace. `init` names it at the flip and says what to commit by hand;
+  `doctor` does **not** — §7's three probes read the working tree and the index, and nothing here
+  walks the log. So the row scopes its own word rather than making a claim about the repository:
+  `clean (working tree and index; history is not checked)`. Neither rewrites it.
+- Prose that describes an automated tool without naming it. `TRACE` matches the tool's identifiers,
+  not generic English (§5), so a commit whose subject is *"docs: the merge gate refuses a landing
+  whose branch names the tool"*, and a committed line reading *"A spec that mentions the merge gate,
+  the conductor and the dev agents."*, both land on main in offline mode with exit 0 — measured on
+  2026-09-08, not assumed. Any reader infers an automated merge gate from either. What ships
+  therefore guarantees that no commit contains the strings `orchestra` or `merge_agent`, which is
+  narrower than §1's sentence about a developer being unable to tell that orchestra is used. Where
+  the gap will actually materialise is `docs/specs`, `docs/plans` and `docs/results`: those are
+  committed by design, and they are written by the design workers orchestra itself directs.
 - A project whose own vocabulary holds the word: the guard refuses it, by decision. The refusal
-  names the file and line, so the reword is mechanical.
+  names each offending place in one of §5's three shapes, so the reword is mechanical.
 
 ## 9. Tests
 
