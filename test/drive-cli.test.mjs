@@ -137,7 +137,9 @@ test('drive resumes every stopped worker with the relay verbatim in the message 
 test('the receipt is written by the turn that returned, never before: a turn still running leaves the relay owed', () => {
   withFakeClaude((fake) => {
     const r = fleet();
-    fake.sleep(3);
+    // Held, not slept: the three assertions below all have to land while the turn is still running,
+    // and a turn that runs for N seconds gives them N seconds of node boots to fit into.
+    fake.hold();
     const { code, out } = run(r.root, 'drive', 'demo/R1', '--for=1');
     assert.equal(code, 12, out);
     assert.match(out, /^still running: demo\/R1 \(pid \d+, \d+s in\) — run `orchestra drive` again; the turns go on without you$/m);
@@ -145,6 +147,7 @@ test('the receipt is written by the turn that returned, never before: a turn sti
     // While it runs, `ready` and a second `drive` both see a driven turn, not a stopped worker.
     assert.match(run(r.root, 'ready').out, /^driving: demo\/R1 \[claimed\] — driven turn pid \d+, relay in flight$/m);
     assert.match(run(r.root, 'drive', 'demo/R1', '--for=0').out, /^skip: demo\/R1 — a turn is already running/m);
+    fake.release();
     const turn = untilEnded(turnPaths(r.root, 'demo-r1').record);
     assert.equal(turn.exit, 0);
     assert.ok(turn.delivered);
@@ -179,11 +182,13 @@ test('a deliveredAt stamped by hand, with no receipt, is still undelivered — t
 test('a relay rewritten while its turn ran is not the one that was delivered, and gets no receipt', () => {
   withFakeClaude((fake) => {
     const r = fleet();
-    fake.sleep(2);
+    fake.hold();
     run(r.root, 'drive', 'demo/R1', '--for=0');
     const state = readState(r.root);
     state.tasks.find((t) => t.id === 'demo/R1').relay = { text: 'a second thought', writtenAt: '2026-09-08T09:00:00.000Z' };
     writeState(r.root, state);
+    // The rewrite is what must happen mid-turn; releasing after it is what makes that certain.
+    fake.release();
     const turn = untilEnded(turnPaths(r.root, 'demo-r1').record);
     assert.equal(turn.exit, 0);
     assert.equal(turn.delivered, null);

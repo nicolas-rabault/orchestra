@@ -149,9 +149,16 @@ function fakeBoard() {
   };
 }
 
+// The deadline for every call below that must ANSWER, and it is deliberately far past what the fake
+// needs: the deadline is not the subject of those tests, and its only job is never to fire. 500ms
+// did fire on 2026-09-08 — the suite in full parallel, a node boot losing that race — and a test
+// that goes red for the machine's load says nothing about the code. The test that DOES judge a
+// deadline sets its own, small, below.
+const ANSWERS_IN_TIME_MS = 30_000;
+
 test('readBoard reads a board that answers', () => {
   const { root, bin } = fakeBoard();
-  const r = readBoard(root, { bin, timeoutMs: 2000 }, Date.now());
+  const r = readBoard(root, { bin, timeoutMs: ANSWERS_IN_TIME_MS }, Date.now());
   assert.deepEqual(r, { status: 'ok', rows: [{ key: 'demo/D1', id: 'D1' }], message: null });
 });
 
@@ -174,7 +181,7 @@ test('readBoard serves the last good board as stale on a later failure, and does
   const t0 = 1_700_000_000_000;
 
   setMode('ok');
-  const good = readBoard(root, { bin, timeoutMs: 500 }, t0);
+  const good = readBoard(root, { bin, timeoutMs: ANSWERS_IN_TIME_MS }, t0);
   assert.equal(good.status, 'ok');
   assert.equal(calls(), 1);
 
@@ -182,7 +189,7 @@ test('readBoard serves the last good board as stale on a later failure, and does
   // 30s success cache.
   setMode('fail');
   const t1 = t0 + BOARD_SUCCESS_TTL_MS + 1;
-  const failed = readBoard(root, { bin, timeoutMs: 500 }, t1);
+  const failed = readBoard(root, { bin, timeoutMs: ANSWERS_IN_TIME_MS }, t1);
   assert.equal(failed.status, 'stale');
   assert.deepEqual(failed.rows, good.rows);
   assert.match(failed.message, /the board on screen is the last one that answered/);
@@ -192,13 +199,13 @@ test('readBoard serves the last good board as stale on a later failure, and does
   // not a coincidence of the fake still failing.
   setMode('ok');
   const t2 = t1 + 1000;
-  const stillStale = readBoard(root, { bin, timeoutMs: 500 }, t2);
+  const stillStale = readBoard(root, { bin, timeoutMs: ANSWERS_IN_TIME_MS }, t2);
   assert.equal(stillStale.status, 'stale');
   assert.equal(calls(), 2);
 
   // 60s past the failure, the child is asked again and this time answers.
   const t3 = t1 + 60_000;
-  const recovered = readBoard(root, { bin, timeoutMs: 500 }, t3);
+  const recovered = readBoard(root, { bin, timeoutMs: ANSWERS_IN_TIME_MS }, t3);
   assert.equal(recovered.status, 'ok');
   assert.equal(calls(), 3);
 });
@@ -238,13 +245,15 @@ test('worktreePaths and currentBranch degrade to empty/null for a directory that
 // option — but at a millisecond budget, via the same injectable `timeoutMs` `readBoard` exposes for
 // exactly this reason (its own header comment says why): the production default is 2000ms, and a
 // test that waited for the real value would cost 2s on every run of this file, forever. 50ms against
-// a fake `git` that sleeps 300ms proves the identical mechanism — `execFileSync`'s `timeout` killing
-// a still-running child — with six times the headroom against a loaded machine.
+// a fake `git` that sleeps 5s proves the identical mechanism — `execFileSync`'s `timeout` killing a
+// still-running child — and nothing but the kill can bring it in under the 2s bound. That bound is
+// the machine's, not the code's: it was 300ms against a 0.3s fake, which is headroom on an idle
+// machine only, and this suite runs 68 files at once.
 test('worktreePaths does not hang past its own timeout on a stuck git, and degrades to no worktrees', () => {
-  withFakeBin('git', '#!/bin/sh\nsleep 0.3\n', () => {
+  withFakeBin('git', '#!/bin/sh\nsleep 5\n', () => {
     const start = Date.now();
     const map = worktreePaths('/whatever', 50);
-    assert.ok(Date.now() - start < 300, `took ${Date.now() - start}ms — the timeout did not bound it`);
+    assert.ok(Date.now() - start < 2000, `took ${Date.now() - start}ms — the timeout did not bound it`);
     assert.deepEqual(map, new Map());
   });
 });
@@ -388,14 +397,15 @@ test('listServers with no ports named asks lsof nothing', () => {
 // `lsof` is the canonical binary that hangs on a stale network mount, and this reader must never
 // be able to hang the way an unbounded `readBoard` once could (see its own header comment) —
 // proved here against a REAL hung child, not assumed from reading the `timeout` option. At a
-// millisecond budget, the same way: 50ms against a fake `lsof` that sleeps 300ms costs a tenth of a
-// second instead of two, and is still six times the headroom against a loaded machine — a 2000ms
-// budget against a real production timeout is a test that can fail for load, not for code.
+// millisecond budget, the same way: 50ms against a fake `lsof` that sleeps 5s costs a fraction of a
+// second instead of five, and only the kill can bring it in under the 2s bound. The fake used to
+// sleep 300ms against a 300ms bound, which is headroom on an idle machine only: what the bound has
+// to absorb is the machine's own spawn-and-kill, and this suite runs 68 files at once.
 test('listServers does not hang past its own timeout on a stuck lsof, and reports it honestly', () => {
-  withFakeLsof('#!/bin/sh\nsleep 0.3\n', () => {
+  withFakeLsof('#!/bin/sh\nsleep 5\n', () => {
     const start = Date.now();
     const r = listServers([5210], 50);
-    assert.ok(Date.now() - start < 300, `took ${Date.now() - start}ms — the timeout did not bound it`);
+    assert.ok(Date.now() - start < 2000, `took ${Date.now() - start}ms — the timeout did not bound it`);
     assert.deepEqual(r, { ok: false, list: [] });
   });
 });
