@@ -142,6 +142,35 @@ test('offlineTraces: merge_agent counts, and the match is case-insensitive', () 
   assert.equal(S.offlineTraces({ commits: [{ sha: 'f00ba12345', body: 'hand to Merge_Agent' }] }).length, 1);
 });
 
+// Final review, Important 3: `TRACE` used to be a plain substring, which refused not the tool's
+// name but every English word containing it — so a container-orchestration, CI, data-pipeline or
+// music project could land nothing that touched `src/orchestrator.ts`, with no config key to turn
+// the refusal off. Both halves are pinned here, because narrowing the pattern too far would be the
+// worse failure: it is what makes the whole invariant true.
+test('TRACE matches the tool\'s own identifiers, in every shape it writes them', () => {
+  for (const s of ['orchestra land', 'run orchestra', 'orchestra-a1b2', '.orchestra/config.json',
+    'hand it to merge_agent', 'the merge_agents queue']) {
+    assert.match(s, S.TRACE);
+  }
+});
+
+test('TRACE does not match an English word that merely contains it', () => {
+  for (const s of ['src/orchestrator.ts', 'docs/orchestration/pipeline.md',
+    'feat: orchestrate the workers', 'a well-orchestrated release', 'Orchestral suite in D']) {
+    assert.doesNotMatch(s, S.TRACE);
+  }
+});
+
+test('offlineTraces: a path in a project whose own vocabulary contains the word is not a trace', () => {
+  // The consequence the pattern exists to avoid, at the level that actually refused the landing:
+  // `paths` alone was enough to hold every branch touching an orchestration directory.
+  assert.deepEqual(S.offlineTraces({
+    paths: ['src/orchestrator.ts', 'docs/orchestration/pipeline.md'],
+    commits: [{ sha: 'abc1234def', body: 'feat: orchestrate the workers\n' }],
+    diff: '+++ b/src/orchestrator.ts\n@@ -1,0 +1,1 @@\n+// a well-orchestrated release\n',
+  }), []);
+});
+
 test('offlineTraces: the +++ header itself is not an added line', () => {
   // Otherwise every file under the excluded directory would be reported twice, once as a path and
   // once as its own diff header.
