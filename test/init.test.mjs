@@ -149,6 +149,23 @@ test('detect: a malformed package.json is read as absent, not thrown', () => {
   assert.equal(detect(d).buildSystem, null);
 });
 
+test('detect offline: no ledger — the ticket file is local state, not something main carries', () => {
+  const d = tmpDir();
+  assert.deepEqual(detect(d, { mode: 'offline' }).ledgers, []);
+});
+
+test('detect: online and mode-less both keep the ticket ledger', () => {
+  const d = tmpDir();
+  assert.deepEqual(detect(d, { mode: 'online' }).ledgers, [DEFAULTS.tickets.file]);
+  assert.deepEqual(detect(d).ledgers, [DEFAULTS.tickets.file]);
+});
+
+test('initProject offline: the written config carries no ledgers', () => {
+  const d = tmpDir();
+  const rep = initProject(d, { mode: 'offline' });
+  assert.deepEqual(rep.config.ledgers, []);
+});
+
 // ---------------------------------------------------------------------------------
 // initProject()
 // ---------------------------------------------------------------------------------
@@ -211,12 +228,12 @@ test('initProject: --force overwrites an existing config', () => {
 test('initProject: a fresh project writes mode, the detected gates/branchTests, and the ledger', () => {
   const d = tmpDir();
   pkg(d, { test: 'vitest run', 'test:branch': 'vitest run --changed', knip: 'knip' });
-  const report = initProject(d, { mode: 'offline' });
+  const report = initProject(d, { mode: 'online' });
   assert.equal(report.ok, true);
   assert.equal(report.action, 'initialized');
   const written = JSON.parse(readFileSync(join(d, '.orchestra', 'config.json'), 'utf8'));
   assert.deepEqual(written, {
-    mode: 'offline',
+    mode: 'online',
     ledgers: [DEFAULTS.tickets.file],
     gates: [{ name: 'deadcode', cmd: 'npm run knip' }, { name: 'suite', cmd: 'npm test' }],
     branchTests: 'npm run test:branch',
@@ -229,9 +246,9 @@ test('initProject: a fresh project writes mode, the detected gates/branchTests, 
 
 test('initProject: an empty project writes only mode and the ledger — nothing invented', () => {
   const d = tmpDir();
-  const report = initProject(d, { mode: 'offline' });
+  const report = initProject(d, { mode: 'online' });
   const written = JSON.parse(readFileSync(join(d, '.orchestra', 'config.json'), 'utf8'));
-  assert.deepEqual(written, { mode: 'offline', ledgers: [DEFAULTS.tickets.file] });
+  assert.deepEqual(written, { mode: 'online', ledgers: [DEFAULTS.tickets.file] });
   assert.equal('gates' in written, false);
   assert.equal('branchTests' in written, false);
 });
