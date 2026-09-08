@@ -15,8 +15,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
-import { loadConfig } from '../lib/config.mjs';
+import { loadConfig, loadConfigOrThrow } from '../lib/config.mjs';
 import { commitLedgers } from '../lib/gate/land.mjs';
+import { TRACE } from '../lib/gate/state.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 const repos = [];
@@ -247,6 +248,35 @@ test('a dirty configured ledger is committed alone; something else staged in the
   // past its own pathspec to sweep it in.
   const status = r.git('status', '--porcelain', '--', 'unrelated.txt');
   assert.match(status, /^M {2}unrelated\.txt/);
+});
+
+// Offline, nothing orchestra produces may enter a commit (spec
+// docs/specs/2026-09-08-offline-leaves-no-trace-design.md §4): the repository is shared with
+// developers who must not learn the tool exists, and a commit body naming "the merge gate" in the
+// shared history of main is exactly that leak, even though this path only fires when a project has
+// configured a `ledgers` entry by hand.
+test('commitLedgers offline: the message names no tool', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { ledgers: ['ledger.jsonl'] });
+  writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":1}\n');
+  r.git('add', 'ledger.jsonl');
+  r.git('commit', '-q', '-m', 'ledger');
+  writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":2}\n');
+  assert.equal(commitLedgers(loadConfigOrThrow(r.root)), true);
+  const body = r.git('log', '-1', '--format=%B');
+  assert.doesNotMatch(body, TRACE);
+});
+
+// The counterpart: online there is nothing to hide, and the prose that explains why the ledger
+// commit exists (naming the merge gate as the only actor allowed to write main) is worth keeping —
+// this task must not touch the online body at all.
+test('commitLedgers online: keeps the prose that explains the gate', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { mode: 'online', ledgers: ['ledger.jsonl'] });
+  writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":1}\n');
+  r.git('add', 'ledger.jsonl');
+  r.git('commit', '-q', '-m', 'ledger');
+  writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":2}\n');
+  commitLedgers(loadConfigOrThrow(r.root));
+  assert.match(r.git('log', '-1', '--format=%B'), /merge gate/);
 });
 
 // The lock `commitLedgers` was missing (task 2 of P5): a torn write between another writer's
