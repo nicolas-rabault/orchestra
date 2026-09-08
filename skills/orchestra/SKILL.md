@@ -216,13 +216,14 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    `kind` is `launch` · `question` · `answer` · `report` · `landing` · `note` · `tick` · `ruling`
    (that last one is a decision you took instead of asking — see The framing pass); `task` is
    the row id (`null` for a line about the tick itself). For `question` (the Decision Template's
-   body), `answer` (the user's reply you relayed), `report` and `landing`, `text` is a sentence
-   you already wrote for the user — the append is free. For `launch`, `tick` and `note`, nothing
-   already exists to reuse: write one short line for the journal alone — a launch names the
-   task, its branch and its model; a tick names what changed this tick, or nothing at all if
-   nothing did; a note is anything else worth recording. Skipping a line degrades the page's
-   left panel and nothing else — never skip a `question` or an `answer`, which is what the user
-   reads back.
+   own `The question:` line, that one sentence and not the whole body — the rail is a history, not
+   a second copy of the card), `answer` (the user's reply you relayed), `report` and `landing`,
+   `text` is a sentence you already wrote for the user — the append is free. For `launch`, `tick`
+   and `note`, nothing already exists to reuse: write one short line for the journal alone — a
+   launch names the task, its branch and its model; a tick names what changed this tick, or
+   nothing at all if nothing did; a note is anything else worth recording. Skipping a line
+   degrades the page's left panel and nothing else — never skip a `question` or an `answer`, which
+   is what the user reads back.
 
 2. **Write an `id` on every `pending[]` item you append** — `"<lowercased row id>-<kind>-<n>"`,
    e.g. `"c2-hands-on-1"`. Without it the page falls back to hashing the row id, kind and ask —
@@ -250,10 +251,11 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    ```
 
    The page offers one button per option, and it offers NOTHING when the item carries none: it
-   never invents a choice, because a button the user clicks is sent back as their decision. Every
-   `ask` in the register today is a one-sentence summary with no options in it at all, so today
-   the page shows a free-text box and nothing else, on every question. An item that genuinely
-   puts no choice — a hands-on instruction, an FYI — carries no `options`, and that is correct.
+   never invents a choice, because a button the user clicks is sent back as their decision. And
+   `ask` itself is the decision template's whole body, never a one-sentence summary of it — that
+   is the page's only text, and what it costs to compress is measured there (see The decision
+   template). An item that genuinely puts no choice — a hands-on instruction, an FYI — carries no
+   `options`, and that is correct.
 
    **A QUESTION THAT IS NOT IN `pending[]` DOES NOT EXIST.** The page shows exactly the pending
    items and nothing else; a question you only wrote in chat is invisible there, so the user
@@ -1053,18 +1055,54 @@ hold owned by a branch abandoned two weeks earlier, which no rule ever created, 
 taking over four worktrees whose sessions were provably dead waited two hours forty-four before the
 answer came back "yes, all four" in six minutes.
 
-Every question reaching the user uses this shape, in the user's language, body written for
-someone who has never read the code (no path, no function name, no identifier, no
-millisecond in the body — what a user of the thing sees, what it changes, what each option costs;
-technical detail in a `<sub>` footer):
+Every question is written once and lands in two places: the message you put in chat, and the `ask`
+of its `pending[]` item. **The `ask` carries that whole body, word for word — never a summary of
+it.** The page prints `ask` and nothing else, so a body squeezed into one line there is the
+question asked with the half that made it answerable taken out. Measured 2026-09-08 in duckJam,
+where every ask was one dense sentence: of the twelve answers given from the page that day, two
+were not answers at all — "Ta question n'a aucun sens, je ne comprends rien" and "pourquoi tu as
+besoin de 2 personnes ?" — each costing a full round trip before the question could even be
+understood, and one of the two had to be asked twice.
 
-> **[<ID> — <title> · `<branch>` · session `<name>` · server :<port>]**
-> **Where it stands**: <one sentence, plain language>
-> **Its question**: "<the worker's question, plain language>"
-> **What you need to decide**: <the context that makes the choice real: rules that apply,
-> precedents, what waits behind it>
-> **Options**: A) … · B) … · C) …
-> <sub>Technical: <the numbers and names, for when the user wants them>
+**Write it for someone who has never seen the code AND does not know the project's vocabulary.**
+The first half of that is the easy half: no path, no function name, no identifier, no millisecond.
+The second half is the one that fails. Every word a worker uses for a thing — the name of a model,
+a mode, a stage, a score, a policy — is a word learnt inside the code, and on the page it means
+nothing. Three tests, and a body failing any of them is rewritten before it is sent:
+
+- **what you name is something the user can see or do**, never what the code calls it;
+- **every number says what it counts and what would be good** — "scores 0.312 where the other
+  scores 4.580" is two numbers and no question, "falls over on 31 tries out of 32" is a fact
+  anyone can judge. A number that will not speak that way belongs in the footer;
+- **the question itself is one sentence, ends in a question mark, and reads on its own.** If the
+  user has to reconstruct what is being asked from the paragraph above it, it is not a question
+  yet.
+
+**And relaying is rewriting, never quoting.** A worker's sentence was written by the one person who
+has been reading that code all day; passed through untouched, it carries their vocabulary straight
+onto the page. That is where nearly every unreadable ask comes from.
+
+That same duckJam question, before and after — the failure is not the length, it is that every
+noun in it was learnt in the code:
+
+> written: "Round 04: the published walker falls 31 times out of 32 and scores 0.312, where the
+> recovery policy scores 4.580. The round is passable, but by a tool other than the season's. Is
+> that the intended shape?"
+> asked: "Nobody can finish round 04: the character players download falls over on 31 of its 32
+> tries. A different character, one that is not part of the season, does finish it. Do we keep
+> round 04 as it is, or make it beatable by the season's own character?"
+
+The body carries no markdown — the page prints it verbatim, so `**` shows as two asterisks — and
+its labels are plain words in the user's language. The bracket header is the chat message's alone:
+the card already names the row, its kind and its port.
+
+> [<ID> — <title> · `<branch>` · session `<name>` · server :<port>]  ← the chat message only
+> Where it stands: <one sentence, about the thing itself, in plain language>
+> The question: <one sentence, ending in a question mark>
+> Why it is yours to decide: <what makes the choice real: what each option costs, which rules or
+> earlier answers apply, what is waiting behind it>
+> Options: A) … · B) … · C) …
+> <sub>Technical: <the numbers, names and paths, for when the user wants them>
 > Pictures: <repo-relative path(s) to any screenshot the question is about></sub>
 
 The trailing `server :<port>` is present only on a row that actually serves something. A CLI, a
@@ -1105,8 +1143,9 @@ command; the worker knows it and you do not need to** — and to report exactly 
 Two shapes, and the row is one or the other: a project that SERVES something reports the port it
 actually bound plus its pid; a CLI, a library, a firmware image or a data pipeline reports the one
 command that shows the change, to be run from the worktree. Set the row to `review`, and add a
-`pending[]` item — `kind: "hands-on"` — carrying whichever it is: a port fills the Decision
-Template's own `server :<port>`, and a command goes in the ask itself, where the user can copy it.
+`pending[]` item — `kind: "hands-on"` — carrying whichever it is: a port goes on the
+item's own `port` field, which the card prints beside the kind, and into the chat message's header;
+a command goes in the ask itself, where the user can copy it.
 **The user's validation IS the approval** — do not then ask a second time for the merge; that
 second question is the one this roadmap paid for thirteen times over, in planetCraft (see The
 framing pass, and the one interruption). What follows validation is step 6's business (see The
