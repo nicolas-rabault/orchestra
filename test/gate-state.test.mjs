@@ -148,6 +148,51 @@ test('offlineTraces: the +++ header itself is not an added line', () => {
   assert.deepEqual(S.offlineTraces({ diff: '+++ b/.orchestra/x\n@@ -0,0 +1 @@\n+ok\n' }), []);
 });
 
+// Fix round 1, the Important finding: a `+` (added) marker followed by content starting with
+// `++ ` renders identically to a `+++ b/<path>` FILE HEADER. A 4-character prefix test on the raw
+// line cannot tell them apart — only tracking whether the scanner is INSIDE a hunk can, because a
+// real header can never occur there. Confirmed against the shipped code before this fix: the trace
+// below was silently dropped, never even tested against TRACE.
+test('offlineTraces: an added line beginning with "++ " is content, not a file header', () => {
+  const diff = '+++ b/real-file.txt\n@@ -1,1 +1,2 @@\n context1\n+++ orchestra scheduled this\n';
+  assert.deepEqual(S.offlineTraces({ diff }),
+    [{ where: 'real-file.txt:2', text: '++ orchestra scheduled this' }]);
+});
+
+// Same finding, second half: misreading that line as a header also REASSIGNED `file` to garbage
+// sliced from its own text, so the NEXT added line in the same hunk was reported against that
+// garbage path instead of the real one — confirmed against the shipped code before this fix.
+test('offlineTraces: a later added line in the same hunk is still attributed to the real path', () => {
+  const diff = [
+    '+++ b/real-file.txt',
+    '@@ -1,1 +1,3 @@',
+    ' context1',
+    '+++ orchestra scheduled this',
+    '+scheduled by orchestra again',
+    '',
+  ].join('\n');
+  assert.deepEqual(S.offlineTraces({ diff }), [
+    { where: 'real-file.txt:2', text: '++ orchestra scheduled this' },
+    { where: 'real-file.txt:3', text: 'scheduled by orchestra again' },
+  ]);
+});
+
+test('offlineTraces: a full real git diff shape still locates the trace correctly', () => {
+  // `diff --git`, `index`, and `--- a/<path>` all precede `+++ b/<path>` in real `git diff`
+  // output. None of them is a hunk, so all three must be skipped without ending up read as one.
+  const diff = [
+    'diff --git a/f.js b/f.js',
+    'index 0000000..1111111 100644',
+    '--- a/f.js',
+    '+++ b/f.js',
+    '@@ -1,1 +1,2 @@',
+    ' context',
+    '+run by orchestra',
+    '',
+  ].join('\n');
+  assert.deepEqual(S.offlineTraces({ diff }), [{ where: 'f.js:2', text: 'run by orchestra' }]);
+});
+
 test('a glob matches within a segment, and ** spans segments including none', () => {
   const m = (g, p) => S.globToRegExp(g).test(p);
   assert.equal(m('docs/**', 'docs/a.md'), true);
