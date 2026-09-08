@@ -344,6 +344,24 @@ test('initProject offline: appending twice adds one line', () => {
   assert.equal(lines.length, 1);
 });
 
+// Final review, must-fix minor: the guard that stops `/.orchestra/` being concatenated onto the
+// tail of whatever the user's exclude file already ended with. An exclude file written by hand,
+// or by an editor that does not add a final newline, is ordinary — and without the guard the
+// result is one corrupted line (`build//.orchestra/`) that excludes neither path, in a file
+// nobody reads until something leaks.
+test('initProject offline: an exclude file with no trailing newline gains a line, not a suffix', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  mkdirSync(dirname(excludePath(r.root)), { recursive: true });
+  writeFileSync(excludePath(r.root), '# my own excludes\nbuild/');   // no trailing newline
+
+  const rep = initProject(r.root, { mode: 'offline' });
+  assert.equal(rep.exclude.action, 'appended');
+  assert.equal(readFileSync(excludePath(r.root), 'utf8'), '# my own excludes\nbuild/\n/.orchestra/\n');
+  // And the line git will actually read is the whole line, not a tail glued to the previous one.
+  assert.ok(readFileSync(excludePath(r.root), 'utf8').split('\n').includes('/.orchestra/'));
+});
+
 test('initProject online: unchanged — .orchestra/.gitignore, no exclude line', () => {
   const r = repo();
   rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
@@ -467,6 +485,25 @@ test('flip online → offline: the block leaves CLAUDE.md, and what must be comm
   assert.match(rep.message, /git rm --cached/);
   // Orchestra never writes the commit that finishes this.
   assert.notEqual(r.git('status', '--porcelain').trim(), '');
+});
+
+// Final review, Important 1: the removal path matched the block EXACTLY, so a CLAUDE.md whose
+// rules someone had edited — the very case the online append path already has a test for — was not
+// matched, not removed, and, worse, not mentioned. The file stays committed, still naming
+// `merge_agent` and `orchestra land`, while the report the user reads at flip time said nothing.
+test('flip: an EDITED rules block is left alone but NAMED — silence is the failure', () => {
+  const d = tmpDir();
+  initProject(d, { mode: 'online' });
+  const edited = readFileSync(join(d, 'CLAUDE.md'), 'utf8')
+    .replace('never where it happens', 'never ever where it happens');
+  writeFileSync(join(d, 'CLAUDE.md'), edited);
+
+  const rep = initProject(d, { mode: 'offline', force: true });
+  assert.equal(rep.claude.action, 'rules-file+edited');
+  // Removed nothing: the block is somebody's edit now, and the file is committed and shared.
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), edited);
+  assert.match(rep.message, /CLAUDE\.md holds an EDITED rules block/);
+  assert.match(rep.message, /orchestra:claude-rules/);
 });
 
 test('flip: a CLAUDE.md that only ever held the block is emptied, not deleted', () => {
