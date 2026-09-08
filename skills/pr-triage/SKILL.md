@@ -229,4 +229,8 @@ Keep the whole thing scannable. The maintainer reads a lot of these.
 session ends with it — replying to the conductor's address does not work, which your brief already
 told you. The ledger line in step 6 must already be written before you stop, and if the row ships
 something the maintainer will want to try, start the project's own dev server first and report the
-port it ACTUALLY bound plus its pid: they test the PR themselves at the hands-on gate.
+port it ACTUALLY bound plus its pid: they test the PR themselves at the hands-on gate. **And if the
+pull request has somewhere of its own to be looked at — a preview deployment it builds, a published
+report, the failing run — report that URL beside the port, named in plain words.** Your conductor
+puts it on the row's `links[]` and the card draws a button for it; a URL that reaches only your
+report is one the maintainer has to go digging for. Report no URL you have not fetched and read.

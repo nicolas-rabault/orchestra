@@ -97,6 +97,9 @@ command this plugin ships actually exists.
   to a project whose dev server lives somewhere else entirely. So a dev server on a port no
   register row names is invisible to the page. That question is answered by the dev-server sweep
   below, which is a shell procedure and not the page's job.
+  **A port is not the only thing the card can offer to open**, though: `what to open` draws a
+  button for every entry in the row's `links[]` as well, and derives one more for a pull-request
+  review row from the row id and `origin` — see The hands-on gate. What it will never do is guess.
 - **Never wire an answer's delivery to CREATE a conductor instead of to REACH the live one.** The
   page never does: when a beat under a minute old belongs to a live pid, it says so and that
   session's `orchestra watch-answers` loop hands over the answer within seconds; otherwise it says
@@ -1194,6 +1197,26 @@ command that shows the change, to be run from the worktree. Set the row to `revi
 `pending[]` item — `kind: "hands-on"` — carrying whichever it is: a port goes on the
 item's own `port` field, which the card prints beside the kind, and into the chat message's header;
 a command goes in the ask itself, where the user can copy it.
+
+**And anything the user must OPEN that is not a localhost port goes on the ROW, in `links[]`** —
+`{"label": "…", "url": "…"}`, as many as the row earns. The card draws one button per entry under
+`what to open`, beside the dev server, reading `open <label> →`. So **the label is a noun phrase
+naming the destination in plain words** — `the staging deploy`, `the CI run`, `the Figma frame`,
+`the published report` — never `link`, never `here`, never a bare URL: the button has to say what
+it is to somebody who did not read the ask. The card names the host underneath it, which is the
+half of the promise the reader can check.
+
+Three rules that come with it, and the first is not new:
+
+- **Never hand out a URL you have not fetched AND READ** (below). A `links[]` entry is a URL you
+  are handing out; it is under that rule exactly as an ask's URL is.
+- **Only `http` and `https` reach the page.** Anything else is dropped silently by
+  `openablesFor` (`lib/monitor/model.mjs`), so a `file://` path you meant as a convenience simply
+  does not appear. Say the path in the ask instead.
+- **A link outlives the gate; a port does not.** `links[]` is the row's standing context — the
+  place the work can be looked at for as long as the row is open — where the `port` on a
+  `pending[]` item dies with the question. Put a thing that stays on the row, and a thing that is
+  the gate itself in the item.
 **The user's validation IS the approval** — do not then ask a second time for the merge; that
 second question is the one this roadmap paid for thirteen times over, in planetCraft (see The
 framing pass, and the one interruption). What follows validation is step 6's business (see The
@@ -1338,6 +1361,14 @@ pull request that ships nothing of the sort gets no interruption at all, exactly
 the checkpoint like any other report. The review brief's own dev-server line is conditional for
 this reason.
 
+**The card links out to the pull request on its own, and you write nothing to make it.** The page
+reads the number off the row id (`PR<number>`, the branch as fallback) and the repository out of
+this checkout's `origin`, and draws `open the pull request on GitHub →` under `what to open`
+(`pullRequestUrl`, `lib/monitor/model.mjs`). So **do not put the pull request in `links[]`** — a
+hand-written copy collapses onto the derived button anyway, deduplicated by URL, and writing it is
+work that buys nothing. `links[]` on a review row is for everything else the maintainer should be
+able to open: a preview deployment the PR builds, the run that failed.
+
 **How a row ends.** Never by anything anybody types.
 
 | The worker's verdict | What happens | Status |
@@ -1477,7 +1508,9 @@ Write to me in {language}.
 Protocol: your conductor will message you a hello. SENDING A MESSAGE BACK DOES NOT WORK. State your
 report or question as your FINAL MESSAGE and stop.
 When this PR ships something a human reads or runs, start the dev server and report the port it
-ACTUALLY bound plus its pid: the maintainer tests it themselves at the hands-on gate.
+ACTUALLY bound plus its pid: the maintainer tests it themselves at the hands-on gate. If it has
+somewhere of its own to be looked at — a preview deployment, a published report, the failing run —
+report that URL too, named in plain words, and only if you have fetched and read it.
 Record your verdict before you stop:
   orchestra pr log {pr} <verdict> --head <sha> --comment <id> --note "…"
 ```

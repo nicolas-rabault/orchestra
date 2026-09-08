@@ -61,6 +61,10 @@ test('registerRow carries the SLUG, qualified deps, and every runtime field as n
   assert.deepEqual(row.pending, []);
   assert.equal(row.session, null);
   assert.equal(row.port, null);
+  // What the card's "what to open" buttons are built from beside the port: a port is one localhost
+  // server, `links` is everywhere else the row can be opened — its pull request, a staging deploy,
+  // a CI run. Empty on a fresh row, because nothing has been built for anyone to look at yet.
+  assert.deepEqual(row.links, []);
   assert.equal(row.note, 'hello');
 });
 

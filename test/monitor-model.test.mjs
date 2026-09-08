@@ -20,7 +20,7 @@
 // own site.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { joinRows, buildModel, invokeCommand, pullRequestUrl } from '../lib/monitor/model.mjs';
+import { joinRows, buildModel, invokeCommand, pullRequestUrl, openablesFor } from '../lib/monitor/model.mjs';
 import { layout } from '../lib/monitor/layout.mjs';
 import { tabsOf } from '../lib/monitor/tabs.mjs';
 import { openItems } from '../lib/monitor/answers.mjs';
@@ -161,7 +161,10 @@ test('pullRequestUrl reads null for an ordinary task, for an unknown repository,
   assert.equal(pullRequestUrl('pr/PRINT', 'print-fixes', 'huggingface/leLab'), null);
 });
 
-test('buildModel hangs the pull-request link on the node, and null on a task that is not one', () => {
+// The same two facts, read where the page really reads them: the derived link is poured into the
+// row's `openables` rather than drawn from a field of its own, so that a pull request orchestra
+// wrote by hand and one the id implies cannot become two buttons for one URL.
+test('buildModel pours the derived pull request into the row openables, and nothing on a task that is not one', () => {
   const m = buildModel({ ...base,
     project: { ...PROJECT, repo: 'huggingface/leLab' },
     board: { status: 'ok', message: null, rows: [
@@ -170,19 +173,90 @@ test('buildModel hangs the pull-request link on the node, and null on a task tha
     ] },
     register: [] });
   const byKey = Object.fromEntries(m.nodes.map((n) => [n.key, n]));
-  assert.equal(byKey['pr/PR96'].prUrl, 'https://github.com/huggingface/leLab/pull/96');
-  assert.equal(byKey['lod/C2'].prUrl, null);
+  assert.deepEqual(byKey['pr/PR96'].openables, [
+    { label: 'the pull request on GitHub', url: 'https://github.com/huggingface/leLab/pull/96', where: 'github.com' },
+  ]);
+  assert.deepEqual(byKey['lod/C2'].openables, []);
 });
 
 // A project whose origin is not GitHub — or which the page could not read a remote for at all —
 // draws no button anywhere rather than a broken one on every pull-request row.
-test('buildModel hangs null on a pull-request row when the project names no repository', () => {
+test('buildModel offers nothing to open on a pull-request row when the project names no repository', () => {
   const m = buildModel({ ...base,
     board: { status: 'ok', message: null, rows: [boardRow({ key: 'pr/PR96', id: 'PR96', roadmap: 'pr', branch: 'pr96-merge' })] },
     register: [] });
-  assert.equal(m.nodes[0].prUrl, null);
+  assert.deepEqual(m.nodes[0].openables, []);
 });
 
+// ---------------------------------------------------------------------------------------------
+// openablesFor — the one list behind the card's "what to open" buttons
+// ---------------------------------------------------------------------------------------------
+
+// Order is an argument, not a taste. The dev server leads because it is the EPHEMERAL one and the
+// thing the hands-on gate is asking the user to try right now; the pull request and whatever else
+// orchestra wrote are standing context that was there before the gate and outlives it.
+test('openablesFor leads with the dev server, then the pull request, then the links orchestra wrote', () => {
+  const links = [{ label: 'the staging deploy', url: 'https://staging.example.com/lod' }];
+  assert.deepEqual(
+    openablesFor({ links }, 'https://github.com/huggingface/leLab/pull/96', [{ port: 5307 }]),
+    [
+      { label: 'the dev server', url: 'http://localhost:5307', where: 'localhost:5307' },
+      { label: 'the pull request on GitHub', url: 'https://github.com/huggingface/leLab/pull/96', where: 'github.com' },
+      { label: 'the staging deploy', url: 'https://staging.example.com/lod', where: 'staging.example.com' },
+    ],
+  );
+});
+
+// Every URL here but the server's own is written by an agent into `state.json`, and the page sets
+// `href` as a property — so `javascript:` would run on click and nothing downstream would catch it.
+// This is the only thing standing between a hand-edited register and script execution on the page.
+test('openablesFor admits only http and https, so a javascript: link can never reach an href', () => {
+  const links = [
+    { label: 'totally safe', url: 'javascript:alert(1)' },
+    { label: 'the design file', url: 'data:text/html,<script>alert(1)</script>' },
+    { label: 'the spec', url: 'file:///etc/passwd' },
+    { label: 'the pull request', url: 'https://github.com/o/n/pull/1' },
+  ];
+  assert.deepEqual(openablesFor({ links }, null, []).map((o) => o.url), ['https://github.com/o/n/pull/1']);
+});
+
+// A register is hand-edited by a conductor under time pressure. A half-written entry must cost the
+// reader that one button and nothing else — never the card, and never the request.
+test('openablesFor drops a half-written link instead of throwing', () => {
+  const links = [
+    { label: 'no url' },
+    { url: 'https://example.com/no-label' },
+    { label: '   ', url: 'https://example.com/blank-label' },
+    { label: 'not a url at all', url: 'github.com/o/n/pull/1' },
+    null,
+    { label: 'the CI run', url: 'https://ci.example.com/42' },
+  ];
+  assert.deepEqual(openablesFor({ links }, null, []).map((o) => o.label), ['the CI run']);
+});
+
+// The whole reason the derived link is poured into this list rather than drawn beside it: a
+// conductor who writes the pull request by hand — which the protocol invites on any row — must not
+// produce a second button for the URL the id already implies.
+test('openablesFor collapses a hand-written duplicate of the derived pull request onto one button', () => {
+  const url = 'https://github.com/huggingface/leLab/pull/96';
+  const out = openablesFor({ links: [{ label: 'the PR', url }] }, url, []);
+  assert.deepEqual(out, [{ label: 'the pull request on GitHub', url, where: 'github.com' }]);
+});
+
+// `lsof` failing says nothing about whether this row has a pull request or a staging deploy. The
+// section used to bail wholesale on that failure, which hid links that were never in doubt.
+test('openablesFor still answers when no port could be probed at all', () => {
+  const m = buildModel({ ...base,
+    register: [regRow({ links: [{ label: 'the staging deploy', url: 'https://staging.example.com' }] })],
+    servers: [], serversKnown: false });
+  assert.deepEqual(m.nodes[0].openables.map((o) => o.label), ['the staging deploy']);
+});
+
+// A row written before `links` existed — every row in every register this upgrade lands on.
+test('openablesFor reads a row with no links field as a row with no links', () => {
+  assert.deepEqual(openablesFor({}, null, []), []);
+  assert.deepEqual(openablesFor(null, null, []), []);
+});
 // A finished roadmap must leave the screen. Archiving cannot do it: `lib/register/archive.mjs`
 // triggers on a ROW's status and deliberately keeps the row as a stripped tombstone, because
 // `computeReadySet` (`lib/register/ready.mjs`) validates deps on every row including terminal ones
@@ -429,7 +503,7 @@ test('buildModel attaches a listening port to the node that holds it', () => {
 // ones that actually distinguish the two implementations.
 test('buildModel labels a matched server by its port, ignoring a server on some other port', () => {
   const m = buildModel({ ...base, servers: [{ port: 5307, pid: 1 }, { port: 9999, pid: 2 }] });
-  assert.deepEqual(m.nodes[0].servers, [{ port: 5307, label: '5307' }]);
+  assert.deepEqual(m.nodes[0].servers, [{ port: 5307 }]);
 });
 
 test('buildModel gives an empty server list to a node whose port nothing listens on', () => {
@@ -451,7 +525,7 @@ test('buildModel does not match a server by its worktree cwd, only by port', () 
 // (`'c2-derived-switch'`), never the port.
 test('buildModel labels a matched server by its port, never by its cwd\'s basename', () => {
   const m = buildModel({ ...base, servers: [{ port: 5307, pid: 1, cwd: '/x/c2-derived-switch' }] });
-  assert.deepEqual(m.nodes[0].servers, [{ port: 5307, label: '5307' }]);
+  assert.deepEqual(m.nodes[0].servers, [{ port: 5307 }]);
 });
 
 test('buildModel passes the board failure through, so the page can say what is missing', () => {
