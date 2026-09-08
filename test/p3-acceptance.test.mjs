@@ -125,6 +125,25 @@ test('a branch lands through two green gates, in the order they are configured',
   assert.equal(r.git('worktree', 'list').includes(wt), false);
 });
 
+test('a landing removes the worktree even when the gates dirtied it', () => {
+  // What a gate leaves behind — a coverage report, a formatter's rewrite — used to be read as work
+  // to protect: `git worktree remove` refused it (exit 128, nothing removed) and the branch, still
+  // checked out there, was refused with it. Two dead things per landing, and the note asking for a
+  // hand was the only thing that ever removed them. The precondition inside the lock has already
+  // proven this tree clean, so anything dirty here was written by the gates AFTER that.
+  const r = project([{ name: 'suite', cmd: 'echo two > src/a.js; echo report > coverage.txt' }]);
+  const { branch, wt } = branchWith(r);
+
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+  // Gone, both of them — and the note NAMES what went with the worktree rather than swallowing it.
+  assert.equal(existsSync(wt), false);
+  assert.equal(r.git('worktree', 'list').includes(wt), false);
+  assert.deepEqual(branches(r), ['main']);
+  assert.match(out, /landed; worktree .* removed with 2 uncommitted file\(s\)/);
+  assert.match(out, /coverage\.txt/);
+});
+
 test('the red gate returns 11 naming itself, and the main branch does not move', () => {
   const r = project([
     { name: 'green', cmd: 'echo fine' },

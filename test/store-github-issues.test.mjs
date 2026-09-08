@@ -4,7 +4,7 @@ import { parseRoadmap } from '../lib/roadmap/parse.mjs';
 import { ROADMAP } from './helpers/fixture.mjs';
 import {
   LABELS, renderTaskBlock, taskTitle, keyFromTitle, renderTaskIssue,
-  renderProgrammeIssue, planPublish, publishIssues,
+  renderProgrammeIssue, planPublish, publishIssues, mergeProgrammeBody, programmeReport,
 } from '../lib/store/github/issues.mjs';
 
 const task = parseRoadmap(ROADMAP).tasks[0];
@@ -105,4 +105,94 @@ test('publishIssues finds an existing programme by the same anchored match open/
   });
   assert.notEqual(other.programme, 7);
   assert.ok(prefix.created.includes('light — Light'));
+});
+
+// ---- a follow-up publish COMPLETES the programme, it does not rewrite it ----
+// The night this is taken from: ten tasks published from one file, then an eleventh from a second
+// file carrying the same `roadmap:` slug. The programme was re-rendered whole, so its title became
+// the second file's H1, its prose the second file's prose, and its eleven checklist lines became
+// one. `publish` printed the same line it prints for a first publication, `lint` had passed, and
+// `board` reconciles task lines only — so nothing said a word (ticket `t-120tjoq`, issue #120).
+const clone = (id, title) => ({ ...task, id, key: `demo/${id}`, title });
+
+const ghOver = (programmes, calls, next = 200) => ({
+  ensureLabels: () => {},
+  listIssues: ({ labels = [] } = {}) => (labels.includes(LABELS.programme) ? programmes : []),
+  createIssue: (i) => { calls.push(['createIssue', i.title]); return next++; },
+  updateIssue: (n, i) => calls.push(['updateIssue', n, i]),
+  reopenIssue: (n) => calls.push(['reopenIssue', n]),
+});
+
+test('publishing one more task completes the programme instead of erasing it', () => {
+  const ten = Array.from({ length: 10 }, (_, i) => clone(`D${i + 1}`, `Thing ${i + 1}`));
+  const body = [
+    '- **Roadmap** demo', '', 'The prose that took a year to agree on.', '', '## Tasks',
+    ...ten.map((t, i) => `- [${i < 3 ? 'x' : ' '}] #${120 + i + 1} ${t.id} — ${t.title}`), '',
+  ].join('\n');
+  const programmes = [{ number: 120, title: 'demo — The whole programme', body, labels: [LABELS.programme], state: 'open' }];
+  const calls = [];
+  const eleventh = clone('D11', 'The follow-up');
+
+  const res = publishIssues(ghOver(programmes, calls), {
+    roadmap: 'demo', title: 'A second file', prose: 'Only this task.', tasks: [eleventh],
+  });
+
+  assert.equal(res.programme, 120);
+  assert.equal(res.programmeCreated, false);
+  assert.equal(res.programmeAdded, 1);
+
+  const edit = calls.find((c) => c[0] === 'updateIssue' && c[1] === 120)[2];
+  // The title is not passed at all, so no title edit is issued against the programme.
+  assert.equal(edit.title, undefined);
+  // The prose the second file would have imposed is nowhere in the body.
+  assert.match(edit.body, /The prose that took a year to agree on\./);
+  assert.doesNotMatch(edit.body, /Only this task\./);
+  // All eleven lines are there, the three ticks survived, and the new one is last.
+  assert.equal(edit.body.match(/^- \[[ xX]\] /gm).length, 11);
+  assert.equal(edit.body.match(/^- \[x\] /gm).length, 3);
+  assert.match(edit.body, /^- \[ \] #\d+ D11 — The follow-up$/m);
+});
+
+test('a task already listed is not added twice, and a publish that adds nothing writes nothing', () => {
+  const one = clone('D1', 'First thing');
+  const body = ['- **Roadmap** demo', '', 'Prose.', '', '## Tasks', '- [ ] #121 D1 — First thing', ''].join('\n');
+  const programmes = [{ number: 120, title: 'demo — Programme', body, labels: [LABELS.programme], state: 'open' }];
+  const calls = [];
+
+  const res = publishIssues(ghOver(programmes, calls), {
+    roadmap: 'demo', title: 'Programme', prose: 'Prose.', tasks: [one],
+  });
+
+  assert.equal(res.programmeAdded, 0);
+  // The task issue itself is still created; the PROGRAMME is what is left untouched.
+  assert.equal(calls.some((c) => c[0] === 'updateIssue' && c[1] === 120), false);
+});
+
+test('a programme body with no task section gains one instead of being refused', () => {
+  const body = ['- **Roadmap** demo', '', 'Prose a human trimmed.', ''].join('\n');
+  const programmes = [{ number: 120, title: 'demo — Programme', body, labels: [LABELS.programme], state: 'open' }];
+  const calls = [];
+
+  const res = publishIssues(ghOver(programmes, calls), {
+    roadmap: 'demo', title: 'Programme', prose: 'New prose.', tasks: [clone('D1', 'First thing')],
+  });
+
+  assert.equal(res.programmeAdded, 1);
+  const edit = calls.find((c) => c[0] === 'updateIssue' && c[1] === 120)[2];
+  assert.match(edit.body, /Prose a human trimmed\./);
+  assert.match(edit.body, /^## Tasks$/m);
+  assert.match(edit.body, /^- \[ \] #\d+ D1 — First thing$/m);
+});
+
+test('programmeReport distinguishes a created programme from a completed one', () => {
+  assert.equal(
+    programmeReport({ programme: 9, programmeCreated: true, programmeAdded: 3, reopened: false }),
+    'programme #9 created');
+  assert.equal(
+    programmeReport({ programme: 9, programmeCreated: false, programmeAdded: 1, reopened: false }),
+    'programme #9 completed: 1 task line added, title and prose left as they were');
+  assert.equal(
+    programmeReport({ programme: 9, programmeCreated: false, programmeAdded: 0, reopened: true }),
+    'programme #9 completed: nothing to add, title and prose left as they were'
+    + ' (reopened — it had closed when its last task landed)');
 });
