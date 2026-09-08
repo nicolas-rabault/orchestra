@@ -561,6 +561,12 @@ test('land offline: a branch whose commit message names the tool is refused befo
   assert.match(out, /commit [0-9a-f]{7}/);
   assert.equal(existsSync(join(wt, 'gate-ran')), false);           // refused BEFORE the gate ran
   assert.equal(r.git('rev-parse', 'main').trim(), before);         // main never moved
+  // Spec §5 names `mark(p, branch, 'held', …)` as part of the refusal's own contract, and it is
+  // not decoration: `held` is what leaves the branch and its worktree alive for their author, and
+  // the note is the only record a session that was not watching stderr can read afterwards.
+  const queue = JSON.parse(readFileSync(join(r.root, '.orchestra', 'gate', 'queue.json'), 'utf8'));
+  assert.equal(queue.entries[0].state, 'held');
+  assert.match(queue.entries[0].note, /offline-trace/);
 });
 
 // The other of the three inputs `offlineTraces` is handed: an ADDED line in the diff, not a commit
