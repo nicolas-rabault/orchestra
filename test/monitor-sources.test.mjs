@@ -16,7 +16,7 @@ import {
 } from '../lib/monitor/keys.mjs';
 import {
   SERVERS_TTL_MS, BOARD_SUCCESS_TTL_MS, readState, readJournal, readInbox, readBoard,
-  worktreePaths, currentBranch, imageFinder, resolveImageRequest, listServers, sourceStamp,
+  worktreePaths, currentBranch, originRepo, imageFinder, resolveImageRequest, listServers, sourceStamp,
 } from '../lib/monitor/sources.mjs';
 import { imagesIn } from '../lib/register/images.mjs';
 import { makeRepo } from './helpers/fixture.mjs';
@@ -270,6 +270,50 @@ test('currentBranch reads null for a detached HEAD', () => {
   mkdirSync(join(root, '.git'), { recursive: true });
   writeFileSync(join(root, '.git', 'HEAD'), 'e4a1c929deadbeefcafefeed0123456789abcdef\n');
   assert.equal(currentBranch(root), null);
+});
+
+// ---------------------------------------------------------------------------------------------
+// sources.mjs: originRepo — the one fact the page needs to link a pull-request row to GitHub
+// ---------------------------------------------------------------------------------------------
+
+// Read out of `.git/config` rather than shelled to `git remote get-url`, for the reason
+// `currentBranch` above is: everything the page reads synchronously per request is a way to wedge
+// it, and a board read reaching an unreachable GitHub already held the page for nine hours once.
+
+const withOrigin = (url) => {
+  const root = tmp();
+  mkdirSync(join(root, '.git'), { recursive: true });
+  writeFileSync(join(root, '.git', 'config'),
+    `[core]\n\trepositoryformatversion = 0\n[remote "origin"]\n\turl = ${url}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`);
+  return root;
+};
+
+test('originRepo reads owner/name off an ssh origin, an https origin, and one written without .git', () => {
+  assert.equal(originRepo(withOrigin('git@github.com:huggingface/leLab.git')), 'huggingface/leLab');
+  assert.equal(originRepo(withOrigin('https://github.com/huggingface/leLab.git')), 'huggingface/leLab');
+  assert.equal(originRepo(withOrigin('https://github.com/huggingface/leLab')), 'huggingface/leLab');
+});
+
+// A repository whose origin is not GitHub has no pull request to link to, and guessing a URL shape
+// for a host this plugin has never seen would produce a button that 404s. Null is the honest answer.
+test('originRepo reads null for a non-GitHub origin, for no origin at all, and for a directory that is not a repository', () => {
+  assert.equal(originRepo(withOrigin('git@gitlab.com:acme/thing.git')), null);
+  const noOrigin = tmp();
+  mkdirSync(join(noOrigin, '.git'), { recursive: true });
+  writeFileSync(join(noOrigin, '.git', 'config'), '[core]\n\trepositoryformatversion = 0\n');
+  assert.equal(originRepo(noOrigin), null);
+  assert.equal(originRepo(tmp()), null);
+});
+
+// `origin` specifically, not the first remote in the file: a fork checkout's `upstream` names a
+// repository whose pull requests are not the ones this board swept.
+test('originRepo picks origin rather than whichever remote comes first', () => {
+  const root = tmp();
+  mkdirSync(join(root, '.git'), { recursive: true });
+  writeFileSync(join(root, '.git', 'config'),
+    '[remote "upstream"]\n\turl = git@github.com:someone/upstream-repo.git\n'
+    + '[remote "origin"]\n\turl = git@github.com:huggingface/leLab.git\n');
+  assert.equal(originRepo(root), 'huggingface/leLab');
 });
 
 // ---------------------------------------------------------------------------------------------

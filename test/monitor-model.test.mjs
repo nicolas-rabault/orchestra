@@ -20,7 +20,7 @@
 // own site.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { joinRows, buildModel, invokeCommand } from '../lib/monitor/model.mjs';
+import { joinRows, buildModel, invokeCommand, pullRequestUrl } from '../lib/monitor/model.mjs';
 import { layout } from '../lib/monitor/layout.mjs';
 import { tabsOf } from '../lib/monitor/tabs.mjs';
 import { openItems } from '../lib/monitor/answers.mjs';
@@ -133,6 +133,54 @@ test('buildModel passes the project block straight through to the output, unread
   const project = { name: 'demo', root: '/repo', mode: 'offline', branch: 'feature/x', id: 'deadbe', port: 4391 };
   const m = buildModel({ ...base, project });
   assert.deepEqual(m.project, project);
+});
+
+// ---------------------------------------------------------------------------------------------
+// pullRequestUrl — the card's link out to a pull-request review row's own PR
+// ---------------------------------------------------------------------------------------------
+
+// Nothing new is written on the row to make this work. The sweep's own two conventions already
+// carry the number twice over — "The ID is `PR<number>`" and the branch's last segment starts with
+// `pr<number>-` (skills/pr-sweep/SKILL.md) — so the id is read first and the branch is the fallback
+// for a row whose id was written some other way.
+test('pullRequestUrl reads the number off the row id, qualified or bare', () => {
+  assert.equal(pullRequestUrl('pr/PR96', null, 'huggingface/leLab'), 'https://github.com/huggingface/leLab/pull/96');
+  assert.equal(pullRequestUrl('PR96', null, 'huggingface/leLab'), 'https://github.com/huggingface/leLab/pull/96');
+});
+
+test('pullRequestUrl falls back to the branch when the id does not carry the number', () => {
+  assert.equal(pullRequestUrl('pr/windows-camera', 'pr72-review', 'huggingface/leLab'), 'https://github.com/huggingface/leLab/pull/72');
+  assert.equal(pullRequestUrl('pr/windows-camera', 'pr96-merge', 'huggingface/leLab'), 'https://github.com/huggingface/leLab/pull/96');
+});
+
+// The three ways there is no link to draw. An ordinary task is the common one, and it must not
+// match: `lod/C2` names no pull request, and a button pointing at pull/2 would be worse than none.
+test('pullRequestUrl reads null for an ordinary task, for an unknown repository, and for a lookalike id', () => {
+  assert.equal(pullRequestUrl('lod/C2', 'lod/c2-derived-switch', 'huggingface/leLab'), null);
+  assert.equal(pullRequestUrl('pr/PR96', 'pr96-merge', null), null);
+  assert.equal(pullRequestUrl('pr/PRINT', 'print-fixes', 'huggingface/leLab'), null);
+});
+
+test('buildModel hangs the pull-request link on the node, and null on a task that is not one', () => {
+  const m = buildModel({ ...base,
+    project: { ...PROJECT, repo: 'huggingface/leLab' },
+    board: { status: 'ok', message: null, rows: [
+      boardRow({ key: 'pr/PR96', id: 'PR96', roadmap: 'pr', branch: 'pr96-merge', status: 'review' }),
+      boardRow(),
+    ] },
+    register: [] });
+  const byKey = Object.fromEntries(m.nodes.map((n) => [n.key, n]));
+  assert.equal(byKey['pr/PR96'].prUrl, 'https://github.com/huggingface/leLab/pull/96');
+  assert.equal(byKey['lod/C2'].prUrl, null);
+});
+
+// A project whose origin is not GitHub — or which the page could not read a remote for at all —
+// draws no button anywhere rather than a broken one on every pull-request row.
+test('buildModel hangs null on a pull-request row when the project names no repository', () => {
+  const m = buildModel({ ...base,
+    board: { status: 'ok', message: null, rows: [boardRow({ key: 'pr/PR96', id: 'PR96', roadmap: 'pr', branch: 'pr96-merge' })] },
+    register: [] });
+  assert.equal(m.nodes[0].prUrl, null);
 });
 
 // A finished roadmap must leave the screen. Archiving cannot do it: `lib/register/archive.mjs`
