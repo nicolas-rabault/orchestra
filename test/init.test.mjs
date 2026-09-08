@@ -476,6 +476,19 @@ test('flip: a CLAUDE.md that only ever held the block is emptied, not deleted', 
   assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8').trim(), '');
 });
 
+test('flip: a CLAUDE.md that had its own prose gets exactly that prose back', () => {
+  // Review round 1: the append path leaves exactly TWO trailing newlines once the block is cut back
+  // out (one from the project's own normalised prose, one as the separator before the block) — a
+  // fixture with no prose of its own (the "emptied, not deleted" test above) cannot see this, since
+  // there `replace(block, '')` already yields '' regardless of the trailing-newline regex.
+  const d = tmpDir();
+  const prose = '# Project\n\nRules of our own.\n';
+  writeFileSync(join(d, 'CLAUDE.md'), prose);
+  initProject(d, { mode: 'online' });                    // appends the block
+  initProject(d, { mode: 'offline', force: true });      // removes it
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), prose);
+});
+
 // ---------------------------------------------------------------------------------
 // The CLI, spawned for real — `bin/orchestra init`. `init` is `machine: true`, so every case here
 // runs in a project with no config at all except the `--force` one, which needs an existing config
