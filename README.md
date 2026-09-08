@@ -92,11 +92,18 @@ has landed:
   what to write. It also warns when a config still carries a leftover `monitor.port` key, which
   nothing reads any more now that one page serves the whole machine.
 - **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve|sync>`**.
-- **`orchestra journal|inbox|beat|lock|watch-answers`** — the register: one line with a measured
-  clock, the answers a user posted on the page, who holds the baton, and one conductor at a time.
-- **`orchestra ready|tick-gate|yield-check`** — the launch plan, whether a heartbeat should tick at
-  all, and whether this session should hand the baton back. `ready` budgets its launches against
+- **`orchestra journal|inbox|beat|lock|watch-answers|watch-workers`** — the register: one line with
+  a measured clock, the answers a user posted on the page, who holds the baton, one conductor at a
+  time, and the conductor's two watches — answers within seconds, and an `OWED:` line when a worker
+  is stopped on a live row or a relay is written and not delivered.
+- **`orchestra ready|drive|tick-gate|yield-check`** — the launch plan, the resume cycle, whether a
+  heartbeat should tick at all, and whether this session should hand the baton back. `ready` names
+  what the tick owes its workers first (`UNDELIVERED:`, `IDLE:`), then budgets its launches against
   every other orchestra on this machine (`~/.orchestra/machine.json`, `maxWorkers`, default 8).
+  `drive` resolves both lines: it stops the background registration, resumes each session in its
+  worktree with the row's own relay at the head of the nudge, detached so the turn survives the
+  600-second ceiling, and writes the relay's receipt only when that turn has returned — a
+  `deliveredAt` written by any other hand is not delivery.
 - **`orchestra monitor`** — one monitoring page for the whole machine, runnable from any directory:
   the register as a graph, the journal and the user's answers as one rail, the screenshots a
   question names, and a box to answer in, with a project tab strip above it for every project the

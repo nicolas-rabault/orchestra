@@ -243,7 +243,7 @@ test('initProject: writes .orchestra/.gitignore with exactly the paths the plugi
   const lines = text.split('\n').filter(Boolean).filter((l) => !l.startsWith('#'));
   assert.deepEqual(lines, [
     'state.json', 'journal.jsonl', 'inbox.jsonl', 'archive.jsonl', 'conductor.beat.json',
-    'tick.lock', '.queue.lock', 'drafts/', 'roadmaps/', 'worktrees/', 'images/', 'gate/', 'tick.sh',
+    'tick.lock', '.queue.lock', 'drafts/', 'roadmaps/', 'worktrees/', 'images/', 'gate/', 'drive/', 'tick.sh',
     '*.log', '*.err', '*.tmp',
   ]);
   // Neither of the two committed paths under `.orchestra/` is ignored.

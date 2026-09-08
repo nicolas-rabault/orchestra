@@ -125,7 +125,6 @@ const base = {
   register: [regRow()],
   journal: { entries: [{ ts: '2026-08-11T14:02:00Z', kind: 'report', task: 'lod/C2', text: 'ready to test on :5307' }], skipped: 0 },
   inbox: { entries: [], skipped: 0 }, servers: [{ port: 5307, pid: 1 }],
-  worktrees: new Map([['lod/c2-derived-switch', '/x/c2-derived-switch']]),
 };
 
 // New: the delta itself — `buildModel` no longer computes `project`, it only carries whatever the
@@ -391,9 +390,8 @@ test('buildModel gives an empty server list to a node whose port nothing listens
 });
 
 // The match half of the delta, made to actually fail under the source: a server on a DIFFERENT
-// port than the node's own (5307, from `base`'s `regRow`), but whose `cwd` equals
-// `worktrees.get(node.branch)` (`base`'s worktrees map, `lod/c2-derived-switch` -> the same
-// path) — exactly the shape the source's `s.port === node.port || (path && s.cwd === path)`
+// port than the node's own (5307, from `base`'s `regRow`), but whose `cwd` is the row's worktree
+// path — exactly the shape the source's `s.port === node.port || (path && s.cwd === path)`
 // matched on the OR-branch alone. Port-only matching must not return it.
 test('buildModel does not match a server by its worktree cwd, only by port', () => {
   const m = buildModel({ ...base, servers: [{ port: 9999, pid: 1, cwd: '/x/c2-derived-switch' }] });
@@ -465,15 +463,14 @@ test('buildModel frames register rows by the roadmap slug they name, and badges 
   assert.deepEqual(layout(m.nodes).frames.map((f) => f.roadmap), ['council', 'lighting', 'unfiled']);
 });
 
-// New: the third delta, exercised through buildModel — the resume line's worktree fallback is
-// `cfg.worktrees`, not a hardcoded `.claude/worktrees`.
-test('buildModel does not throw when a register row has a session but no branch yet, and gives it a usable resume command under cfg.worktrees', () => {
+// New: the third delta, exercised through buildModel — a session recorded before its branch still
+// gets a resume command, and that command is `drive`, which resolves the worktree itself.
+test('buildModel does not throw when a register row has a session but no branch yet, and gives it a usable resume command', () => {
   const register = [regRow({ id: 'X', branch: null, session: 's1', port: null })];
   const m = buildModel({ ...base, register });
   const node = m.nodes.find((n) => n.key === 'unfiled/X');
   assert.equal(node.invoke.kind, 'resume');
-  assert.equal(node.invoke.lines[0], 'claude stop s1');
-  assert.ok(node.invoke.lines[1].includes(`${CFG.worktrees}/x`));
+  assert.deepEqual(node.invoke.lines, ['orchestra drive X']);
 });
 
 // The strip across the top of the window. The words are the scheduler's: `lib/register/ready.mjs`
@@ -530,18 +527,19 @@ test('buildModel does not throw when a register row has a session but no branch 
 // invokeCommand
 // ---------------------------------------------------------------------------------------------
 
-test('invokeCommand gives the resume cycle for a live session, in the worktree that holds it', () => {
-  const node = { id: 'C2', branch: 'lod/c2-derived-switch', session: 'c4a1e4a7-1111-2222-3333-444444444444', status: 'review' };
-  const { kind, lines } = invokeCommand(node, new Map([['lod/c2-derived-switch', '/x/c2']]), CFG);
+// The resume cycle is `orchestra drive <id>` and nothing longer: the three-line form this used to
+// print carried a generic nudge, and a conductor copying it resumed workers past the relays on their
+// rows. `drive` builds the nudge from the row itself and stamps the receipt when the turn returns.
+test('invokeCommand gives the drive command for a live session, and no hand-typed resume', () => {
+  const node = { id: 'lod/C2', branch: 'lod/c2-derived-switch', session: 'c4a1e4a7-1111-2222-3333-444444444444', status: 'review' };
+  const { kind, lines } = invokeCommand(node, CFG);
   assert.equal(kind, 'resume');
-  assert.equal(lines[0], 'claude stop c4a1e4a7');
-  assert.ok(lines[1].includes('cd /x/c2'));
-  assert.ok(lines[1].includes('--resume c4a1e4a7-1111-2222-3333-444444444444'));
+  assert.deepEqual(lines, ['orchestra drive lod/C2']);
 });
 
 test('invokeCommand gives the launch cycle for a task nobody holds', () => {
   const node = { id: 'C4', branch: 'lod/c4-prefetch', session: null, status: 'todo', design: false };
-  const { kind, lines } = invokeCommand(node, new Map(), CFG);
+  const { kind, lines } = invokeCommand(node, CFG);
   assert.equal(kind, 'launch');
   assert.equal(lines.length, 2);
   assert.ok(lines[0].includes(`git worktree add ${CFG.worktrees}/c4 -b lod/c4-prefetch ${CFG.mainBranch}`));
@@ -550,15 +548,7 @@ test('invokeCommand gives the launch cycle for a task nobody holds', () => {
 });
 
 test('invokeCommand offers nothing for a landed task', () => {
-  assert.equal(invokeCommand({ id: 'C1', branch: 'lod/c1', session: null, status: 'landed' }, new Map(), CFG).kind, 'none');
-});
-
-test('invokeCommand does not throw for a session recorded before its branch, and falls back to the id-derived worktree slug', () => {
-  const node = { id: 'X', branch: null, session: 's1', status: 'review' };
-  const { kind, lines } = invokeCommand(node, new Map(), CFG);
-  assert.equal(kind, 'resume');
-  assert.equal(lines[0], 'claude stop s1');
-  assert.ok(lines[1].includes(`${CFG.worktrees}/x`));
+  assert.equal(invokeCommand({ id: 'C1', branch: 'lod/c1', session: null, status: 'landed' }, CFG).kind, 'none');
 });
 
 // New: the delta itself, word for word against `skills/orchestra/SKILL.md`'s worked example
@@ -567,7 +557,7 @@ test('invokeCommand does not throw for a session recorded before its branch, and
 test('invokeCommand builds the session name and worktree slug from cfg, and drops the dependency-install line', () => {
   const node = { id: 'lod/C2', branch: 'lod/c2-derived-switch', session: null, status: 'todo', design: false };
   const cfg = { id: 'a3f19c', worktrees: '.orchestra/worktrees', mainBranch: 'develop' };
-  const { kind, lines } = invokeCommand(node, new Map(), cfg);
+  const { kind, lines } = invokeCommand(node, cfg);
   assert.equal(kind, 'launch');
   assert.equal(lines.length, 2);
   assert.equal(lines[0], 'git worktree add .orchestra/worktrees/lod-c2 -b lod/c2-derived-switch develop');

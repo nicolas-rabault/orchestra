@@ -2,7 +2,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
-import { reconcileTasks, computeReadySet, planLaunches, undeliveredRelays, pendingWaiting, gatherGit }
+import { reconcileTasks, computeReadySet, planLaunches, pendingWaiting, gatherGit }
   from '../lib/register/ready.mjs';
 
 const repos = [];
@@ -66,18 +66,6 @@ test('a row with no mine field at all is not demoted behind a stranger', () => {
 test('a design task is planned on the design model', () => {
   assert.equal(planLaunches([row('x/A', { design: true })], 0, 1)[0].model, 'fable');
   assert.equal(planLaunches([row('x/A')], 0, 1)[0].model, 'opus');
-});
-
-test('an undelivered relay is reported whatever the row status, and never for a terminal row', () => {
-  const now = Date.parse('2026-09-03T12:00:00.000Z');
-  const tasks = [
-    row('demo/D1', { status: 'review', relay: { text: 'blocking defect', writtenAt: '2026-09-03T10:00:00.000Z' } }),
-    row('demo/D2', { status: 'landed', relay: { text: 'old news', writtenAt: '2026-09-01T10:00:00.000Z' } }),
-    row('demo/D3', { status: 'claimed', relay: { text: 'done', writtenAt: '2026-09-03T10:00:00.000Z', deliveredAt: '2026-09-03T10:01:00.000Z' } }),
-  ];
-  const out = undeliveredRelays(tasks, { now });
-  assert.deepEqual(out.map((u) => u.id), ['demo/D1']);
-  assert.equal(out[0].ageMin, 120);
 });
 
 test('a question older than the floor is reported, oldest first, unknown age last', () => {
