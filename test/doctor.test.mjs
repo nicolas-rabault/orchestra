@@ -6,7 +6,7 @@
 // warns about it explicitly rather than leaving a stale key nobody is ever told about.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
 import { loadConfigOrThrow } from '../lib/config.mjs';
@@ -55,6 +55,27 @@ test('doctor offline: a tracked path and a missing exclusion are both named', ()
   const text = doctorText(loadConfigOrThrow(r.root));
   assert.match(text, /\/\.orchestra\/ is not excluded/);
   assert.match(text, /\.orchestra\/config\.json/);
+});
+
+test('doctor offline: a CLAUDE.md still carrying the rules block is named, with the fix', () => {
+  const r = repo();
+  // The flip-from-online case (Task 7): a committed CLAUDE.md that still has the marker the rules
+  // template starts with. The probe does a substring test, not an exact-block match, so the marker
+  // alone is enough to exercise it without pulling in the real template text.
+  writeFileSync(join(r.root, 'CLAUDE.md'), '<!-- orchestra:claude-rules -->\nsome rules\n');
+  const text = doctorText(loadConfigOrThrow(r.root));
+  assert.match(text, /the rules block is still in .*CLAUDE\.md — remove it and commit the deletion/);
+});
+
+test('doctor offline: an unreadable CLAUDE.md degrades to a row, never a throw', () => {
+  const r = repo();
+  // A directory named CLAUDE.md: `existsSync` is true, so the probe does not skip it, but
+  // `readFileSync` on a directory throws EISDIR on every platform regardless of uid — unlike
+  // `chmod 0o000`, which a suite running as root silently ignores, proving nothing. `doctor`
+  // reports, it never gates: this must return a string, not throw.
+  mkdirSync(join(r.root, 'CLAUDE.md'));
+  const text = doctorText(loadConfigOrThrow(r.root));
+  assert.match(text, /trace/);
 });
 
 test('doctor online: no trace row', () => {
