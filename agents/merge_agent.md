@@ -20,8 +20,10 @@ project's `mainBranch` — this document never assumes it is called `main`.
 
 ## Absolute rules
 
-- **Local only. Never `git push`. Never open a pull request.** The gate itself has no remote
-  behaviour at all: it does not push, and it does not delete a remote ref.
+- **Never `git push`. Never open a pull request.** The gate writes nothing outward: it does not
+  push, and it does not delete a remote ref. It does *read* the remote — when the main branch tracks
+  an upstream, a landing fetches it and rebases the local main branch onto it first, so the gates
+  judge the base everyone else has rather than one this machine invented.
 - **The main branch is integrate-only.** You land work by merging finished branches; you never
   author feature commits on it yourself.
 - **You do not perform the landing by hand.** `orchestra land` does it, and it holds a lock for the
@@ -60,7 +62,7 @@ Then act on the exit code `await` gives you:
 |---|---|---|
 | 0 | landed; the worktree is always removed and the ref with it — a `landed; …` note in the log names any file the removal destroyed (gate residue: a coverage report, a formatter's rewrite) | report it |
 | 1 | usage: `await` found no detached record for this branch (its own message names the fix — `land --detach` first), or a command was given a bad flag | fix the argument, or start a landing before awaiting one |
-| 10 | conflict; the rebase was aborted and the conflicted paths are named | resolve (below), then run `land` again |
+| 10 | conflict; the rebase was aborted and the conflicted paths are named, along with the directory they are in — usually the branch's worktree, but the main checkout when it was the local main branch that could not be rebased onto its upstream | resolve (below), then run `land` again |
 | 11 | **a gate refused**; the main branch is untouched | STOP. Report **which gate** and what it printed. Do not retry, do not fix the branch — that is its author's call |
 | 12 | still queued, or still landing | run the same `await` again |
 | 13 | a precondition failed (dirty tree, missing branch, no worktree, refused cleanup) | report exactly what it named |
@@ -94,6 +96,12 @@ reboot, a `kill -9`, the machine going to sleep.
 ## Resolving a conflict (exit 10)
 
 This is the one part of a landing that needs judgement, and the only reason you are here.
+
+**Read which directory the message names first.** A landing rebases two things: the local main
+branch onto its upstream, then the branch onto the local main branch. When the message says the main
+checkout, the conflict is between what this machine landed locally and what the remote has taken
+since — the steps below are the same, but you run them in the main checkout against the upstream
+(`git -C <root> rebase <mainBranch>@{upstream}`), and no worktree is involved.
 
 1. Rebase in the branch's own worktree: `git -C <worktree> rebase <mainBranch>`.
 2. Resolve, using the intent you were given. When unsure which side wins, prefer preserving **both**

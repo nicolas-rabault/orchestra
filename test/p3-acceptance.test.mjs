@@ -50,6 +50,34 @@ function branchWith(r, { branch = 'demo/d1', slug = 'd1', file = 'src/a.js', bod
   return { wt, branch };
 }
 
+// A bare repository standing in for `origin`, with `main` pushed and tracking it. The fixture is a
+// `git init` with no remote at all, which is the shape in which the upstream sync must do nothing —
+// so every test about the sync has to build the other shape first.
+function withOrigin(r) {
+  const bare = mkdtempSync(join(tmpdir(), 'orchestra-origin-'));
+  execFileSync('git', ['init', '-q', '--bare', bare], { encoding: 'utf8' });
+  r.git('remote', 'add', 'origin', bare);
+  r.git('push', '-q', '-u', 'origin', 'main');
+  return bare;
+}
+
+// A commit somebody else pushed to `main` while this checkout was busy landing. Authored on a
+// throwaway branch cut from the remote's own tip, and — the part that makes the test worth anything
+// — the local `refs/remotes/origin/main` is put BACK where it was afterwards, because a push moves
+// it. Without that restore this checkout would already know about the commit, and the test would
+// pass with no fetch in the code at all.
+function pushToOrigin(r, { file = 'shared.txt', body = 'theirs\n', subject = 'feat: somebody else pushed this' } = {}) {
+  const stale = r.git('rev-parse', 'origin/main').trim();
+  r.git('checkout', '-q', '-b', 'theirs', 'origin/main');
+  writeFileSync(join(r.root, file), body);
+  r.git('add', '-A');
+  r.git('commit', '-q', '-m', subject);
+  r.git('push', '-q', 'origin', 'theirs:main');
+  r.git('checkout', '-q', 'main');
+  r.git('branch', '-q', '-D', 'theirs');
+  r.git('update-ref', 'refs/remotes/origin/main', stale);
+}
+
 const log = (r, n = 5) => r.git('log', '--format=%s', `-${n}`, 'main').trim().split('\n');
 const branches = (r) => r.git('for-each-ref', '--format=%(refname:short)', 'refs/heads')
   .trim().split('\n');
@@ -625,4 +653,86 @@ test('land online: the same offending branch lands — online has nothing to hid
 
   const { code, out } = run(r.root, 'land', 'feat');
   assert.equal(code, 0, out);
+});
+
+// The upstream sync. A landing rebases the branch onto the LOCAL main branch and fast-forwards that
+// same local branch, so while orchestra runs, every landing stacks another unpushed commit on a base
+// the remote left behind hours ago — and the gates keep judging a tree nobody else will ever have.
+test('a landing rebases the local main branch onto its upstream before it lands the branch', () => {
+  const r = project([{ name: 'green', cmd: 'echo fine' }]);
+  withOrigin(r);
+  // A landing this checkout already made and never pushed.
+  writeFileSync(join(r.root, 'local.txt'), 'ours\n');
+  r.git('add', '-A');
+  r.git('commit', '-q', '-m', 'feat: a landing nobody pushed');
+  pushToOrigin(r);
+  // Cut from main as it stands BEFORE the sync, which is the only shape a real branch ever has.
+  const { branch } = branchWith(r);
+
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+  // Newest first: the branch, replayed onto the unpushed landing, replayed onto theirs.
+  assert.deepEqual(log(r, 4), [
+    'feat: the branch does a thing',
+    'feat: a landing nobody pushed',
+    'feat: somebody else pushed this',
+    'initial',
+  ]);
+  // And main is no longer behind the remote, which is the whole point.
+  assert.equal(r.git('rev-list', '--count', 'main..origin/main').trim(), '0');
+});
+
+test('a conflict rebasing main onto its upstream is reported in the main checkout, not the worktree', () => {
+  const r = project([{ name: 'green', cmd: 'echo fine' }]);
+  withOrigin(r);
+  writeFileSync(join(r.root, 'shared.txt'), 'ours\n');
+  r.git('add', '-A');
+  r.git('commit', '-q', '-m', 'feat: a landing nobody pushed');
+  // The same path, a different body: replaying the unpushed landing onto theirs cannot succeed.
+  pushToOrigin(r, { file: 'shared.txt', body: 'theirs\n' });
+  const { branch, wt } = branchWith(r);
+  const before = r.git('rev-parse', 'main').trim();
+
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 10, out);
+  // The conflicted path AND the place to resolve it: exit 10's standing instruction sends the agent
+  // to the worktree, and this conflict is not in the worktree.
+  assert.match(out, /shared\.txt/);
+  assert.ok(out.includes(r.root), out);
+  // Aborted, and nothing moved: no half-finished rebase left for the next landing to trip over.
+  assert.equal(r.git('rev-parse', 'main').trim(), before);
+  assert.equal(existsSync(join(r.root, '.git', 'rebase-merge')), false);
+  assert.equal(existsSync(join(r.root, '.git', 'rebase-apply')), false);
+  // Held, not lost.
+  assert.ok(branches(r).includes(branch));
+  assert.ok(r.git('worktree', 'list').includes(wt));
+});
+
+test('an uncommitted change in the main checkout refuses the landing once the upstream has moved', () => {
+  const r = project([{ name: 'green', cmd: 'echo fine' }]);
+  withOrigin(r);
+  pushToOrigin(r);
+  const { branch } = branchWith(r);
+  // A tracked file the branch does not touch: `clashingPaths` has always allowed this through, and
+  // a rebase of main cannot. The narrowing is the cost, and it is paid only when origin moved.
+  writeFileSync(join(r.root, 'README.md'), '# edited while the upstream moved\n');
+  const before = r.git('rev-parse', 'main').trim();
+
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 13, out);
+  assert.match(out, /README\.md|commit or stash/);
+  assert.equal(r.git('rev-parse', 'main').trim(), before);
+});
+
+test('a remote that cannot be reached says so and lands anyway', () => {
+  const r = project([{ name: 'green', cmd: 'echo fine' }]);
+  // The upstream is configured and its ref is known; only the remote itself is gone. A landing is a
+  // local integration and must not need a network to happen.
+  rmSync(withOrigin(r), { recursive: true, force: true });
+  const { branch } = branchWith(r);
+
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+  assert.match(out, /could not fetch/);
+  assert.ok(log(r).includes('feat: the branch does a thing'), log(r).join('|'));
 });

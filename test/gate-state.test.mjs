@@ -386,3 +386,16 @@ test('a pre-fork seed within the grace still reads as running; past it, it reads
     S.runVerdict({ run: seed, alive: true, nowSec: 100 + S.PRE_FORK_GRACE_SEC }).state, 'vanished',
   );
 });
+
+test('the main branch is rebased onto its upstream only when the upstream really moved', () => {
+  // The upstream's ABSENCE is the off switch: a project whose main branch tracks nothing never
+  // reaches a fetch, which is what leaves a repository with no remote exactly as it was.
+  assert.equal(S.syncMainDecision({ upstream: null, behind: 3, dirty: false }), 'skip');
+  // Not behind is the ordinary case during a run, and it must cost nothing and change nothing —
+  // including when the main checkout is dirty, which the landing has always tolerated.
+  assert.equal(S.syncMainDecision({ upstream: 'origin/main', behind: 0, dirty: true }), 'skip');
+  assert.equal(S.syncMainDecision({ upstream: 'origin/main', behind: 2, dirty: false }), 'rebase');
+  // A rebase needs a clean tree. Refusing is the narrowing this sync knowingly costs: it happens
+  // only when the upstream moved, and the message has to name the fix.
+  assert.equal(S.syncMainDecision({ upstream: 'origin/main', behind: 2, dirty: true }), 'refuse');
+});
