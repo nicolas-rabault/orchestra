@@ -263,6 +263,14 @@ test('commitLedgers offline: the message names no tool', () => {
   writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":2}\n');
   assert.equal(commitLedgers(loadConfigOrThrow(r.root)), true);
   const body = r.git('log', '-1', '--format=%B');
+  // Two assertions, not one, and neither is redundant with the other. `/merge gate/` pins THIS
+  // task's own removal — it is the phrase that named the tool and the only thing that changed here,
+  // so it is what actually fails against the old code. `TRACE` pins the branch-wide invariant
+  // (spec §5's trace guard, `orchestra|merge_agent`) that every offline trace this whole effort
+  // cares about must also satisfy, even though it is narrower than "names no tool" and would not by
+  // itself have caught this particular leak. Losing either one loses something a later reader would
+  // not get back by re-deriving it.
+  assert.doesNotMatch(body, /merge gate/);
   assert.doesNotMatch(body, TRACE);
 });
 
