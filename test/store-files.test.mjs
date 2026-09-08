@@ -52,7 +52,9 @@ test('publish moves the draft, touches git not at all, and makes its tasks visib
   assert.ok(!existsSync(p), 'the draft is gone');
 
   // A publish is a local act: no commit of its own, and nothing left staged for somebody else's
-  // next one. The file lives under `.orchestra/`, which `orchestra init` gitignores.
+  // next one. The file lives under `.orchestra/`, which `orchestra init` hides from git — online,
+  // by the `.orchestra/.gitignore` it writes; offline, by the line it appends to this clone's own
+  // `info/exclude`, never committed.
   assert.equal(ctx.r.git('rev-parse', 'HEAD').trim(), head);
   assert.equal(ctx.r.git('diff', '--cached', '--name-only').trim(), '');
   assert.equal(ctx.r.git('ls-files', ctx.cfg.roadmaps.published).trim(), '');

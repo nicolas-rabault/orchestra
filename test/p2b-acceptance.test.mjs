@@ -77,14 +77,15 @@ const OUTLINE = [
   '### The answer net, and what has no net under it yet',
 ];
 
-// The nine substitutions §6 fixes for the briefs, plus the three a PULL-REQUEST REVIEW row adds
-// (2026-09-07-pr-review-in-orchestra-design.md §7): `pr` and `repo` the design names, and `base`,
-// which its own brief text uses and which nothing else could fill. They are also the ONLY
-// single-word braces the document may contain: a config key named in prose is a backticked key
-// name, never a placeholder, and a placeholder off this list is a promise the conductor has nothing
-// to fill from.
+// The ten substitutions §6 fixes for every brief — nine from the source phase plus
+// `{projectRules}`, Task 6's own delivery of the offline rules file into the brief — plus the
+// three a PULL-REQUEST REVIEW row adds (2026-09-07-pr-review-in-orchestra-design.md §7): `pr` and
+// `repo` the design names, and `base`, which its own brief text uses and which nothing else could
+// fill. They are also the ONLY single-word braces the document may contain: a config key named in
+// prose is a backticked key name, never a placeholder, and a placeholder off this list is a
+// promise the conductor has nothing to fill from.
 const PLACEHOLDERS = ['branch', 'task', 'title', 'excerpt', 'language', 'branchTests',
-  'specsDir', 'plansDir', 'briefExtra', 'pr', 'repo', 'base'];
+  'specsDir', 'plansDir', 'briefExtra', 'projectRules', 'pr', 'repo', 'base'];
 
 // Every path and command of the source project. A survivor here is transformation 1 or 2 left undone
 // — and a false invocation in a protocol is worse than a false comment, because a worker types it.
@@ -134,7 +135,7 @@ test('the outline is complete and in order', () => {
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
 });
 
-test('the nine brief placeholders are all used, and nothing else is a placeholder', () => {
+test('the ten brief placeholders are all used, and nothing else is a placeholder', () => {
   const text = read(SKILL);
   const found = new Set([...text.matchAll(/(?<!\$)\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((m) => m[1]));
   assert.deepEqual([...found].filter((p) => !PLACEHOLDERS.includes(p)), []);

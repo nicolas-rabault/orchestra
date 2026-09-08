@@ -31,10 +31,10 @@ const run = (cwd, ...args) => execFileSync(process.execPath, [BIN, ...args], { c
 // A git repository with NO `.orchestra/` at all — never `test/helpers/fixture.mjs`'s `makeRepo`,
 // which commits a config as part of its own setup. "Bare" here means what the acceptance line
 // means: nothing about orchestra exists in this checkout yet. A `CLAUDE.md` is committed up
-// front, deliberately, so that `init`'s own append to it (spec §11 step 3) shows up in `git
-// status` as a MODIFICATION of a file that already existed, not as a third new path — which is
-// exactly what lets the assertion below hold `init` to touching only the two paths the acceptance
-// line names.
+// front, deliberately, to prove offline `init` (Task 6) leaves a file this committed and this
+// named completely alone: the rules it would once have appended here now go to
+// `.orchestra/CLAUDE-rules.md` instead, which is why the assertion below expects `git status` to
+// report nothing at all rather than a modification of this file.
 function bareRepo() {
   const root = mkdtempSync(join(tmpdir(), 'orchestra-bare-'));
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
@@ -61,16 +61,16 @@ test('init on a bare repository produces a project that ticks', () => {
     assert.match(doctorOut, /orchestra — /);
     assert.match(doctorOut, /mode\s+offline/);
 
-    // 3. `git status` shows `.orchestra/config.json` and `.orchestra/.gitignore` as the only new
-    // committable paths. `-uall` expands the untracked `.orchestra/` directory into its actual
-    // files rather than collapsing it to one line, which is what makes "the only two" checkable at
-    // all. `CLAUDE.md` is modified (see `bareRepo`'s own comment), never counted as new.
+    // 3. `git status` shows NOTHING at all — offline mode excludes the whole `.orchestra/`
+    // directory in this clone's own `.git/info/exclude` rather than gitignoring it from inside
+    // itself, so `.orchestra/config.json` and `.orchestra/CLAUDE-rules.md` (Task 6's delivery of
+    // the rules `bareRepo`'s comment describes) never appear, and neither does a modification of
+    // `CLAUDE.md` — offline `init` does not touch it. `-uall` expands an untracked directory into
+    // its actual files rather than collapsing it to one line, which is what makes "nothing at
+    // all" checkable rather than assumed.
     const status = git('status', '--porcelain', '-uall');
     const lines = status.trim().split('\n').filter(Boolean);
-    const untracked = lines.filter((l) => l.startsWith('??')).map((l) => l.slice(3)).sort();
-    assert.deepEqual(untracked, ['.orchestra/.gitignore', '.orchestra/config.json']);
-    const modified = lines.filter((l) => !l.startsWith('??'));
-    assert.deepEqual(modified.map((l) => l.trim()), ['M CLAUDE.md']);
+    assert.deepEqual(lines, []);
 
     // 4. `orchestra tick-gate` answers a line whose first word is `skip`, and whose reason is that
     // no register exists yet — nobody has ever written `.orchestra/state.json` here.
@@ -85,8 +85,8 @@ test('init on a bare repository produces a project that ticks', () => {
     const gate2 = run(root, 'tick-gate').trim();
     assert.equal(gate2, 'run hold-awake');
 
-    // That progression — init, a resolved doctor, two new paths and nothing else, no register
-    // then a held-awake one — IS "a project that ticks".
+    // That progression — init, a resolved doctor, no committable trace at all, no register then a
+    // held-awake one — IS "a project that ticks".
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -371,7 +371,7 @@ test('nodesOf draws nothing for a developer the board no longer names', () => {
     board: { status: 'absent', rows: [], message: 'no board' },
     register: [{ id: 'C2', roadmap: 'ROADMAP', title: 'Derived LOD switch distance', status: 'review', deps: [], touches: [], pending }],
     journal: { entries: [], skipped: 0 }, inbox: { entries: [], skipped: 0 },
-    servers: [], worktrees: new Map(),
+    servers: [],
   });
 
   // The sequence a tab left open for a day actually goes through. The pending id of an item with no

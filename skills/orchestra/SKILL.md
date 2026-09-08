@@ -34,13 +34,17 @@ else.
 
 ## Onboarding a new project (`orchestra init`)
 
-**Run this once, before anything else, in a project `doctor` says has not opted in.** `init` writes
-`.orchestra/config.json`, `.orchestra/.gitignore`, and appends `templates/CLAUDE-rules.md` to the
-project's `CLAUDE.md` (or creates it) — see `lib/cli/init.mjs` for exactly what each of those
-holds. What it cannot do is guess: `detect(root)` only proposes a gate or a branch-test command it
-found real evidence of (a script in `package.json`, a `Cargo.toml`, a `pyproject.toml`, a `go.mod`,
-a Makefile `test:` target), and anything it did not find goes in its `missing` list rather than
-being invented — a gate that does not run is a gate that refuses every landing.
+**Run this once, before anything else, in a project `doctor` says has not opted in.** `init`
+always writes `.orchestra/config.json`; everything else it writes depends on the mode you choose
+below. Online: a committed `.orchestra/.gitignore`, and `templates/CLAUDE-rules.md` appended to the
+project's `CLAUDE.md` (creating it if there is none). Offline: no `.gitignore` at all —
+`/.orchestra/` is excluded from this clone through its own `info/exclude` instead — and the same
+rules written to `.orchestra/CLAUDE-rules.md`, never to `CLAUDE.md`, which `init` touches only to
+remove a block a previous online `init` left there. See `lib/cli/init.mjs` for exactly what each
+of those holds. What it cannot do is guess: `detect(root)` only proposes a gate or a branch-test
+command it found real evidence of (a script in `package.json`, a `Cargo.toml`, a `pyproject.toml`,
+a `go.mod`, a Makefile `test:` target), and anything it did not find goes in its `missing` list
+rather than being invented — a gate that does not run is a gate that refuses every landing.
 
 Ask, in this order:
 
@@ -49,9 +53,9 @@ Ask, in this order:
 2. **`mode`** — the one key with no default, so ask it even when detection found everything else:
    - `online` — roadmaps are GitHub issues, so every developer on the repository sees who is
      working on what (needs the `gh` CLI, authenticated).
-   - `offline` — roadmaps are markdown under `.orchestra/roadmaps`, gitignored and never committed
-     by orchestra itself, and "is somebody already working on this" is answered for this machine
-     only.
+   - `offline` — roadmaps are markdown under `.orchestra/roadmaps`, excluded from this clone and
+     never committed by orchestra itself, and "is somebody already working on this" is answered for
+     this machine only.
 3. **Everything named in `missing`**, one at a time, only if detection actually left it empty:
    - `suite` — no recognised test command at all. Ask what runs the whole suite, if anything does
      yet. A project with nothing here can still adopt orchestra; it just lands without a gate.
@@ -154,8 +158,9 @@ command this plugin ships actually exists.
 This document is English, because the plugin is shared: the same words read the same way in every
 project it is installed into. What you write **for the user** is not — every journal line, every
 `ask` and its `options`, every `note`, every checkpoint, every question relayed, is written **in the
-user's language**. `.orchestra/state.json`, and the rest of the runtime state next to it, is
-gitignored and has exactly one reader — this is that committed-in-English rule's deliberate
+user's language**. `.orchestra/state.json`, and the rest of the runtime state next to it, is hidden
+from git (online, by `.orchestra/.gitignore`; offline, by this clone's own `info/exclude`, never
+committed) and has exactly one reader — this is that committed-in-English rule's deliberate
 exception, not a contradiction of it: what a worker commits stays English, and so does its branch,
 because the exception is the conversation, not the code.
 
@@ -497,6 +502,31 @@ started *after* the hold was issued.
    tick arms none** — the loop would die with the tick, and its beat would spend the next minute
    naming a conductor that is already gone.
 
+   **Then arm the worker watch, beside it.** It is what reaches you in the one state step 3's
+   obligations cannot otherwise reach: alive, holding the baton, sitting between two turns with
+   the fleet stopped.
+   ```
+   Monitor(command: "orchestra watch-workers",
+           persistent: true, description: "workers stopped on live rows, relays undelivered")
+   ```
+   Once a minute it computes exactly what `orchestra ready` prints as `IDLE:` and `UNDELIVERED:`
+   (one definition, `lib/register/drive.mjs`), and prints one line when that set changes, and
+   again every ten minutes while it stands — three minutes after a stop, never sooner, so a turn
+   you are reading in a foreground `drive` is not announced back at you:
+   ```
+   OWED: 6 stopped worker(s) on live rows (f6, cg5, sc2, sc5 +2) · 2 undelivered relay(s) (DW1 180 min, DW4 160 min) — run `orchestra drive`
+   ```
+   **When that line reaches you, run `orchestra drive`.** Measured 2026-09-08 in duckJam: a
+   conductor read the reports of an eleven-worker wave, spent its turn on other things and ended
+   it; six sessions sat idle, four more had been stopped and never resumed, two relays sat
+   undelivered from 06:52Z and 07:13Z, and `tick-gate` stood the heartbeat down for that
+   conductor — correctly, it was alive and writing the register — until the user asked why nothing
+   moved. This loop is the only thing that can wake that conductor, and it is that conductor's own,
+   so it can never make a second one. It is a SECOND Monitor on purpose: the answer watch must stay
+   a two-second file read with no child process in it, because its loop's liveness IS your beat,
+   and this one's witness (`claude agents --json`) costs two seconds and may hang. A headless tick
+   arms neither.
+
    Then `orchestra ready --json`. Read `claude agents --json` and `ListAgents`. If there is no
    state file, go to Adoption. If `state.json`'s `conductor.session` is not you, you are a
    replacement: record yourself, and SendMessage every live worker a new hello — "new conductor;
@@ -559,33 +589,57 @@ started *after* the hold was issued.
    worker stops at the end of each turn and sits `waiting`; it does not drive itself for hours, and
    **SendMessage does NOT wake it** — messages queue until the receiver's next turn, which never
    comes on its own. `claude -p --resume` refuses while the session is registered as a bg agent.
-   The working cycle, measured 2026-08-10 in planetCraft:
+   The cycle — `claude stop`, then `claude -p --resume` in the worktree with a nudge, measured
+   2026-08-10 in planetCraft — is one command now, and you run no other form of it:
    ```sh
-   claude stop <short-id>                      # unregister; the conversation is kept
-   cd <worktree> && claude -p --resume <full-uuid> --dangerously-skip-permissions \
-     "<nudge: read queued conductor messages, continue, print status or done-report>"
+   orchestra drive                    # every row ready prints as UNDELIVERED: or IDLE:
+   orchestra drive <id> [<id>…]       # these rows, whatever they are waiting on
    ```
-   **Run it in the FOREGROUND and wait for it**; queued messages drain on that turn. A turn can be
-   long, and backgrounding it is the obvious accommodation — it is also how the turn dies: a
-   backgrounded resume is reaped when the tick's own turn ends. Measured twice in one morning on
-   2026-08-14 in planetCraft, on the same row, ~55 minutes lost each time. A resume you did not
-   watch finish is a resume that did not happen; if the turn really is too long for this tick, that
-   is what the next tick is for.
+   `orchestra ready` names what you owe, first, above everything else it has to say:
+   ```
+   UNDELIVERED: dome/DW1 [claimed] — relay written 2026-09-08T06:52:00Z, 180 min ago
+   IDLE: forge/F6 [claimed] — orchestra-fc69aa-f6 stopped 2026-09-08T09:55:02Z — last words: report: rebased, tests green, waiting for your look
+   IDLE: media/SC2 [claimed] — orchestra-fc69aa-sc2 background session idle
+   driving: arena/PV1 [claimed] — driven turn pid 40798
+   owed: 3 worker turn(s) — orchestra drive
+   ```
+   **Both lines are obligations for this tick, not information. A tick may not end with either
+   outstanding.** `IDLE:` is a row that is not terminal, has a session, is not waiting on the
+   USER (no open `pending[]` item, not `review`), and has no turn running anywhere — not `busy`
+   in `claude agents --json`, no `--resume` process in the table, no driven turn on record whose
+   process is alive (`lib/register/liveness.mjs` reads all three). Measured 2026-09-08 in duckJam:
+   ten such rows and two undelivered relays sat for hours while `ready` printed nothing about the
+   ten and the conductor did not act on the two. A stopped worker is the ORDINARY state of a
+   worker between two nudges, so the invariant reads the other way round: at the end of your tick,
+   every live row is either running a turn, or waiting on the user, or landed.
+
+   What `drive` does per row: unregisters the background session if it is still one, resumes the
+   session in its worktree with the row's own `relay.text` verbatim at the head of the nudge (or
+   the plain continue-nudge), **detached** — the turn survives your 600-second ceiling and the end
+   of a headless tick, exactly as `orchestra land --detach` does — and waits up to `--for=540`,
+   printing each report as its turn returns. Exit 12 means some are still running: run `drive`
+   again, they went on without you; the outcome is on disk under `.orchestra/drive/<slug>.json`
+   and `.out`, so the session that reads it need not be the one that started it.
+
+   **Then read every report `drive` printed and decide per row**: a done-report → `review` (the
+   hands-on gate) or hand it to `merge_agent`; a question → `pending[]`, and ask the user; still
+   working → it is `IDLE:` again at your next `ready`, and `drive` again. A worker that keeps
+   saying "done" while its row stays `claimed` costs a wasted turn per cycle — that is your undone
+   status change showing, not a reason to stop driving.
 
    **The reply printed on that resume is the ONLY channel a worker has to reach you**, so treat the
    nudge as the question you want answered, not as a poke. Measured three times on 2026-08-12 in
    planetCraft: `SendMessage` from a worker session could not resolve the conductor's address —
    the hello it sent arrived, and the answer could not come back. A worker that finds this out
    mid-task prints its report where nobody reads it: one design question and one done-report were
-   found only by reading the worker's transcript by hand. **So a resume that fails is a worker gone
-   silent, not a worker idle** — the Bash task can die (exit 144 was seen), and you must notice and
-   re-send. Watch for the state change and resume; never wait to be messaged.
+   found only by reading the worker's transcript by hand. **So a turn that fails is a worker gone
+   silent, not a worker idle** — `drive` records it (`the turn … is gone and recorded no exit`,
+   or a non-zero exit with the log's tail), and the row is `IDLE:` again with those words on it.
 
-   So per row **that is not `landed` or `dropped`, whatever its status — `review` included**:
-   `waiting` (or stopped) → run the cycle with a continue-nudge; conversation gone entirely →
-   relaunch (same `worktrees` directory, original brief plus "read what is already committed and
-   dirty first", model re-evaluated — a done design relaunches on the execution model). To tell a
-   dead-quiet worktree from a working one, mtimes — never 3's probe with its window shortened:
+   Conversation gone entirely (the turn's log says `No conversation found`) → relaunch (same
+   `worktrees` directory, original brief plus "read what is already committed and dirty first",
+   model re-evaluated — a done design relaunches on the execution model). To tell a dead-quiet
+   worktree from a working one, mtimes — never 3's probe with its window shortened:
    `(cd <worktree> && git ls-files -co --exclude-standard -z | xargs -0 sh -c '/usr/bin/find "$@"
    -newermt "-20 minutes" -type f' sh | head -1)` (never 3's header says why it is spelled this
    way: the absolute `/usr/bin/find`, and git rather than a tree walk). That is a different question
@@ -610,45 +664,51 @@ started *after* the hold was issued.
      and MA2.
    - `exit 144` with empty output — the Bash task killed outright. RP5 again, four hours later.
 
-   So: **when a resume REPORTS work — a commit, an edit, a measurement — confirm it at the
+   So: **when a turn REPORTS work — a commit, an edit, a measurement — confirm it at the
    filesystem before you write it in the journal or act on it**, with the mtime probe above or
-   `git -C <worktree> log --oneline -1`. And a resume that reports NO work is a resume that did not
-   happen: re-send it, do not record it as a worker idling. The probe costs milliseconds; each of
-   the three faces above cost between forty minutes and two hours forty.
+   `git -C <worktree> log --oneline -1`. `drive` names the first face for you — a turn whose output
+   carries the refusal is printed `REFUSED (budget: …); this turn executed nothing`, and the row
+   stays owed — but the other two it cannot: a turn that reports NO work is a turn that did not
+   happen; drive it again, do not record it as a worker idling. The probe costs milliseconds; each
+   of the three faces above cost between forty minutes and two hours forty.
 
    **TWO 600-SECOND CEILINGS, AND THEY ARE NOT THE SAME ONE.** Both were paid for on 2026-08-25 in
    planetCraft, and confusing them sends you to the wrong fix:
    - *the worker's own internal wait ceiling* — a worker that waits on something long (a long
      check, a bench, a served page) has its turn cut at 600 s while the thing it was waiting on
      survives, being a separate process. RP3 lost its turn this way with both its servers still up.
-     Prefix its launch or its resume with `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` whenever the
-     brief makes it wait.
-   - *your own tool-call ceiling* — a foreground resume you are watching is YOUR Bash call, and it
-     is cut at 600 s too. MA4's worker was cut mid-turn at 05:57 on 2026-08-26. **A cut is a turn
-     boundary, not a death**: the conversation is intact and the work is in the worktree,
-     uncommitted (three dirty files, that time, and nothing lost). The next nudge must therefore
-     OPEN with "your turn was cut at the ceiling — commit what is already in your tree first, then
-     continue", or the following cut loses the same work twice.
+     Prefix its launch with `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` whenever the brief makes it
+     wait; a driven turn inherits your environment, so export it before `drive` for the same rows.
+   - *your own tool-call ceiling* — a `drive` you are watching is YOUR Bash call, and it is cut at
+     600 s too, which is why the turns it started are detached and `--for` defaults to 540: the
+     cut takes your wait, never the turn. Before this existed, MA4's worker was cut mid-turn at
+     05:57 on 2026-08-26 — **a cut is a turn boundary, not a death**: the conversation is intact
+     and the work is in the worktree, uncommitted (three dirty files, that time, and nothing lost).
+     Every nudge `drive` sends therefore opens the continue part with "commit what is already in
+     your tree first", so a cut never loses the same work twice.
 
-   **Writing a relay and delivering it are two acts, and only the second one counts.** Put the text
-   on the row as `relay: {text, writtenAt, deliveredAt}` and stamp `deliveredAt` only when the
-   resume cycle above has returned. `orchestra ready` prints every row still holding an undelivered
-   one, first, above everything else it has to say about what to launch:
-   ```
-   UNDELIVERED: dev-loop/S3 [review] — relay written 2026-08-13T18:35:00Z, 600 min ago
-   ```
+   **Writing a relay and delivering it are two acts, and only the second one counts — and only
+   `drive` can perform the second.** Put the text on the row as `relay: {text, writtenAt}` and
+   nothing else: `deliveredAt` and `receipt` are written by the driven turn that carried the text,
+   after it returned with exit 0 and no refusal, and a `deliveredAt` written by any other hand is
+   not delivery — `orchestra ready` keeps printing `UNDELIVERED:` for a relay with no receipt, and
+   `tick-gate` keeps the heartbeat up for it. Measured 2026-09-08 in duckJam: three relays were
+   written onto rows, `deliveredAt` was stamped by hand, and the workers were resumed with a generic
+   nudge; one came back asking, word for word, the question the user had already answered. A relay
+   rewritten while its turn runs is a new relay nobody has delivered, and gets no receipt either.
    Terminal rows are excluded, and status is deliberately not part of the filter: a row can owe the
-   user an answer and owe its worker a message at the same time, `review` included. A relay whose
-   `writtenAt` will not parse is still reported, with no age rather than with `NaN`.
-   **That line is an obligation for this tick, not information.** A tick may not end with one
-   outstanding. And delivering means the stop+resume cycle with the relay text inside the nudge:
-   `SendMessage` is NOT delivery — a `--bg` worker's queue drains on a turn that never comes.
+   user an answer and owe its worker a message at the same time, `review` included — dev-loop/S3
+   sat in `review` for eight hours and sixteen minutes with a blocking defect written on it,
+   2026-08-13 in planetCraft. A relay whose `writtenAt` will not parse is still reported, with no
+   age rather than with `NaN`. `SendMessage` is NOT delivery — a `--bg` worker's queue drains on a
+   turn that never comes.
 
-   **Budget refusal is not death**: a resume that prints "You've hit your session limit · resets
-   <time>" means every turn is refused until that time — leave the rows claimed, note the reset
-   time in `state.json` (the key is `budgetResetAt`, and `orchestra tick-gate` stands the heartbeat
-   down until it passes rather than spending a session on a refusal already certain), and let the
-   next tick retry. Do not mark workers dead on it.
+   **Budget refusal is not death**: a turn that prints "You've hit your session limit · resets
+   <time>" means every turn is refused until that time — `drive` prints it as `REFUSED`, writes
+   no receipt, and the row stays owed. Leave the rows claimed, note the reset time in `state.json`
+   (the key is `budgetResetAt`, and `orchestra tick-gate` stands the heartbeat down until it
+   passes rather than spending a session on a refusal already certain), and let the next tick
+   retry. Do not mark workers dead on it.
 4. **Inbox — two sources, and you must go and get the second one.**
    ```sh
    orchestra inbox          # what the user answered on the page
@@ -904,37 +964,42 @@ started *after* the hold was issued.
 
    Add the one line from the budget above: the plan is already capped by the machine's capacity,
    so a `HELD:` line means launch nothing and say so.
-9. **Release, write, stop.**
+9. **Drive, release, write, stop.**
    ```sh
+   orchestra ready                    # no UNDELIVERED: and no IDLE: line, or you are not done
    orchestra lock release --kind conductor --session <your full session uuid>
    ```
+   **A tick may not end with a worker stopped on a live row.** Run `orchestra ready` once more
+   before you release: every row must be `driving:`, waiting on the user, or terminal. If it
+   prints `owed:`, run `orchestra drive` and read what comes back — the launches of step 8 are
+   background sessions that end their first turn on their own, and that first stop is yours to
+   drive too.
+
    Release it even though your session lives on: the lock covers the TICK, and your beat covers
    the gaps between ticks — a headless tick stands down for a live beat on its own, so holding
    the lock across your idle time would block the heartbeat for nothing. The release is
    identity-checked (`lib/register/lock.mjs`), so if you were already broken for being stale it
-   leaves your successor's lock alone.
+   leaves your successor's lock alone. Measured 2026-09-08 in duckJam: a conductor that skipped
+   this release held the lock from 07:12Z, and three consecutive heartbeat slots were refused
+   `held by conductor` before the gate was ever consulted.
 
    **Write the register even on a tick that changed nothing.** Its write time is the only mark
    that separates a conductor which is conducting from a session which is merely open
    (`lib/register/beat.mjs`'s `conductorState`, read off the register file's own mtime), and a
    tick that skips the write reads as ninety minutes of silence at the next heartbeat slot.
 
-   Stopping is no longer going deaf. Three things wake you: the answer watch armed in step 1 hands
+   Stopping is no longer going deaf. Four things wake you: the answer watch armed in step 1 hands
    you each new answer within seconds — the page writes them and that loop is what turns one into
-   an event here, whatever you are doing; worker turns you resumed notify you as their Bash tasks
-   complete — a landing dispatched to `merge_agent` wakes you the very same way, its turn ending
-   being no different from a worker's; a landing you run yourself needs no wake at all, since
-   `await` blocks in bounded chunks inside your own turn and re-running it is always correct; and,
-   where `orchestra install-heartbeat` has been run for this project, the heartbeat guarantees a
-   tick every hour whatever happens to you, standing down while you are alive so it cannot become
-   a second conductor beside you. Where it has not, nothing wakes you and the fourth case above is
-   what going quiet on an unfinished roadmap actually looks like.
-
-   An interactive conductor may additionally arm one Monitor polling `claude agents --json` for
-   `orchestra-*` sessions leaving `busy` (2-minute interval, transitions only) — the fast path
-   for nudging workers between ticks. **It is a SECOND watch, on a different subject: do not
-   fold it into the answer watch, whose loop must stay a two-second file read with no child
-   process in it.**
+   an event here, whatever you are doing; the worker watch armed beside it says `OWED:` within
+   three minutes of a worker stopping on a live row or a relay being written and not delivered,
+   and says it again every ten minutes until you `drive` — the wake the 2026-09-08 conductor in
+   duckJam never got, sitting alive between two turns over a stopped fleet; a landing dispatched
+   to `merge_agent` wakes you as its turn ends, and a landing you run yourself needs no wake at
+   all, since `await` blocks in bounded chunks inside your own turn and re-running it is always
+   correct; and, where `orchestra install-heartbeat` has been run for this project, the heartbeat
+   guarantees a tick every hour whatever happens to you, standing down while you are alive so it
+   cannot become a second conductor beside you. Where it has not, nothing but your own two watches
+   wakes you, and a session closed on an unfinished roadmap is what going quiet looks like.
 
 ## Adoption (first run, or state lost)
 
@@ -1263,7 +1328,7 @@ would be a second source of truth for a fact GitHub already answers.
 
 ## Worker briefs
 
-Every launch and every hand-over below fills a brief from the same nine substitutions, plus — for a
+Every launch and every hand-over below fills a brief from the same ten substitutions, plus — for a
 relaunch or a hand-over only — `<the project's main branch>` (`orchestra doctor`'s `mainBranch` row)
 and `<n>`, the turn count, and — for a pull-request review row only — the last three rows of the
 table. One table, read once:
@@ -1279,6 +1344,7 @@ table. One table, read once:
 | `{specsDir}` | `orchestra doctor`'s `docs.specs` row |
 | `{plansDir}` | `orchestra doctor`'s `docs.plans` row |
 | `{briefExtra}` | `orchestra doctor`'s `briefExtra` row, pasted verbatim. Empty means the paragraph is omitted entirely |
+| `{projectRules}` | the contents of `.orchestra/CLAUDE-rules.md` when that file exists (offline mode — `init` writes it there instead of into the committed `CLAUDE.md`), pasted verbatim. Absent means the paragraph is omitted entirely: online, the same rules are already in the project's `CLAUDE.md`, which every session reads |
 | `{pr}` | the pull request's number — the digits of the row's `PR<number>` id, which is also what its branch names |
 | `{repo}` | `gh repo view --json nameWithOwner -q .nameWithOwner`, or the `repo` field `orchestra pr scan --json` already prints. Never a repository name you typed |
 | `{base}` | the row's `base`: the sha of the pull request's head, written by the sweep. A row without one is not launchable |
@@ -1297,6 +1363,7 @@ Task {task} — {title}. Your roadmap excerpt, verbatim:
 {excerpt}
 Hard rules: never work on the main branch; run {branchTests} on every iteration, never the project's
 full suite; everything you commit is English.
+{projectRules}
 {briefExtra}
 Your roadmap excerpt above names its `Touches` files: START FROM THEM. Reach for a repository-wide
 search only when the excerpt and the rules above have both failed you. This is not a style note:
@@ -1336,6 +1403,7 @@ Follow the pr-triage skill exactly; its hard rules are yours. Never publish anyt
 except a PENDING review. Never merge, close, label or assign. Never write a direction principle the
 maintainer did not state.
 Before anything else: git fetch origin pull/{pr}/head, and say whether it has moved since {base}.
+{projectRules}
 {briefExtra}
 Write to me in {language}.
 Protocol: your conductor will message you a hello. SENDING A MESSAGE BACK DOES NOT WORK. State your

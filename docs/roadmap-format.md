@@ -59,9 +59,10 @@ A project's drafts directory (`roadmaps.drafts` in `.orchestra/config.json`, `.o
 default) is where a roadmap is written and linted; a draft never gets committed. It does not exist
 for anyone else — or for orchestra — until `orchestra roadmap publish` has published it, and the
 drafting file is deleted then. What publishing produces depends on the project's mode: markdown
-under `roadmaps.published` offline — gitignored, and never committed by orchestra itself — GitHub
-issues online. The grammar and the lint are the same either way, and `orchestra roadmap board`
-lists an unpublished draft under `unpublished:` so it cannot be mistaken for work anybody can see.
+under `roadmaps.published` offline — excluded from this clone, and never committed by orchestra
+itself — GitHub issues online. The grammar and the lint are the same either way, and `orchestra
+roadmap board` lists an unpublished draft under `unpublished:` so it cannot be mistaken for work
+anybody can see.
 
 ### The frontmatter
 
@@ -78,9 +79,9 @@ destination: local
   issue. `lib/roadmap/lint.mjs` refuses a file without one.
 - **`destination:`** overrides where this one roadmap publishes. **`local` is the only value**, and
   anything else is a shape error reported by line, not a lint rule you can argue with. It means
-  published to `roadmaps.published` — gitignored, committed by nothing — **whatever the project's
-  mode**: an online project's development roadmaps still become issues, and this one does not become
-  anything anybody else can see. Offline it selects the store the mode already had, so it changes
+  published to `roadmaps.published` — kept out of git, committed by nothing — **whatever the
+  project's mode**: an online project's development roadmaps still become issues, and this one does
+  not become anything anybody else can see. Offline it selects the store the mode already had, so it changes
   nothing there. Omit it and the destination is the project's mode, which is every roadmap that
   exists today.
 
