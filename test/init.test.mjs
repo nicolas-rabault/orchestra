@@ -327,9 +327,9 @@ test('initProject offline: excludes .orchestra/ in the clone, writes no .orchest
   assert.equal(rep.exclude.action, 'appended');
   assert.match(readFileSync(excludePath(r.root), 'utf8'), /^\/\.orchestra\/$/m);
   assert.equal(existsSync(join(r.root, '.orchestra', '.gitignore')), false);
-  // Task 1's own point: git no longer sees anything under .orchestra/. (Whole-tree cleanliness —
-  // e.g. CLAUDE.md, which `writeClaudeRules` still creates here — is Task 9's claim, after Task 6
-  // stops that write; this only checks that `.orchestra` itself is absent from both outputs.)
+  // Task 1's own point: git no longer sees anything under .orchestra/. (Whole-tree cleanliness,
+  // proved end to end through a real landing, is Task 9's claim; this only checks that
+  // `.orchestra` itself is absent from both outputs.)
   assert.doesNotMatch(r.git('status', '--porcelain'), /\.orchestra/);
   assert.doesNotMatch(r.git('add', '-A', '-n'), /\.orchestra/);
 });
@@ -361,9 +361,13 @@ test('initProject offline in a plain directory: the exclusion is skipped, not an
   assert.equal(rep.exclude.action, 'skipped');
 });
 
+// These four exercise `writeClaudeRules`'s CLAUDE.md-appending branch, which after this task only
+// ever runs in ONLINE mode (offline writes `.orchestra/CLAUDE-rules.md` instead — see the "the
+// rules go beside the config" test below). Mode chosen here for that reason, not incidentally.
+
 test('initProject: creates CLAUDE.md when none exists', () => {
   const d = tmpDir();
-  const report = initProject(d, { mode: 'offline' });
+  const report = initProject(d, { mode: 'online' });
   assert.equal(report.claude.action, 'created');
   const text = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
   assert.match(text, /<!-- orchestra:claude-rules -->/);
@@ -372,9 +376,9 @@ test('initProject: creates CLAUDE.md when none exists', () => {
 
 test('initProject: running again (--force) does not duplicate the CLAUDE.md block', () => {
   const d = tmpDir();
-  initProject(d, { mode: 'offline' });
+  initProject(d, { mode: 'online' });
   const once = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
-  const report = initProject(d, { mode: 'offline', force: true });
+  const report = initProject(d, { mode: 'online', force: true });
   assert.equal(report.claude.action, 'unchanged');
   const twice = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
   assert.equal(twice, once);
@@ -384,14 +388,14 @@ test('initProject: running again (--force) does not duplicate the CLAUDE.md bloc
 test('initProject: appends to a pre-existing CLAUDE.md rather than replacing it, then does not duplicate on a second run', () => {
   const d = tmpDir();
   writeFileSync(join(d, 'CLAUDE.md'), '# My project\n\nSome existing rules here.\n');
-  const first = initProject(d, { mode: 'offline' });
+  const first = initProject(d, { mode: 'online' });
   assert.equal(first.claude.action, 'appended');
   const afterFirst = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
   assert.match(afterFirst, /# My project/);
   assert.match(afterFirst, /Some existing rules here/);
   assert.match(afterFirst, /<!-- orchestra:claude-rules -->/);
 
-  const second = initProject(d, { mode: 'offline', force: true });
+  const second = initProject(d, { mode: 'online', force: true });
   assert.equal(second.claude.action, 'unchanged');
   assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), afterFirst);
   assert.equal(afterFirst.match(/<!-- orchestra:claude-rules -->/g).length, 1);
@@ -403,7 +407,7 @@ test('initProject: a CLAUDE.md carrying the marker line but not the rules undern
   // `unchanged` forever and never actually received them. The fix checks for the block itself.
   const d = tmpDir();
   writeFileSync(join(d, 'CLAUDE.md'), '<!-- orchestra:claude-rules -->\n(someone deleted the rest)\n');
-  const report = initProject(d, { mode: 'offline' });
+  const report = initProject(d, { mode: 'online' });
   assert.equal(report.claude.action, 'appended');
   const text = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
   assert.match(text, /\(someone deleted the rest\)/);
@@ -411,9 +415,36 @@ test('initProject: a CLAUDE.md carrying the marker line but not the rules undern
   assert.match(text, /merge_agent/);
 
   // Now that the full, current block is actually present, a second run reports unchanged.
-  const second = initProject(d, { mode: 'offline', force: true });
+  const second = initProject(d, { mode: 'online', force: true });
   assert.equal(second.claude.action, 'unchanged');
   assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), text);
+});
+
+// ---------------------------------------------------------------------------------
+// Offline: the same rules, delivered a different way (Task 6).
+// ---------------------------------------------------------------------------------
+
+test('initProject offline: the rules go beside the config, not into CLAUDE.md', () => {
+  const d = tmpDir();
+  const rep = initProject(d, { mode: 'offline' });
+  assert.equal(rep.claude.action, 'rules-file');
+  assert.equal(existsSync(join(d, 'CLAUDE.md')), false);
+  assert.match(readFileSync(join(d, '.orchestra', 'CLAUDE-rules.md'), 'utf8'), /orchestra:claude-rules/);
+});
+
+test('initProject offline: an existing CLAUDE.md is left alone', () => {
+  const d = tmpDir();
+  writeFileSync(join(d, 'CLAUDE.md'), '# Project\n\nRules of our own.\n');
+  initProject(d, { mode: 'offline' });
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), '# Project\n\nRules of our own.\n');
+});
+
+test('initProject online: unchanged — the block is appended to CLAUDE.md', () => {
+  const d = tmpDir();
+  writeFileSync(join(d, 'CLAUDE.md'), '# Project\n');
+  const rep = initProject(d, { mode: 'online' });
+  assert.equal(rep.claude.action, 'appended');
+  assert.match(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), /Working with orchestra/);
 });
 
 // ---------------------------------------------------------------------------------

@@ -11,6 +11,9 @@
 - **What is committed is in English** — code, comments, commit messages, docs: whatever is written
   to be read later. Whatever is said between a person and an agent along the way can be any
   language.
+- **Nothing that is committed names orchestra** — not a commit message, not a spec, not a plan, not
+  a comment. The work is the project's; the tool that scheduled it is not part of the record. In
+  offline mode the merge gate refuses a landing that breaks this, naming the file and line.
 - **Consider `git config rerere.enabled true`** in a repository whose branches are rebased all
   day: the merge gate rebases every landing onto main, and rerere remembers how a conflict was
   resolved instead of asking the next rebase to re-fight it. A recommendation, not a rule this

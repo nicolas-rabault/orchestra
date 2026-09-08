@@ -1149,7 +1149,7 @@ written — not a judgment call the conductor makes at launch time.
 
 ## Worker briefs
 
-Every launch and every hand-over below fills a brief from the same nine substitutions, plus — for a
+Every launch and every hand-over below fills a brief from the same ten substitutions, plus — for a
 relaunch or a hand-over only — `<the project's main branch>` (`orchestra doctor`'s `mainBranch` row)
 and `<n>`, the turn count. One table, read once:
 
@@ -1164,13 +1164,14 @@ and `<n>`, the turn count. One table, read once:
 | `{specsDir}` | `orchestra doctor`'s `docs.specs` row |
 | `{plansDir}` | `orchestra doctor`'s `docs.plans` row |
 | `{briefExtra}` | `orchestra doctor`'s `briefExtra` row, pasted verbatim. Empty means the paragraph is omitted entirely |
+| `{projectRules}` | the contents of `.orchestra/CLAUDE-rules.md` when that file exists (offline mode — `init` writes it there instead of into the committed `CLAUDE.md`), pasted verbatim. Absent means the paragraph is omitted entirely: online, the same rules are already in the project's `CLAUDE.md`, which every session reads |
 
 `{briefExtra}` is the replacement for the source brief's appeals to one project's own subject map:
 it is where a project states the rules a prompt cannot derive on its own — where its code lives,
 what a worker must never touch, whether a fresh worktree needs a bootstrap step (step 8, above,
 already runs no dependency install, for exactly that reason).
 
-Fill the nine placeholders and pass the result as the `claude --bg` prompt — step 8, above, gives
+Fill the ten placeholders and pass the result as the `claude --bg` prompt — step 8, above, gives
 the rest of the launch line. Execution brief (the execution model):
 
 ```
@@ -1179,6 +1180,7 @@ Task {task} — {title}. Your roadmap excerpt, verbatim:
 {excerpt}
 Hard rules: never work on the main branch; run {branchTests} on every iteration, never the project's
 full suite; everything you commit is English.
+{projectRules}
 {briefExtra}
 Your roadmap excerpt above names its `Touches` files: START FROM THEM. Reach for a repository-wide
 search only when the excerpt and the rules above have both failed you. This is not a style note:
