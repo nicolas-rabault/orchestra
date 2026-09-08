@@ -6,9 +6,12 @@
 // warns about it explicitly rather than leaving a stale key nobody is ever told about.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
 import { loadConfigOrThrow } from '../lib/config.mjs';
 import { doctorText } from '../lib/cli/doctor.mjs';
+import { initProject } from '../lib/cli/init.mjs';
 
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
@@ -32,4 +35,29 @@ test('doctor says nothing about monitor.port when a config never set it', () => 
   const r = repo({ name: 'clean' });
   const out = doctorText(loadConfigOrThrow(r.root));
   assert.doesNotMatch(out, /monitor\.port/);
+});
+
+test('doctor offline: the trace row is clean once init has run', () => {
+  const r = repo();
+  // `makeRepo`'s own initial commit already tracks `.orchestra/config.json` — the fixture is built
+  // for tests that want a project mid-way through opting in, not a clean start. Untracking it here,
+  // the same way Task 9's end-to-end test does, is what makes `initProject` below able to leave a
+  // repository with nothing left for the tracked-path check to find.
+  r.git('rm', '-q', '--cached', '-r', '--ignore-unmatch', '.orchestra');
+  r.git('commit', '-q', '-m', 'clean start', '--allow-empty');
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  initProject(r.root, { mode: 'offline' });
+  assert.match(doctorText(loadConfigOrThrow(r.root)), /trace\s+clean/);
+});
+
+test('doctor offline: a tracked path and a missing exclusion are both named', () => {
+  const r = repo();                       // fixture commits .orchestra/config.json, excludes nothing
+  const text = doctorText(loadConfigOrThrow(r.root));
+  assert.match(text, /\/\.orchestra\/ is not excluded/);
+  assert.match(text, /\.orchestra\/config\.json/);
+});
+
+test('doctor online: no trace row', () => {
+  const r = repo({ mode: 'online' });
+  assert.doesNotMatch(doctorText(loadConfigOrThrow(r.root)), /trace/);
 });
