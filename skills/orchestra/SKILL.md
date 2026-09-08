@@ -258,8 +258,13 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    template). An item that genuinely puts no choice — a hands-on instruction, an FYI — carries no
    `options`, and that is correct.
 
-   **A QUESTION THAT IS NOT IN `pending[]` DOES NOT EXIST.** The page shows exactly the pending
-   items and nothing else; a question you only wrote in chat is invisible there, so the user
+   **A question about the RUN does not go on a row at all** — it goes in `runAsks[]` at the top of
+   the register. A run has ended by the time such a question is put, so every row is terminal, and a
+   terminal row cannot carry a question anybody will see: that is ticket `t-0antbtb`, and the
+   stand-down tick below is where the shape and the two guards are written out.
+
+   **A QUESTION THAT IS NOT IN `pending[]` (OR IN `runAsks[]`) DOES NOT EXIST.** The page shows
+   exactly those items and nothing else; a question you only wrote in chat is invisible there, so the user
    opens the page, sees nothing waiting, and asks you why. That happened in planetCraft on
    2026-08-12 to two decisions in a row, and the user's own words for it were "pourquoi je n'ai
    pas les notifications". So the Decision Template and the `pending[]` item are ONE act, not two:
@@ -1599,6 +1604,42 @@ So on the tick that stands orchestra down, before the stand-down: list what the 
 the S1s and S2s in the journal and at the checkpoint, and put one question there, in the Decision
 Template — work them down, or leave them for the queue. **Do not open the lines yourself**: a
 finished roadmap is the user's moment to choose the next one.
+
+**THAT QUESTION GOES IN `runAsks[]`, AT THE TOP OF THE REGISTER, AND NEVER ON A ROW.** It is a
+question about the RUN, and a run has ended by the time you are asking it: every row is terminal,
+which is the one state in which no row can carry a question at all. Written into the last row's
+`pending[]` it is invisible — the page drops a roadmap whose every row has finished, correctly, and
+the question leaves the screen with the frame. In planetCraft on 2026-09-02, at the end of the
+`inertes` roadmap, that is exactly what happened: the item was well formed, the journal had its
+`question` line, the ask had its options, every check available said the question existed, and the
+user's own words were "je ne vois pas de question sur la page". They were right and the conductor was
+wrong to tell them it was there. The previous run's end-of-run question HAD been answered, so the
+path works some nights and not others, depending on the order the rows finish in (ticket
+`t-0antbtb`).
+
+Same item shape as a row's, plus the roadmap it is about, and the `id` and `askedAt` are as
+obligatory here as anywhere:
+
+```json
+"runAsks": [{"id":"inertes-standdown-1","roadmap":"inertes","kind":"decision",
+             "askedAt":"2026-09-02T23:40:00Z","ask":"…","options":[
+  {"letter":"A","text":"work the seven tickets down now"},
+  {"letter":"B","text":"leave them for the queue"}]}]
+```
+
+It is retired the way a row's item is, into a top-level `runAnswered[]`, keeping its `askedAt` and
+gaining an `answeredAt` — and `runAnswered[]` is authority over `runAsks[]` on the page, so an ask
+moved and still listed cannot come back for the length of that write.
+
+Two things then hold it up, and neither of them is your vigilance. The page draws `runAsks[]` in its
+own frame, docked over the canvas and counted both in the corner list and in the strip — a frame no
+row can empty, because it hangs on no row. And **the stand-down gate refuses to stand down while a
+run-level ask is unanswered, naming it**: `orchestra tick-gate` prints `run — 1 run-level
+question(s) waiting on you: inertes-standdown-1` where it printed `skip nothing to do`, so the
+silence this defect used to be is a refusal you can read. That command is also the check worth making
+before you tell the user a question is on the page: the instruction used to claim it was there with
+no way at all to verify the claim. `orchestra archive --write`, on this same tick, leaves both arrays
+exactly where they are — they are structural, like `pending`, and for the same reason.
 
 **File each S1 and S2 as a ticket, not just a journal note.** `orchestra tickets add --severity
 S1|S2 --kind bug|friction|design|perf --title '<title>' --subject '<one line>'` (or `--fingerprint`

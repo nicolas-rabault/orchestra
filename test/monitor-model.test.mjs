@@ -647,3 +647,32 @@ test('a row with no base still branches from the main branch', () => {
     assert.equal(waitsOnUser(node), true);
   });
 }
+
+// ---- the question that is about the RUN, and about no row ----
+// The rule for rows is untouched: a roadmap whose every row is terminal leaves the screen. That is
+// correct, and it is what took the end-of-run question with it — the question the protocol makes
+// obligatory at exactly the moment there is no row left to hang it on (ticket `t-0antbtb`).
+{
+  const ask = { id: 'inertes-standdown-1', roadmap: 'inertes', kind: 'decision',
+    askedAt: '2026-09-02T23:40:00.000Z', ask: 'work the seven tickets down? Options: A) now · B) later' };
+
+  test('buildModel: a run-level ask survives a register whose every row is terminal', () => {
+    const m = buildModel({ ...base, register: [regRow({ status: 'landed' })], runAsks: [ask] });
+    assert.deepEqual(m.nodes, []);            // the rows' rule is untouched
+    assert.equal(m.runAsks.length, 1);        // and the question is still there
+    assert.equal(m.runAsks[0].id, 'inertes-standdown-1');
+    assert.equal(m.runAsks[0].roadmap, 'inertes');
+    assert.equal(m.runAsks[0].askedAt, '2026-09-02T23:40:00.000Z');
+    assert.deepEqual(m.runAsks[0].options.map((o) => o.letter), ['A', 'B']);
+  });
+
+  test('buildModel: runAnswered[] is authority over runAsks[], as answered[] is over pending[]', () => {
+    const m = buildModel({ ...base, register: [], runAsks: [ask],
+      runAnswered: [{ id: 'inertes-standdown-1', askedAt: ask.askedAt, answeredAt: 'T' }] });
+    assert.deepEqual(m.runAsks, []);
+  });
+
+  test('buildModel: a register with no run-level ask reports an empty array, not undefined', () => {
+    assert.deepEqual(buildModel({ ...base, register: [] }).runAsks, []);
+  });
+}

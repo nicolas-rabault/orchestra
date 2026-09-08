@@ -4,7 +4,7 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 import { makeRepo } from './helpers/fixture.mjs';
 import { writeState, emptyState, statePath } from '../lib/register/state.mjs';
 import { inboxPath } from '../lib/register/inbox.mjs';
-import { pendingId } from '../lib/register/pending.mjs';
+import { pendingId, runAskId } from '../lib/register/pending.mjs';
 import { relay } from '../lib/register/relay.mjs';
 
 const repos = [];
@@ -97,4 +97,40 @@ test('an unparseable timestamp sorts LAST, never jumping ahead of a provably old
     `${JSON.stringify({ ts: '2026-09-03T10:00:00.000Z', task: 'demo/D1', answer: 'provably-old' })}\n`);
   const out = relay(r.root);
   assert.ok(out.indexOf('provably-old') < out.indexOf('unparseable-ts'));
+});
+
+// ---- an answer to a question about the RUN ----
+// It carries no task, because it is about no row. Before this branch existed it reached the
+// conductor as "a remark for you", losing both which question it answered and the words of that
+// question — on the one tick where the protocol REQUIRES a question to have been put.
+test('an answer with no task names the run-level question it answers, and its words', () => {
+  const r = repo();
+  const ask = { id: 'inertes-standdown-1', roadmap: 'inertes', kind: 'decision',
+    ask: 'work the seven tickets down now, or leave them for the queue?' };
+  writeState(r.root, { ...emptyState(r.root), tasks: [], runAsks: [ask] });
+  appendFileSync(inboxPath(r.root), `${JSON.stringify({
+    ts: '2026-09-03T10:00:00.000Z', task: null, pending: runAskId(ask), answer: 'A) work them down' })}\n`);
+
+  const out = relay(r.root);
+  assert.match(out, /the run inertes · item inertes-standdown-1 · decision/);
+  assert.match(out, /work the seven tickets down now/);
+  assert.match(out, /move the item into `runAnswered\[\]`/);
+  assert.doesNotMatch(out, /a remark for you/);
+});
+
+test('an answer to a run-level ask that is gone says so instead of inventing a question', () => {
+  const r = repo();
+  writeState(r.root, { ...emptyState(r.root), tasks: [], runAsks: [] });
+  appendFileSync(inboxPath(r.root), `${JSON.stringify({
+    ts: '2026-09-03T10:00:00.000Z', task: null, pending: 'gone-1', answer: 'B' })}\n`);
+  assert.match(relay(r.root), /NO LONGER in runAsks\[\]/);
+});
+
+// A free remark still targets no item and must not be dressed up as an answer to anything.
+test('a remark that names no item is still a remark', () => {
+  const r = repo();
+  writeState(r.root, { ...emptyState(r.root), tasks: [] });
+  appendFileSync(inboxPath(r.root), `${JSON.stringify({
+    ts: '2026-09-03T10:00:00.000Z', task: null, pending: null, answer: 'keep the box quiet' })}\n`);
+  assert.match(relay(r.root), /no task — a remark for you/);
 });

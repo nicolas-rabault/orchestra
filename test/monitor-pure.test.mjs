@@ -11,7 +11,7 @@ import { clock } from '../lib/monitor/clock.mjs';
 import { layout, METRICS } from '../lib/monitor/layout.mjs';
 import { segments } from '../lib/monitor/progress.mjs';
 import { LOCAL, tabsOf, nodesOf } from '../lib/monitor/tabs.mjs';
-import { slotOf, openSlots, dropClosed, openItems, openQuestions } from '../lib/monitor/answers.mjs';
+import { slotOf, RUN_KEY, openSlots, dropClosed, openItems, openQuestions, openRunAsks } from '../lib/monitor/answers.mjs';
 import { buildModel } from '../lib/monitor/model.mjs';
 
 // The two readings the page makes of `openItems` — see the identical helper and comment in
@@ -467,3 +467,44 @@ test('openQuestions is empty for a register with nothing pending, and for no reg
   assert.deepEqual(openQuestions([listNode()]), []);
   assert.deepEqual(openQuestions(undefined), []);
 });
+
+// ---- the run-level ask, on the three surfaces that say what is waiting on you ----
+// One function per SHAPE, not one per surface: the panel, the corner list and the strip all read
+// `openRunAsks`, so none of them can go on shouting after the other two have gone quiet.
+{
+  const ask = (over = {}) => ({ id: 'r1', kind: 'decision', ask: 'now or later?', answer: null, ...over });
+
+  test('openRunAsks: an unanswered run-level ask is waiting; one the register answered is not', () => {
+    assert.equal(openRunAsks([ask()]).length, 1);
+    assert.equal(openRunAsks([ask({ answer: 'A' })]).length, 0);
+  });
+
+  test('openRunAsks: an ask THIS TAB has sent an answer for is not waiting, whatever the register says', () => {
+    const sent = new Set([slotOf(RUN_KEY, 'r1')]);
+    assert.equal(openRunAsks([ask()], sent).length, 0);
+  });
+
+  // The run's slot namespace carries no slash and every node key does (`<roadmap>/<id>`), so the two
+  // cannot collide however a row is named.
+  test('the run slot cannot collide with a node slot', () => {
+    assert.equal(RUN_KEY.includes('/'), false);
+    assert.notEqual(slotOf(RUN_KEY, 'r1'), slotOf('demo/D1', 'r1'));
+  });
+
+  // A cache pruned against `nodes` alone would forget the answer this tab had just sent to a
+  // run-level ask — re-enabling the box under its own "sent" line.
+  test('dropClosed keeps a run-level slot while the ask is still open, and forgets it once it is gone', () => {
+    const slot = slotOf(RUN_KEY, 'r1');
+    const cache = new Map([[slot, 'A) now']]);
+    dropClosed(cache, [], [ask()]);
+    assert.equal(cache.has(slot), true);
+    dropClosed(cache, [], []);
+    assert.equal(cache.has(slot), false);
+  });
+
+  test('openSlots holds both kinds at once', () => {
+    const open = openSlots([{ key: 'demo/D1', pending: [{ id: 'p1' }] }], [ask()]);
+    assert.equal(open.has(slotOf('demo/D1', 'p1')), true);
+    assert.equal(open.has(slotOf(RUN_KEY, 'r1')), true);
+  });
+}

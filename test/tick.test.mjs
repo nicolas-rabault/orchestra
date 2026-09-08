@@ -116,3 +116,48 @@ test('no beat is no baton, and the register is never consulted as a fallback', (
   writeState(r.root, { ...emptyState(r.root), conductor: { session: 'ghost', language: null, inboxSeen: null } });
   assert.equal(yieldVerdict({ root: r.root, selfSession: 'me', alive: () => true }).yield, false);
 });
+
+// ---- the one question no row can carry ----
+// A run ENDS when its last row goes terminal, and the protocol makes a question obligatory at
+// exactly that moment. So the end-of-run question is put in the very state this gate otherwise
+// stands down for: in planetCraft on 2026-09-02 it was put on a register whose every row had
+// landed, and nothing anywhere could see it (ticket `t-0antbtb`). The gate is the half of the fix
+// that turns that silence into a refusal naming the question.
+test('an unanswered run-level ask refuses the stand-down and names it', () => {
+  const landed = [{ status: 'landed' }, { status: 'dropped' }];
+  const line = decideTick({ register: reg({ tasks: landed,
+    runAsks: [{ id: 'inertes-standdown-1', ask: 'work them down?' }] }) });
+  assert.match(line, /^run/);
+  assert.match(line, /1 run-level question\(s\) waiting on you: inertes-standdown-1/);
+});
+
+test('a run-level ask retired into runAnswered[] no longer holds the heartbeat awake', () => {
+  const landed = [{ status: 'landed' }];
+  assert.match(decideTick({ register: reg({ tasks: landed,
+    runAsks: [{ id: 'a1', ask: 'x' }],
+    runAnswered: [{ id: 'a1', askedAt: 'T1', answeredAt: 'T2' }] }) }),
+  /^skip nothing to do/);
+});
+
+// The reason is ADDED to the line, never put in place of `hold-awake`: callers match that word
+// anywhere, and a run-level question is not work in flight.
+test('a run-level ask alongside live work keeps hold-awake and still names the question', () => {
+  const line = decideTick({ register: reg({ tasks: [{ status: 'claimed' }],
+    runAsks: [{ id: 'a1', ask: 'x' }] }) });
+  assert.match(line, /^run hold-awake/);
+  assert.match(line, /run-level question\(s\) waiting on you: a1/);
+});
+
+// This gate does not hash, so an ask with no id of its own cannot be matched against `runAnswered`
+// and stays open — the safe direction: the tick runs and the conductor looks.
+test('a run-level ask with no id stays open rather than being matched away', () => {
+  const line = decideTick({ register: reg({ tasks: [{ status: 'landed' }],
+    runAsks: [{ ask: 'no id at all' }], runAnswered: [{ id: 'a1' }] }) });
+  assert.match(line, /run-level question\(s\) waiting on you: \(unnamed\)/);
+});
+
+// An ask the conductor already carried an answer onto is not waiting on the user.
+test('a run-level ask that already carries an answer does not hold the tick', () => {
+  assert.match(decideTick({ register: reg({ tasks: [{ status: 'landed' }],
+    runAsks: [{ id: 'a1', ask: 'x', answer: 'B' }] }) }), /^skip nothing to do/);
+});

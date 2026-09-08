@@ -116,3 +116,20 @@ test('a torn tail line in the archive is skipped, not fatal', () => {
   appendFileSync(archivePath(r.root), '{"kind":"tas');
   assert.equal(loadArchive(r.root).length, 1);
 });
+
+// `runAsks`/`runAnswered` are STRUCTURAL — they are in `emptyState`, so `STRUCTURAL` derives them.
+// The archive pass runs on the very tick that ENDS a run, which is the same tick the end-of-run
+// question is put on: filed away as prose, that question would live in `archive.jsonl` and on no
+// screen — the defect of `t-0antbtb` reproduced from inside the tidying itself.
+test('a run-level ask is not prose: the archive pass leaves both arrays where they are', () => {
+  const ask = { id: 'inertes-standdown-1', roadmap: 'inertes', ask: 'work them down?' };
+  const { next } = partition({
+    tasks: [row('demo/D1')],
+    runAsks: [ask],
+    runAnswered: [{ id: 'old-1', askedAt: 'T1', answeredAt: 'T2' }],
+    aKeyAConductorInvented: 'this one IS prose',
+  }, { at: 'T' });
+  assert.deepEqual(next.runAsks, [ask]);
+  assert.equal(next.runAnswered.length, 1);
+  assert.equal(next.aKeyAConductorInvented, undefined);
+});

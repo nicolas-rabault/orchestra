@@ -65,6 +65,14 @@
       </div>
     </div>
     <div id="canvas"><div id="viewport"><div id="frames"></div><svg id="edges" aria-hidden="true"></svg><div id="nodes"></div></div></div>
+    <!-- A question about the RUN, which belongs to no row and therefore to no card: it is put at the
+         moment a run ends, which is the moment every row is terminal and the canvas is empty. So it
+         is drawn here, in its own frame docked over the canvas — nothing that filters rows can empty
+         it, and it needs no click to be found. -->
+    <section id="runasks" hidden>
+      <header id="runasks-head"></header>
+      <div id="runasks-body"></div>
+    </section>
   </section>
 </main>
 <dialog id="card">

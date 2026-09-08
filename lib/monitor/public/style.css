@@ -478,3 +478,30 @@ main { display: grid; grid-template-columns: 340px 1fr; grid-template-rows: auto
 .tech div { display: flex; gap: 8px; flex-wrap: wrap; }
 .tech .shots { flex-basis: 100%; }
 .tech b { color: var(--ink); font-weight: 500; min-width: 84px; }
+
+/* ---- the question about the run itself ----
+   Docked bottom-left over the canvas: the banner owns the top-left corner and the notification list
+   the right-hand column, so this is the one edge of the stage where a permanent panel collides with
+   nothing. Bottom rather than centred because a question about the run can be put mid-run too, and
+   a box in the middle of the canvas would sit on top of the graph it is asked beside.
+   `max-height` with its own scroll, because an ask carries a question, a footer, thumbnails and a
+   reply box, and a long one must stay reachable rather than growing off the stage.
+   No `display` is declared on the panel itself: `hidden` is a UA-stylesheet `display: none` and any
+   author `display` beats it at any specificity — which is exactly how a notification list once spent
+   months announcing "0 waiting on you". */
+#runasks { position: absolute; bottom: 12px; left: 12px; z-index: 3;
+  width: min(520px, calc(100% - 300px)); max-height: calc(100% - 120px); overflow-y: auto;
+  background: var(--frame); border: 1px solid var(--alert); border-radius: 8px; }
+#runasks-head { position: sticky; top: 0; padding: 6px 10px; border-bottom: 1px solid var(--line);
+  background: #f2545b14; font: 600 10px var(--sans); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--alert); }
+#runasks.answered { border-color: var(--answered); }
+#runasks.answered #runasks-head { background: #2ec4b60d; color: var(--answered); }
+#runasks-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+/* The ask blocks inside are the card's own: same class, same colours, same reply box, so the answer
+   to "is this the same kind of thing I answer on a card" is yes. Only the outer border is dropped —
+   the panel already draws one, and a rounded rectangle inside a rounded rectangle reads as a
+   mistake. */
+#runasks-body .ask { border-left: 0; border-right: 0; border-top: 0; border-radius: 0;
+  padding: 0 0 2px; background: none; }
+#runasks-body .ask:last-child { border-bottom: 0; }
