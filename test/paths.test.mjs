@@ -5,7 +5,7 @@ import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
-import { mainCheckout, projectId, orchestraDir, assertRoot, gitEnv } from '../lib/paths.mjs';
+import { mainCheckout, gitCommonDir, projectId, orchestraDir, assertRoot, gitEnv } from '../lib/paths.mjs';
 
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };
@@ -25,6 +25,27 @@ test('mainCheckout returns the MAIN checkout from inside a linked worktree', () 
 
 test('mainCheckout refuses a directory that is not a working tree', () => {
   assert.throws(() => mainCheckout('/'), /not a working tree|fatal/i);
+});
+
+test('gitCommonDir: the main checkout answers with its own .git', () => {
+  const r = repo();
+  assert.equal(gitCommonDir(r.root), join(r.root, '.git'));
+});
+
+test('gitCommonDir: a linked worktree answers with the MAIN checkout .git, not its own', () => {
+  const r = repo();
+  r.git('worktree', 'add', '-q', join(r.root, 'wt'), '-b', 'wt', 'main');
+  // $GIT_DIR there is .git/worktrees/wt — the exclude file lives in the common dir, so this is
+  // the distinction the whole exclusion depends on.
+  assert.equal(gitCommonDir(join(r.root, 'wt')), join(r.root, '.git'));
+});
+
+test('gitCommonDir: outside a working tree it throws, like mainCheckout', () => {
+  // Same alternation as the `mainCheckout` test above and for the same reason: `tmpdir()` sits
+  // outside any repository at all, so `git rev-parse` fails on its own ("fatal: not a git
+  // repository") before this function's own guard ever runs — the guard's message only appears
+  // when git succeeds but answers something that is not a working tree (the bare-repo case below).
+  assert.throws(() => gitCommonDir(tmpdir()), /not a working tree|fatal/i);
 });
 
 test('projectId is stable, 6 hex, and keyed on the PATH not the name', () => {

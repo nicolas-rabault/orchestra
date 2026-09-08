@@ -236,9 +236,11 @@ test('initProject: an empty project writes only mode and the ledger — nothing 
   assert.equal('branchTests' in written, false);
 });
 
-test('initProject: writes .orchestra/.gitignore with exactly the paths the plugin creates, and nothing else', () => {
+test('initProject online: writes .orchestra/.gitignore with exactly the paths the plugin creates, and nothing else', () => {
+  // Online only: offline mode excludes the whole directory in the clone instead (see the
+  // `initProject offline` tests below) and never writes this file at all.
   const d = tmpDir();
-  initProject(d, { mode: 'offline' });
+  initProject(d, { mode: 'online' });
   const text = readFileSync(join(d, '.orchestra', '.gitignore'), 'utf8');
   const lines = text.split('\n').filter(Boolean).filter((l) => !l.startsWith('#'));
   assert.deepEqual(lines, [
@@ -253,17 +255,18 @@ test('initProject: writes .orchestra/.gitignore with exactly the paths the plugi
   assert.equal(readFileSync(join(d, '.orchestra', '.gitignore'), 'utf8'), GITIGNORE);
 });
 
-test('initProject: the written .gitignore actually hides every real atomic-write scratch file, in a real repo', () => {
+test('initProject online: the written .gitignore actually hides every real atomic-write scratch file, in a real repo', () => {
   // Review round 1: `state.json.<pid>.tmp` and `conductor.beat.json.<pid>.tmp` — the scratch files
   // `lib/register/state.mjs`'s `writeState` and `lib/register/beat.mjs`'s `writeBeat` rename
   // FROM — showed up as `??` in `git status` after an `init`, because the first cut of this list
   // named `.queue.lock` but not the wider class it belongs to. This reproduces the exact shape of
   // that failure — a real git repo, `init`, then the scratch names those two functions (and
   // `templates/tick.sh`'s own `tick.log.tmp` log-rotation line) actually use on disk — and proves
-  // `git status` now reports nothing.
+  // `git status` now reports nothing. Online mode only: offline hides the same scratch files by
+  // excluding the whole directory instead of listing paths inside a committed `.gitignore`.
   const r = repo();
   rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
-  initProject(r.root, { mode: 'offline' });
+  initProject(r.root, { mode: 'online' });
   // CLAUDE.md is also new here (`init` created it) — real and expected to show up in `git status`
   // until a human commits it; committing it in this fixture keeps the assertion below about the
   // scratch files under `.orchestra/`, not about CLAUDE.md's own tracked state.
@@ -282,6 +285,63 @@ test('initProject: the written .gitignore actually hides every real atomic-write
 
   const status = r.git('status', '--porcelain');
   assert.equal(status.trim(), '', `expected git status to report nothing untracked, got:\n${status}`);
+});
+
+// ---------------------------------------------------------------------------------
+// The exclusion — offline mode's own trace, hidden in the clone rather than committed.
+// ---------------------------------------------------------------------------------
+
+const excludePath = (root) => join(root, '.git', 'info', 'exclude');
+
+test('initProject offline: excludes .orchestra/ in the clone, writes no .orchestra/.gitignore', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  // `makeRepo` commits `.orchestra/config.json` for its own, unrelated reason (a baseline fixture
+  // every other suite can start from) — that is not a trace offline mode itself ever leaves; the
+  // whole point of this task is that it never commits anything under `.orchestra/` to begin with.
+  // Untracking it here reproduces the repository this task actually targets: the exclude rule
+  // this test proves only governs UNTRACKED paths — that is what "exclude" has ever meant in git —
+  // so a path still tracked from this fixture's own setup would show as a stale "modified" line no
+  // exclude rule could hide, which would be a fact about the fixture rather than about the fix.
+  r.git('rm', '-r', '--cached', '-q', '.orchestra');
+  r.git('commit', '-q', '-m', 'untrack .orchestra');
+  const rep = initProject(r.root, { mode: 'offline' });
+  assert.equal(rep.ok, true);
+  assert.equal(rep.exclude.action, 'appended');
+  assert.match(readFileSync(excludePath(r.root), 'utf8'), /^\/\.orchestra\/$/m);
+  assert.equal(existsSync(join(r.root, '.orchestra', '.gitignore')), false);
+  // Task 1's own point: git no longer sees anything under .orchestra/. (Whole-tree cleanliness —
+  // e.g. CLAUDE.md, which `writeClaudeRules` still creates here — is Task 9's claim, after Task 6
+  // stops that write; this only checks that `.orchestra` itself is absent from both outputs.)
+  assert.doesNotMatch(r.git('status', '--porcelain'), /\.orchestra/);
+  assert.doesNotMatch(r.git('add', '-A', '-n'), /\.orchestra/);
+});
+
+test('initProject offline: appending twice adds one line', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  initProject(r.root, { mode: 'offline' });
+  const second = initProject(r.root, { mode: 'offline', force: true });
+  assert.equal(second.exclude.action, 'unchanged');
+  const lines = readFileSync(excludePath(r.root), 'utf8').split('\n').filter((l) => l === '/.orchestra/');
+  assert.equal(lines.length, 1);
+});
+
+test('initProject online: unchanged — .orchestra/.gitignore, no exclude line', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  const rep = initProject(r.root, { mode: 'online' });
+  assert.equal(readFileSync(join(r.root, '.orchestra', '.gitignore'), 'utf8'), GITIGNORE);
+  assert.equal(rep.exclude, undefined);
+  const existing = existsSync(excludePath(r.root)) ? readFileSync(excludePath(r.root), 'utf8') : '';
+  assert.doesNotMatch(existing, /\.orchestra/);
+});
+
+test('initProject offline in a plain directory: the exclusion is skipped, not an error', () => {
+  const d = tmpDir();
+  const rep = initProject(d, { mode: 'offline' });
+  assert.equal(rep.ok, true);
+  assert.equal(rep.exclude.action, 'skipped');
 });
 
 test('initProject: creates CLAUDE.md when none exists', () => {

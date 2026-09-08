@@ -61,14 +61,17 @@ test('init on a bare repository produces a project that ticks', () => {
     assert.match(doctorOut, /orchestra — /);
     assert.match(doctorOut, /mode\s+offline/);
 
-    // 3. `git status` shows `.orchestra/config.json` and `.orchestra/.gitignore` as the only new
-    // committable paths. `-uall` expands the untracked `.orchestra/` directory into its actual
-    // files rather than collapsing it to one line, which is what makes "the only two" checkable at
-    // all. `CLAUDE.md` is modified (see `bareRepo`'s own comment), never counted as new.
+    // 3. `git status` shows NO new committable paths under `.orchestra/` at all — offline mode
+    // excludes the whole directory in this clone's own `.git/info/exclude` rather than gitignoring
+    // it from inside itself, so `.orchestra/config.json` never appears, and there is no
+    // `.orchestra/.gitignore` to appear either. `-uall` expands an untracked directory into its
+    // actual files rather than collapsing it to one line, which is what makes "nothing at all"
+    // checkable rather than assumed. `CLAUDE.md` is modified (see `bareRepo`'s own comment), the
+    // one committable trace this task does not remove (that is Task 6's job).
     const status = git('status', '--porcelain', '-uall');
     const lines = status.trim().split('\n').filter(Boolean);
     const untracked = lines.filter((l) => l.startsWith('??')).map((l) => l.slice(3)).sort();
-    assert.deepEqual(untracked, ['.orchestra/.gitignore', '.orchestra/config.json']);
+    assert.deepEqual(untracked, []);
     const modified = lines.filter((l) => !l.startsWith('??'));
     assert.deepEqual(modified.map((l) => l.trim()), ['M CLAUDE.md']);
 
