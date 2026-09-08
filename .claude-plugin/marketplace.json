@@ -10,7 +10,7 @@
       "name": "orchestra",
       "source": "./",
       "description": "Conductor, monitoring page, merge gate and roadmap grammar, online (GitHub) or offline (markdown)",
-      "version": "0.8.1",
+      "version": "0.9.0",
       "author": { "name": "Nicolas Rabault" }
     }
   ]
