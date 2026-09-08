@@ -149,6 +149,23 @@ test('detect: a malformed package.json is read as absent, not thrown', () => {
   assert.equal(detect(d).buildSystem, null);
 });
 
+test('detect offline: no ledger — the ticket file is local state, not something main carries', () => {
+  const d = tmpDir();
+  assert.deepEqual(detect(d, { mode: 'offline' }).ledgers, []);
+});
+
+test('detect: online and mode-less both keep the ticket ledger', () => {
+  const d = tmpDir();
+  assert.deepEqual(detect(d, { mode: 'online' }).ledgers, [DEFAULTS.tickets.file]);
+  assert.deepEqual(detect(d).ledgers, [DEFAULTS.tickets.file]);
+});
+
+test('initProject offline: the written config carries no ledgers', () => {
+  const d = tmpDir();
+  const rep = initProject(d, { mode: 'offline' });
+  assert.deepEqual(rep.config.ledgers, []);
+});
+
 // ---------------------------------------------------------------------------------
 // initProject()
 // ---------------------------------------------------------------------------------
@@ -211,12 +228,12 @@ test('initProject: --force overwrites an existing config', () => {
 test('initProject: a fresh project writes mode, the detected gates/branchTests, and the ledger', () => {
   const d = tmpDir();
   pkg(d, { test: 'vitest run', 'test:branch': 'vitest run --changed', knip: 'knip' });
-  const report = initProject(d, { mode: 'offline' });
+  const report = initProject(d, { mode: 'online' });
   assert.equal(report.ok, true);
   assert.equal(report.action, 'initialized');
   const written = JSON.parse(readFileSync(join(d, '.orchestra', 'config.json'), 'utf8'));
   assert.deepEqual(written, {
-    mode: 'offline',
+    mode: 'online',
     ledgers: [DEFAULTS.tickets.file],
     gates: [{ name: 'deadcode', cmd: 'npm run knip' }, { name: 'suite', cmd: 'npm test' }],
     branchTests: 'npm run test:branch',
@@ -229,16 +246,18 @@ test('initProject: a fresh project writes mode, the detected gates/branchTests, 
 
 test('initProject: an empty project writes only mode and the ledger — nothing invented', () => {
   const d = tmpDir();
-  const report = initProject(d, { mode: 'offline' });
+  const report = initProject(d, { mode: 'online' });
   const written = JSON.parse(readFileSync(join(d, '.orchestra', 'config.json'), 'utf8'));
-  assert.deepEqual(written, { mode: 'offline', ledgers: [DEFAULTS.tickets.file] });
+  assert.deepEqual(written, { mode: 'online', ledgers: [DEFAULTS.tickets.file] });
   assert.equal('gates' in written, false);
   assert.equal('branchTests' in written, false);
 });
 
-test('initProject: writes .orchestra/.gitignore with exactly the paths the plugin creates, and nothing else', () => {
+test('initProject online: writes .orchestra/.gitignore with exactly the paths the plugin creates, and nothing else', () => {
+  // Online only: offline mode excludes the whole directory in the clone instead (see the
+  // `initProject offline` tests below) and never writes this file at all.
   const d = tmpDir();
-  initProject(d, { mode: 'offline' });
+  initProject(d, { mode: 'online' });
   const text = readFileSync(join(d, '.orchestra', '.gitignore'), 'utf8');
   const lines = text.split('\n').filter(Boolean).filter((l) => !l.startsWith('#'));
   assert.deepEqual(lines, [
@@ -253,17 +272,18 @@ test('initProject: writes .orchestra/.gitignore with exactly the paths the plugi
   assert.equal(readFileSync(join(d, '.orchestra', '.gitignore'), 'utf8'), GITIGNORE);
 });
 
-test('initProject: the written .gitignore actually hides every real atomic-write scratch file, in a real repo', () => {
+test('initProject online: the written .gitignore actually hides every real atomic-write scratch file, in a real repo', () => {
   // Review round 1: `state.json.<pid>.tmp` and `conductor.beat.json.<pid>.tmp` — the scratch files
   // `lib/register/state.mjs`'s `writeState` and `lib/register/beat.mjs`'s `writeBeat` rename
   // FROM — showed up as `??` in `git status` after an `init`, because the first cut of this list
   // named `.queue.lock` but not the wider class it belongs to. This reproduces the exact shape of
   // that failure — a real git repo, `init`, then the scratch names those two functions (and
   // `templates/tick.sh`'s own `tick.log.tmp` log-rotation line) actually use on disk — and proves
-  // `git status` now reports nothing.
+  // `git status` now reports nothing. Online mode only: offline hides the same scratch files by
+  // excluding the whole directory instead of listing paths inside a committed `.gitignore`.
   const r = repo();
   rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
-  initProject(r.root, { mode: 'offline' });
+  initProject(r.root, { mode: 'online' });
   // CLAUDE.md is also new here (`init` created it) — real and expected to show up in `git status`
   // until a human commits it; committing it in this fixture keeps the assertion below about the
   // scratch files under `.orchestra/`, not about CLAUDE.md's own tracked state.
@@ -284,9 +304,88 @@ test('initProject: the written .gitignore actually hides every real atomic-write
   assert.equal(status.trim(), '', `expected git status to report nothing untracked, got:\n${status}`);
 });
 
+// ---------------------------------------------------------------------------------
+// The exclusion — offline mode's own trace, hidden in the clone rather than committed.
+// ---------------------------------------------------------------------------------
+
+const excludePath = (root) => join(root, '.git', 'info', 'exclude');
+
+test('initProject offline: excludes .orchestra/ in the clone, writes no .orchestra/.gitignore', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  // `makeRepo` commits `.orchestra/config.json` for its own, unrelated reason (a baseline fixture
+  // every other suite can start from) — that is not a trace offline mode itself ever leaves; the
+  // whole point of this task is that it never commits anything under `.orchestra/` to begin with.
+  // Untracking it here reproduces the repository this task actually targets: the exclude rule
+  // this test proves only governs UNTRACKED paths — that is what "exclude" has ever meant in git —
+  // so a path still tracked from this fixture's own setup would show as a stale "modified" line no
+  // exclude rule could hide, which would be a fact about the fixture rather than about the fix.
+  r.git('rm', '-r', '--cached', '-q', '.orchestra');
+  r.git('commit', '-q', '-m', 'untrack .orchestra');
+  const rep = initProject(r.root, { mode: 'offline' });
+  assert.equal(rep.ok, true);
+  assert.equal(rep.exclude.action, 'appended');
+  assert.match(readFileSync(excludePath(r.root), 'utf8'), /^\/\.orchestra\/$/m);
+  assert.equal(existsSync(join(r.root, '.orchestra', '.gitignore')), false);
+  // Task 1's own point: git no longer sees anything under .orchestra/. (Whole-tree cleanliness,
+  // proved end to end through a real landing, is Task 9's claim; this only checks that
+  // `.orchestra` itself is absent from both outputs.)
+  assert.doesNotMatch(r.git('status', '--porcelain'), /\.orchestra/);
+  assert.doesNotMatch(r.git('add', '-A', '-n'), /\.orchestra/);
+});
+
+test('initProject offline: appending twice adds one line', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  initProject(r.root, { mode: 'offline' });
+  const second = initProject(r.root, { mode: 'offline', force: true });
+  assert.equal(second.exclude.action, 'unchanged');
+  const lines = readFileSync(excludePath(r.root), 'utf8').split('\n').filter((l) => l === '/.orchestra/');
+  assert.equal(lines.length, 1);
+});
+
+// Final review, must-fix minor: the guard that stops `/.orchestra/` being concatenated onto the
+// tail of whatever the user's exclude file already ended with. An exclude file written by hand,
+// or by an editor that does not add a final newline, is ordinary — and without the guard the
+// result is one corrupted line (`build//.orchestra/`) that excludes neither path, in a file
+// nobody reads until something leaks.
+test('initProject offline: an exclude file with no trailing newline gains a line, not a suffix', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  mkdirSync(dirname(excludePath(r.root)), { recursive: true });
+  writeFileSync(excludePath(r.root), '# my own excludes\nbuild/');   // no trailing newline
+
+  const rep = initProject(r.root, { mode: 'offline' });
+  assert.equal(rep.exclude.action, 'appended');
+  assert.equal(readFileSync(excludePath(r.root), 'utf8'), '# my own excludes\nbuild/\n/.orchestra/\n');
+  // And the line git will actually read is the whole line, not a tail glued to the previous one.
+  assert.ok(readFileSync(excludePath(r.root), 'utf8').split('\n').includes('/.orchestra/'));
+});
+
+test('initProject online: unchanged — .orchestra/.gitignore, no exclude line', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  const rep = initProject(r.root, { mode: 'online' });
+  assert.equal(readFileSync(join(r.root, '.orchestra', '.gitignore'), 'utf8'), GITIGNORE);
+  assert.equal(rep.exclude, undefined);
+  const existing = existsSync(excludePath(r.root)) ? readFileSync(excludePath(r.root), 'utf8') : '';
+  assert.doesNotMatch(existing, /\.orchestra/);
+});
+
+test('initProject offline in a plain directory: the exclusion is skipped, not an error', () => {
+  const d = tmpDir();
+  const rep = initProject(d, { mode: 'offline' });
+  assert.equal(rep.ok, true);
+  assert.equal(rep.exclude.action, 'skipped');
+});
+
+// These four exercise `writeClaudeRules`'s CLAUDE.md-appending branch, which after this task only
+// ever runs in ONLINE mode (offline writes `.orchestra/CLAUDE-rules.md` instead — see the "the
+// rules go beside the config" test below). Mode chosen here for that reason, not incidentally.
+
 test('initProject: creates CLAUDE.md when none exists', () => {
   const d = tmpDir();
-  const report = initProject(d, { mode: 'offline' });
+  const report = initProject(d, { mode: 'online' });
   assert.equal(report.claude.action, 'created');
   const text = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
   assert.match(text, /<!-- orchestra:claude-rules -->/);
@@ -295,9 +394,9 @@ test('initProject: creates CLAUDE.md when none exists', () => {
 
 test('initProject: running again (--force) does not duplicate the CLAUDE.md block', () => {
   const d = tmpDir();
-  initProject(d, { mode: 'offline' });
+  initProject(d, { mode: 'online' });
   const once = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
-  const report = initProject(d, { mode: 'offline', force: true });
+  const report = initProject(d, { mode: 'online', force: true });
   assert.equal(report.claude.action, 'unchanged');
   const twice = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
   assert.equal(twice, once);
@@ -307,14 +406,14 @@ test('initProject: running again (--force) does not duplicate the CLAUDE.md bloc
 test('initProject: appends to a pre-existing CLAUDE.md rather than replacing it, then does not duplicate on a second run', () => {
   const d = tmpDir();
   writeFileSync(join(d, 'CLAUDE.md'), '# My project\n\nSome existing rules here.\n');
-  const first = initProject(d, { mode: 'offline' });
+  const first = initProject(d, { mode: 'online' });
   assert.equal(first.claude.action, 'appended');
   const afterFirst = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
   assert.match(afterFirst, /# My project/);
   assert.match(afterFirst, /Some existing rules here/);
   assert.match(afterFirst, /<!-- orchestra:claude-rules -->/);
 
-  const second = initProject(d, { mode: 'offline', force: true });
+  const second = initProject(d, { mode: 'online', force: true });
   assert.equal(second.claude.action, 'unchanged');
   assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), afterFirst);
   assert.equal(afterFirst.match(/<!-- orchestra:claude-rules -->/g).length, 1);
@@ -326,7 +425,7 @@ test('initProject: a CLAUDE.md carrying the marker line but not the rules undern
   // `unchanged` forever and never actually received them. The fix checks for the block itself.
   const d = tmpDir();
   writeFileSync(join(d, 'CLAUDE.md'), '<!-- orchestra:claude-rules -->\n(someone deleted the rest)\n');
-  const report = initProject(d, { mode: 'offline' });
+  const report = initProject(d, { mode: 'online' });
   assert.equal(report.claude.action, 'appended');
   const text = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
   assert.match(text, /\(someone deleted the rest\)/);
@@ -334,9 +433,97 @@ test('initProject: a CLAUDE.md carrying the marker line but not the rules undern
   assert.match(text, /merge_agent/);
 
   // Now that the full, current block is actually present, a second run reports unchanged.
-  const second = initProject(d, { mode: 'offline', force: true });
+  const second = initProject(d, { mode: 'online', force: true });
   assert.equal(second.claude.action, 'unchanged');
   assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), text);
+});
+
+// ---------------------------------------------------------------------------------
+// Offline: the same rules, delivered a different way (Task 6).
+// ---------------------------------------------------------------------------------
+
+test('initProject offline: the rules go beside the config, not into CLAUDE.md', () => {
+  const d = tmpDir();
+  const rep = initProject(d, { mode: 'offline' });
+  assert.equal(rep.claude.action, 'rules-file');
+  assert.equal(existsSync(join(d, 'CLAUDE.md')), false);
+  assert.match(readFileSync(join(d, '.orchestra', 'CLAUDE-rules.md'), 'utf8'), /orchestra:claude-rules/);
+});
+
+test('initProject offline: an existing CLAUDE.md is left alone', () => {
+  const d = tmpDir();
+  writeFileSync(join(d, 'CLAUDE.md'), '# Project\n\nRules of our own.\n');
+  initProject(d, { mode: 'offline' });
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), '# Project\n\nRules of our own.\n');
+});
+
+test('initProject online: unchanged — the block is appended to CLAUDE.md', () => {
+  const d = tmpDir();
+  writeFileSync(join(d, 'CLAUDE.md'), '# Project\n');
+  const rep = initProject(d, { mode: 'online' });
+  assert.equal(rep.claude.action, 'appended');
+  assert.match(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), /Working with orchestra/);
+});
+
+// ---------------------------------------------------------------------------------
+// The online → offline flip. A project that ran `init --mode online` already has the block
+// committed in CLAUDE.md and `.orchestra/config.json` + `.orchestra/.gitignore` already tracked.
+// Flipping to offline can only clean the working tree — the two remaining fixes each need a
+// commit, and orchestra writing that commit is the very trace this mode forbids.
+// ---------------------------------------------------------------------------------
+
+test('flip online → offline: the block leaves CLAUDE.md, and what must be committed is named', () => {
+  const r = repo();
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  initProject(r.root, { mode: 'online' });
+  r.git('add', '-A'); r.git('commit', '-q', '-m', 'opt in');
+
+  const rep = initProject(r.root, { mode: 'offline', force: true });
+  assert.equal(rep.claude.action, 'rules-file+removed');
+  assert.doesNotMatch(readFileSync(join(r.root, 'CLAUDE.md'), 'utf8'), /Working with orchestra/);
+  assert.deepEqual(rep.tracked.sort(), ['.orchestra/.gitignore', '.orchestra/config.json']);
+  assert.match(rep.message, /git rm --cached/);
+  // Orchestra never writes the commit that finishes this.
+  assert.notEqual(r.git('status', '--porcelain').trim(), '');
+});
+
+// Final review, Important 1: the removal path matched the block EXACTLY, so a CLAUDE.md whose
+// rules someone had edited — the very case the online append path already has a test for — was not
+// matched, not removed, and, worse, not mentioned. The file stays committed, still naming
+// `merge_agent` and `orchestra land`, while the report the user reads at flip time said nothing.
+test('flip: an EDITED rules block is left alone but NAMED — silence is the failure', () => {
+  const d = tmpDir();
+  initProject(d, { mode: 'online' });
+  const edited = readFileSync(join(d, 'CLAUDE.md'), 'utf8')
+    .replace('never where it happens', 'never ever where it happens');
+  writeFileSync(join(d, 'CLAUDE.md'), edited);
+
+  const rep = initProject(d, { mode: 'offline', force: true });
+  assert.equal(rep.claude.action, 'rules-file+edited');
+  // Removed nothing: the block is somebody's edit now, and the file is committed and shared.
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), edited);
+  assert.match(rep.message, /CLAUDE\.md holds an EDITED rules block/);
+  assert.match(rep.message, /orchestra:claude-rules/);
+});
+
+test('flip: a CLAUDE.md that only ever held the block is emptied, not deleted', () => {
+  const d = tmpDir();
+  initProject(d, { mode: 'online' });
+  initProject(d, { mode: 'offline', force: true });
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8').trim(), '');
+});
+
+test('flip: a CLAUDE.md that had its own prose gets exactly that prose back', () => {
+  // Review round 1: the append path leaves exactly TWO trailing newlines once the block is cut back
+  // out (one from the project's own normalised prose, one as the separator before the block) — a
+  // fixture with no prose of its own (the "emptied, not deleted" test above) cannot see this, since
+  // there `replace(block, '')` already yields '' regardless of the trailing-newline regex.
+  const d = tmpDir();
+  const prose = '# Project\n\nRules of our own.\n';
+  writeFileSync(join(d, 'CLAUDE.md'), prose);
+  initProject(d, { mode: 'online' });                    // appends the block
+  initProject(d, { mode: 'offline', force: true });      // removes it
+  assert.equal(readFileSync(join(d, 'CLAUDE.md'), 'utf8'), prose);
 });
 
 // ---------------------------------------------------------------------------------

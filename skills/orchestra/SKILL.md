@@ -33,13 +33,17 @@ else.
 
 ## Onboarding a new project (`orchestra init`)
 
-**Run this once, before anything else, in a project `doctor` says has not opted in.** `init` writes
-`.orchestra/config.json`, `.orchestra/.gitignore`, and appends `templates/CLAUDE-rules.md` to the
-project's `CLAUDE.md` (or creates it) — see `lib/cli/init.mjs` for exactly what each of those
-holds. What it cannot do is guess: `detect(root)` only proposes a gate or a branch-test command it
-found real evidence of (a script in `package.json`, a `Cargo.toml`, a `pyproject.toml`, a `go.mod`,
-a Makefile `test:` target), and anything it did not find goes in its `missing` list rather than
-being invented — a gate that does not run is a gate that refuses every landing.
+**Run this once, before anything else, in a project `doctor` says has not opted in.** `init`
+always writes `.orchestra/config.json`; everything else it writes depends on the mode you choose
+below. Online: a committed `.orchestra/.gitignore`, and `templates/CLAUDE-rules.md` appended to the
+project's `CLAUDE.md` (creating it if there is none). Offline: no `.gitignore` at all —
+`/.orchestra/` is excluded from this clone through its own `info/exclude` instead — and the same
+rules written to `.orchestra/CLAUDE-rules.md`, never to `CLAUDE.md`, which `init` touches only to
+remove a block a previous online `init` left there. See `lib/cli/init.mjs` for exactly what each
+of those holds. What it cannot do is guess: `detect(root)` only proposes a gate or a branch-test
+command it found real evidence of (a script in `package.json`, a `Cargo.toml`, a `pyproject.toml`,
+a `go.mod`, a Makefile `test:` target), and anything it did not find goes in its `missing` list
+rather than being invented — a gate that does not run is a gate that refuses every landing.
 
 Ask, in this order:
 
@@ -48,9 +52,9 @@ Ask, in this order:
 2. **`mode`** — the one key with no default, so ask it even when detection found everything else:
    - `online` — roadmaps are GitHub issues, so every developer on the repository sees who is
      working on what (needs the `gh` CLI, authenticated).
-   - `offline` — roadmaps are markdown under `.orchestra/roadmaps`, gitignored and never committed
-     by orchestra itself, and "is somebody already working on this" is answered for this machine
-     only.
+   - `offline` — roadmaps are markdown under `.orchestra/roadmaps`, excluded from this clone and
+     never committed by orchestra itself, and "is somebody already working on this" is answered for
+     this machine only.
 3. **Everything named in `missing`**, one at a time, only if detection actually left it empty:
    - `suite` — no recognised test command at all. Ask what runs the whole suite, if anything does
      yet. A project with nothing here can still adopt orchestra; it just lands without a gate.
@@ -153,8 +157,9 @@ command this plugin ships actually exists.
 This document is English, because the plugin is shared: the same words read the same way in every
 project it is installed into. What you write **for the user** is not — every journal line, every
 `ask` and its `options`, every `note`, every checkpoint, every question relayed, is written **in the
-user's language**. `.orchestra/state.json`, and the rest of the runtime state next to it, is
-gitignored and has exactly one reader — this is that committed-in-English rule's deliberate
+user's language**. `.orchestra/state.json`, and the rest of the runtime state next to it, is hidden
+from git (online, by `.orchestra/.gitignore`; offline, by this clone's own `info/exclude`, never
+committed) and has exactly one reader — this is that committed-in-English rule's deliberate
 exception, not a contradiction of it: what a worker commits stays English, and so does its branch,
 because the exception is the conversation, not the code.
 
@@ -1209,7 +1214,7 @@ written — not a judgment call the conductor makes at launch time.
 
 ## Worker briefs
 
-Every launch and every hand-over below fills a brief from the same nine substitutions, plus — for a
+Every launch and every hand-over below fills a brief from the same ten substitutions, plus — for a
 relaunch or a hand-over only — `<the project's main branch>` (`orchestra doctor`'s `mainBranch` row)
 and `<n>`, the turn count. One table, read once:
 
@@ -1224,13 +1229,14 @@ and `<n>`, the turn count. One table, read once:
 | `{specsDir}` | `orchestra doctor`'s `docs.specs` row |
 | `{plansDir}` | `orchestra doctor`'s `docs.plans` row |
 | `{briefExtra}` | `orchestra doctor`'s `briefExtra` row, pasted verbatim. Empty means the paragraph is omitted entirely |
+| `{projectRules}` | the contents of `.orchestra/CLAUDE-rules.md` when that file exists (offline mode — `init` writes it there instead of into the committed `CLAUDE.md`), pasted verbatim. Absent means the paragraph is omitted entirely: online, the same rules are already in the project's `CLAUDE.md`, which every session reads |
 
 `{briefExtra}` is the replacement for the source brief's appeals to one project's own subject map:
 it is where a project states the rules a prompt cannot derive on its own — where its code lives,
 what a worker must never touch, whether a fresh worktree needs a bootstrap step (step 8, above,
 already runs no dependency install, for exactly that reason).
 
-Fill the nine placeholders and pass the result as the `claude --bg` prompt — step 8, above, gives
+Fill the ten placeholders and pass the result as the `claude --bg` prompt — step 8, above, gives
 the rest of the launch line. Execution brief (the execution model):
 
 ```
@@ -1239,6 +1245,7 @@ Task {task} — {title}. Your roadmap excerpt, verbatim:
 {excerpt}
 Hard rules: never work on the main branch; run {branchTests} on every iteration, never the project's
 full suite; everything you commit is English.
+{projectRules}
 {briefExtra}
 Your roadmap excerpt above names its `Touches` files: START FROM THEM. Reach for a repository-wide
 search only when the excerpt and the rules above have both failed you. This is not a style note:

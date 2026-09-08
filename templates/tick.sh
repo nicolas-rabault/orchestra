@@ -1,9 +1,11 @@
 #!/bin/sh
 # The orchestra heartbeat's tick. Rendered by `orchestra install-heartbeat` (lib/cli/heartbeat.mjs)
-# into <project root>/.orchestra/tick.sh — gitignored — with this project's root and the absolute
-# path this plugin's own `bin/orchestra` was installed at. Both are baked in as literal values
-# below rather than re-derived from this script's own location, so the tick needs nothing from
-# where it happens to be run from.
+# into <project root>/.orchestra/tick.sh — hidden from git, online by the `.orchestra/.gitignore`
+# `orchestra init` writes and offline by the line it appends to this clone's own `info/exclude`,
+# never committed either way — with this project's root and the absolute path this plugin's own
+# `bin/orchestra` was installed at. Both are baked in as literal values below rather than
+# re-derived from this script's own location, so the tick needs nothing from where it happens to be
+# run from.
 #
 # Installed as a LaunchAgent (macOS, templates/heartbeat.plist) or a systemd user timer (Linux,
 # templates/heartbeat.service + templates/heartbeat.timer) — deliberately NOT a crontab entry: a

@@ -100,6 +100,128 @@ test('only a dirty file the branch also changes can clash', () => {
   assert.deepEqual(S.clashingPaths(['a'], ['b']), []);
 });
 
+test('offlineTraces: a clean branch has nothing', () => {
+  assert.deepEqual(S.offlineTraces({
+    paths: ['src/a.js'],
+    commits: [{ sha: 'abc1234def', body: 'feat: a thing\n\nA body.\n' }],
+    diff: '+++ b/src/a.js\n@@ -1,0 +1,1 @@\n+const a = 1;\n',
+  }), []);
+});
+
+test('offlineTraces: a commit message names the tool', () => {
+  const found = S.offlineTraces({ commits: [{ sha: 'abc1234def', body: 'chore: run orchestra land\n' }] });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].where, 'commit abc1234');
+});
+
+test('offlineTraces: an added line names the tool, located in the new file', () => {
+  const diff = [
+    '+++ b/docs/plan.md',
+    '@@ -1,2 +1,4 @@',
+    ' context one',
+    ' context two',
+    '+a plain line',
+    '+scheduled by orchestra',
+    '',
+  ].join('\n');
+  const found = S.offlineTraces({ diff });
+  assert.deepEqual(found, [{ where: 'docs/plan.md:4', text: 'scheduled by orchestra' }]);
+});
+
+test('offlineTraces: a REMOVED line is not a trace — deleting the block is the fix, not the crime', () => {
+  const diff = '+++ b/CLAUDE.md\n@@ -1,2 +1,1 @@\n context\n-## Working with orchestra\n';
+  assert.deepEqual(S.offlineTraces({ diff }), []);
+});
+
+test('offlineTraces: a force-added path under the excluded directory', () => {
+  const found = S.offlineTraces({ paths: ['.orchestra/tickets.jsonl'] });
+  assert.deepEqual(found, [{ where: 'path .orchestra/tickets.jsonl', text: '.orchestra/tickets.jsonl' }]);
+});
+
+test('offlineTraces: merge_agent counts, and the match is case-insensitive', () => {
+  assert.equal(S.offlineTraces({ commits: [{ sha: 'f00ba12345', body: 'hand to Merge_Agent' }] }).length, 1);
+});
+
+// Final review, Important 3: `TRACE` used to be a plain substring, which refused not the tool's
+// name but every English word containing it — so a container-orchestration, CI, data-pipeline or
+// music project could land nothing that touched `src/orchestrator.ts`, with no config key to turn
+// the refusal off. Both halves are pinned here, because narrowing the pattern too far would be the
+// worse failure: it is what makes the whole invariant true.
+test('TRACE matches the tool\'s own identifiers, in every shape it writes them', () => {
+  for (const s of ['orchestra land', 'run orchestra', 'orchestra-a1b2', '.orchestra/config.json',
+    'hand it to merge_agent', 'the merge_agents queue']) {
+    assert.match(s, S.TRACE);
+  }
+});
+
+test('TRACE does not match an English word that merely contains it', () => {
+  for (const s of ['src/orchestrator.ts', 'docs/orchestration/pipeline.md',
+    'feat: orchestrate the workers', 'a well-orchestrated release', 'Orchestral suite in D']) {
+    assert.doesNotMatch(s, S.TRACE);
+  }
+});
+
+test('offlineTraces: a path in a project whose own vocabulary contains the word is not a trace', () => {
+  // The consequence the pattern exists to avoid, at the level that actually refused the landing:
+  // `paths` alone was enough to hold every branch touching an orchestration directory.
+  assert.deepEqual(S.offlineTraces({
+    paths: ['src/orchestrator.ts', 'docs/orchestration/pipeline.md'],
+    commits: [{ sha: 'abc1234def', body: 'feat: orchestrate the workers\n' }],
+    diff: '+++ b/src/orchestrator.ts\n@@ -1,0 +1,1 @@\n+// a well-orchestrated release\n',
+  }), []);
+});
+
+test('offlineTraces: the +++ header itself is not an added line', () => {
+  // Otherwise every file under the excluded directory would be reported twice, once as a path and
+  // once as its own diff header.
+  assert.deepEqual(S.offlineTraces({ diff: '+++ b/.orchestra/x\n@@ -0,0 +1 @@\n+ok\n' }), []);
+});
+
+// Fix round 1, the Important finding: a `+` (added) marker followed by content starting with
+// `++ ` renders identically to a `+++ b/<path>` FILE HEADER. A 4-character prefix test on the raw
+// line cannot tell them apart — only tracking whether the scanner is INSIDE a hunk can, because a
+// real header can never occur there. Confirmed against the shipped code before this fix: the trace
+// below was silently dropped, never even tested against TRACE.
+test('offlineTraces: an added line beginning with "++ " is content, not a file header', () => {
+  const diff = '+++ b/real-file.txt\n@@ -1,1 +1,2 @@\n context1\n+++ orchestra scheduled this\n';
+  assert.deepEqual(S.offlineTraces({ diff }),
+    [{ where: 'real-file.txt:2', text: '++ orchestra scheduled this' }]);
+});
+
+// Same finding, second half: misreading that line as a header also REASSIGNED `file` to garbage
+// sliced from its own text, so the NEXT added line in the same hunk was reported against that
+// garbage path instead of the real one — confirmed against the shipped code before this fix.
+test('offlineTraces: a later added line in the same hunk is still attributed to the real path', () => {
+  const diff = [
+    '+++ b/real-file.txt',
+    '@@ -1,1 +1,3 @@',
+    ' context1',
+    '+++ orchestra scheduled this',
+    '+scheduled by orchestra again',
+    '',
+  ].join('\n');
+  assert.deepEqual(S.offlineTraces({ diff }), [
+    { where: 'real-file.txt:2', text: '++ orchestra scheduled this' },
+    { where: 'real-file.txt:3', text: 'scheduled by orchestra again' },
+  ]);
+});
+
+test('offlineTraces: a full real git diff shape still locates the trace correctly', () => {
+  // `diff --git`, `index`, and `--- a/<path>` all precede `+++ b/<path>` in real `git diff`
+  // output. None of them is a hunk, so all three must be skipped without ending up read as one.
+  const diff = [
+    'diff --git a/f.js b/f.js',
+    'index 0000000..1111111 100644',
+    '--- a/f.js',
+    '+++ b/f.js',
+    '@@ -1,1 +1,2 @@',
+    ' context',
+    '+run by orchestra',
+    '',
+  ].join('\n');
+  assert.deepEqual(S.offlineTraces({ diff }), [{ where: 'f.js:2', text: 'run by orchestra' }]);
+});
+
 test('a glob matches within a segment, and ** spans segments including none', () => {
   const m = (g, p) => S.globToRegExp(g).test(p);
   assert.equal(m('docs/**', 'docs/a.md'), true);

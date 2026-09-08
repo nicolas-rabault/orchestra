@@ -1,9 +1,9 @@
 // `draftAdds` is `guard-draft`'s pure decision: does this `git add` NAME a path under the project's
 // drafts directory? No `-f` requirement, unlike the source project's `guard-local-roadmap.mjs`
 // (planetCraft), which only had to catch the gitignore bypass — the drafts directory here is only
-// gitignored when `orchestra init` has written that line, so a project that has not run `init`, or
-// has since edited its own `.gitignore`, has no such floor and an ordinary `git add` must be caught
-// too.
+// hidden from git once `orchestra init` has run (online, in `.orchestra/.gitignore`; offline, in
+// this clone's own `info/exclude`, never committed), so a project that has not run `init`, or has
+// since edited its own exclusion, has no such floor and an ordinary `git add` must be caught too.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { draftAdds } from '../lib/guards/draft.mjs';

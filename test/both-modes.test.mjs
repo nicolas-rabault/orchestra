@@ -4,8 +4,10 @@
 // difference is asserted explicitly at the bottom rather than left to be discovered.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
 import { makeFakeGh } from './helpers/gh.mjs';
 import { loadConfig } from '../lib/config.mjs';
@@ -15,9 +17,19 @@ import { startVerdict } from '../lib/roadmap/policy.mjs';
 import { enrol } from '../lib/roadmap/enrol.mjs';
 import { LABELS, taskTitle } from '../lib/store/github/issues.mjs';
 import { parseRoadmap } from '../lib/roadmap/parse.mjs';
+import { TRACE } from '../lib/gate/state.mjs';
 
+const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 const repos = [];
 after(() => repos.forEach((r) => r.cleanup()));
+
+// A throwaway repository, for the one test below that drives the real binary end to end rather
+// than the library functions every other test in this file calls directly.
+function repo() {
+  const r = makeRepo();
+  repos.push(r);
+  return r;
+}
 
 // Seeds a roadmap that is ALREADY PUBLISHED, by the route each mode actually offers — the fixture
 // shape whose absence is what let the two stores disagree about `knownKeys` for a whole phase.
@@ -223,4 +235,36 @@ test('[online] the overlay carries the issue, and claim turns it wip for everyon
   assert.equal(entry.status, 'claimed');
   assert.ok(p.gh.state.find((i) => i.labels.includes(LABELS.wip)));
   assert.ok(p.gh.state.some((i) => i.title === taskTitle(parseRoadmap(ROADMAP).tasks[0])));
+});
+
+// docs/specs/2026-09-08-offline-leaves-no-trace-design.md's whole promise, asserted on the actual
+// output of the actual pipeline rather than on any one function that helps keep it: `init` opts a
+// real repository into offline mode, a worker does ordinary work on a branch, and `orchestra land`
+// carries it onto main through the real gate. Every unit test above (and in test/p3-acceptance and
+// test/gate-state) covers one function that contributes to this; none of them can catch a future
+// change that keeps every function's own test green while still letting a trace slip through a seam
+// between them. This test would.
+test('offline, end to end: nothing orchestra produces reaches a commit', () => {
+  const r = repo();
+  // `makeRepo`'s own initial commit tracks `.orchestra/config.json` (it has to, to give every OTHER
+  // test in this suite a config to load without a separate `init` step) — the one thing about this
+  // fixture that is not the shape a real offline project starts in. Untracked here, before `init`
+  // ever runs, so the assertions below check what the CODE under test did, not a fixture artefact.
+  rmSync(join(r.root, '.orchestra'), { recursive: true, force: true });
+  r.git('rm', '-q', '--cached', '-r', '--ignore-unmatch', '.orchestra');
+  r.git('commit', '-q', '-m', 'clean start', '--allow-empty');
+  execFileSync(BIN, ['init', '--mode', 'offline'], { cwd: r.root, encoding: 'utf8' });
+
+  // A worker's branch, landed through the real gate.
+  r.git('worktree', 'add', '-q', join(r.root, '.orchestra', 'worktrees', 'w1'), '-b', 'feat', 'main');
+  const wt = join(r.root, '.orchestra', 'worktrees', 'w1');
+  writeFileSync(join(wt, 'feature.txt'), 'the work itself\n');
+  execFileSync('git', ['-C', wt, 'add', 'feature.txt']);
+  execFileSync('git', ['-C', wt, 'commit', '-q', '-m', 'feat: the work itself']);
+  assert.equal(spawnSync(BIN, ['land', 'feat'], { cwd: r.root, encoding: 'utf8' }).status, 0);
+
+  // The three ways another developer could find out, all silent.
+  assert.deepEqual(r.git('ls-files').split('\n').filter((p) => p && TRACE.test(p)), []);
+  assert.doesNotMatch(r.git('log', '--format=%B', 'main'), TRACE);
+  assert.equal(r.git('status', '--porcelain').trim(), '');
 });

@@ -4,7 +4,8 @@ A Claude Code plugin that conducts a project's development with background worke
 
 **Two modes:**
 - **Online:** Roadmaps published as GitHub issues in any repository
-- **Offline:** Roadmaps stored as markdown files under `.orchestra/roadmaps`, gitignored
+- **Offline:** Roadmaps stored as markdown files under `.orchestra/roadmaps`, excluded from this
+  clone and never committed
 
 For the full design and specification, see [docs/specs/2026-09-02-orchestra-plugin-design.md](docs/specs/2026-09-02-orchestra-plugin-design.md).
 
@@ -28,18 +29,21 @@ a test enforces that.
 orchestra init --mode offline   # or --mode online, if roadmaps should be GitHub issues
 ```
 
-`offline` keeps roadmaps as markdown under `.orchestra/roadmaps` — gitignored, and **never
-committed by orchestra itself**: offline mode is one machine, one register, one owner, so a roadmap
-is this checkout's working state rather than something the repository carries. A project that wants
-its roadmaps shared points `roadmaps.published` at a committed directory (`docs/roadmaps`, say) and
-commits them itself; `publish` writes the file and stops there either way. `online` publishes them
-as GitHub issues and needs the `gh` CLI.
+`offline` keeps roadmaps as markdown under `.orchestra/roadmaps` — excluded from this clone, and
+**never committed by orchestra itself**: offline mode is one machine, one register, one owner, so a
+roadmap is this checkout's working state rather than something the repository carries. A project
+that wants its roadmaps shared points `roadmaps.published` at a committed directory
+(`docs/roadmaps`, say) and commits them itself; `publish` writes the file and stops there either
+way. `online` publishes them as GitHub issues and needs the `gh` CLI.
 
-`init` writes `.orchestra/config.json` (detecting a build system and proposing gates
-where it can, asking rather than guessing at everything it cannot), `.orchestra/.gitignore`, and
-appends the project's hard rules to `CLAUDE.md`. Run `orchestra init --detect --json` first to see
-what it would propose without writing anything, and `orchestra doctor` afterwards to see the
-resolved configuration with every defaulted key marked.
+`init` always writes `.orchestra/config.json` (detecting a build system and proposing gates where
+it can, asking rather than guessing at everything it cannot). What it does with the project's hard
+rules depends on the mode: online, it appends them to `CLAUDE.md` (creating the file if there is
+none) and writes a committed `.orchestra/.gitignore`; offline, it writes them to
+`.orchestra/CLAUDE-rules.md` instead — excluded from this clone, like the rest of `.orchestra/` —
+and touches `CLAUDE.md` only to remove a block a previous online `init` left there. Run
+`orchestra init --detect --json` first to see what it would propose without writing anything, and
+`orchestra doctor` afterwards to see the resolved configuration with every defaulted key marked.
 
 **The absence of `.orchestra/config.json` is the plugin's off switch.** In a project that has not
 opted in, every command exits 0 and prints nothing, so the plugin is safe to install globally. The

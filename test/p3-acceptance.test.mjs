@@ -9,14 +9,15 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
-  chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
-import { loadConfig } from '../lib/config.mjs';
+import { loadConfig, loadConfigOrThrow } from '../lib/config.mjs';
 import { commitLedgers } from '../lib/gate/land.mjs';
+import { TRACE } from '../lib/gate/state.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'orchestra');
 const repos = [];
@@ -180,7 +181,13 @@ test("the gates that judge a branch are the branch's own", () => {
   // Spec §3.2: the config is committed, so a branch that changes a gate has that gate applied to
   // its own landing. Everything else — mainBranch, ledgers, queue — comes from the invoking config,
   // because a branch that could add a path to `ledgers` could make the gate commit it onto main.
-  const r = project([{ name: 'from-main', cmd: 'exit 1' }]);
+  //
+  // Online, deliberately: `.orchestra/config.json` is a COMMITTED path there (spec
+  // docs/specs/2026-09-08-offline-leaves-no-trace-design.md §2's whole point is that offline it
+  // stops being one), and `.orchestra` itself matches the offline trace guard's `TRACE` pattern —
+  // this test's own change to that path would otherwise be refused by a check it has nothing to do
+  // with.
+  const r = project([{ name: 'from-main', cmd: 'exit 1' }], { mode: 'online' });
   const { branch, wt } = branchWith(r);
   const cfg = JSON.parse(readFileSync(join(wt, '.orchestra', 'config.json'), 'utf8'));
   cfg.gates = [{ name: 'from-branch', cmd: 'echo BRANCH-GATE' }];
@@ -247,6 +254,43 @@ test('a dirty configured ledger is committed alone; something else staged in the
   // past its own pathspec to sweep it in.
   const status = r.git('status', '--porcelain', '--', 'unrelated.txt');
   assert.match(status, /^M {2}unrelated\.txt/);
+});
+
+// Offline, nothing orchestra produces may enter a commit (spec
+// docs/specs/2026-09-08-offline-leaves-no-trace-design.md §4): the repository is shared with
+// developers who must not learn the tool exists, and a commit body naming "the merge gate" in the
+// shared history of main is exactly that leak, even though this path only fires when a project has
+// configured a `ledgers` entry by hand.
+test('commitLedgers offline: the message names no tool', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { ledgers: ['ledger.jsonl'] });
+  writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":1}\n');
+  r.git('add', 'ledger.jsonl');
+  r.git('commit', '-q', '-m', 'ledger');
+  writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":2}\n');
+  assert.equal(commitLedgers(loadConfigOrThrow(r.root)), true);
+  const body = r.git('log', '-1', '--format=%B');
+  // Two assertions, not one, and neither is redundant with the other. `/merge gate/` pins THIS
+  // task's own removal — it is the phrase that named the tool and the only thing that changed here,
+  // so it is what actually fails against the old code. `TRACE` pins the branch-wide invariant
+  // (spec §5's trace guard, `orchestra|merge_agent`) that every offline trace this whole effort
+  // cares about must also satisfy, even though it is narrower than "names no tool" and would not by
+  // itself have caught this particular leak. Losing either one loses something a later reader would
+  // not get back by re-deriving it.
+  assert.doesNotMatch(body, /merge gate/);
+  assert.doesNotMatch(body, TRACE);
+});
+
+// The counterpart: online there is nothing to hide, and the prose that explains why the ledger
+// commit exists (naming the merge gate as the only actor allowed to write main) is worth keeping —
+// this task must not touch the online body at all.
+test('commitLedgers online: keeps the prose that explains the gate', () => {
+  const r = project([{ name: 'green', cmd: 'true' }], { mode: 'online', ledgers: ['ledger.jsonl'] });
+  writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":1}\n');
+  r.git('add', 'ledger.jsonl');
+  r.git('commit', '-q', '-m', 'ledger');
+  writeFileSync(join(r.root, 'ledger.jsonl'), '{"a":2}\n');
+  commitLedgers(loadConfigOrThrow(r.root));
+  assert.match(r.git('log', '-1', '--format=%B'), /merge gate/);
 });
 
 // The lock `commitLedgers` was missing (task 2 of P5): a torn write between another writer's
@@ -492,4 +536,74 @@ test("online: a successful sync echoes the child's own report, not a generic mes
   assert.equal(code, 0, out);
   assert.match(out,
     /synced the shared channel for 'demo\/D1' — sync: closed nothing; 0 label change\(s\); 0 programme\(s\) updated/);
+});
+
+// The trace guard (spec §5): offline, nothing orchestra produces may enter a commit, because the
+// repository is shared with developers who must not learn the tool exists. `main` is the only
+// branch ever pushed and `land` the only way in, so this is the last place the invariant can be
+// made true rather than hoped for.
+//
+// The gate must run before ANY configured gate, not merely before the fast-forward: a refusal is
+// free, a suite is minutes. Proven here by giving the project a gate that would leave a mark
+// (`touch gate-ran`) and asserting that mark never appears.
+test('land offline: a branch whose commit message names the tool is refused before any gate runs', () => {
+  const r = project([{ name: 'suite', cmd: 'touch gate-ran' }]);
+  const wt = join(r.root, '.orchestra', 'worktrees', 'feat');
+  r.git('worktree', 'add', '-q', '-b', 'feat', wt, 'main');
+  writeFileSync(join(wt, 'a.txt'), 'a\n');
+  execFileSync('git', ['-C', wt, 'add', 'a.txt']);
+  execFileSync('git', ['-C', wt, 'commit', '-q', '-m', 'chore: land via orchestra']);
+
+  const before = r.git('rev-parse', 'main').trim();
+  const { code, out } = run(r.root, 'land', 'feat');
+  assert.equal(code, 11, out);                                    // S.EXIT.refused
+  assert.match(out, /offline-trace/);
+  assert.match(out, /commit [0-9a-f]{7}/);
+  assert.equal(existsSync(join(wt, 'gate-ran')), false);           // refused BEFORE the gate ran
+  assert.equal(r.git('rev-parse', 'main').trim(), before);         // main never moved
+  // Spec §5 names `mark(p, branch, 'held', …)` as part of the refusal's own contract, and it is
+  // not decoration: `held` is what leaves the branch and its worktree alive for their author, and
+  // the note is the only record a session that was not watching stderr can read afterwards.
+  const queue = JSON.parse(readFileSync(join(r.root, '.orchestra', 'gate', 'queue.json'), 'utf8'));
+  assert.equal(queue.entries[0].state, 'held');
+  assert.match(queue.entries[0].note, /offline-trace/);
+});
+
+// The other of the three inputs `offlineTraces` is handed: an ADDED line in the diff, not a commit
+// message. Named by file and line so the reword this refusal demands is mechanical.
+test('land offline: an added line that names the tool is refused, naming file and line', () => {
+  const r = project([]);
+  const wt = join(r.root, '.orchestra', 'worktrees', 'feat');
+  r.git('worktree', 'add', '-q', '-b', 'feat', wt, 'main');
+  writeFileSync(join(wt, 'notes.md'), 'one\ntwo\nrun orchestra land\n');
+  execFileSync('git', ['-C', wt, 'add', 'notes.md']);
+  execFileSync('git', ['-C', wt, 'commit', '-q', '-m', 'docs: notes']);
+
+  const { code, out } = run(r.root, 'land', 'feat');
+  assert.equal(code, 11, out);
+  assert.match(out, /notes\.md:3/);
+});
+
+// The positive control: a branch with nothing to hide lands normally in offline mode. Without this,
+// a broken guard that refused every offline landing would pass every test above.
+test('land offline: a clean branch lands normally', () => {
+  const r = project([]);
+  const { branch } = branchWith(r, { file: 'a.txt', body: 'a\n' });
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+});
+
+// Online mode is unchanged (spec §5, "skipped entirely when cfg.mode !== 'offline'"): online
+// publishes GitHub issues, visibility is the point there, and the very branch refused above must
+// land untouched.
+test('land online: the same offending branch lands — online has nothing to hide', () => {
+  const r = project([], { mode: 'online' });
+  const wt = join(r.root, '.orchestra', 'worktrees', 'feat');
+  r.git('worktree', 'add', '-q', '-b', 'feat', wt, 'main');
+  writeFileSync(join(wt, 'a.txt'), 'a\n');
+  execFileSync('git', ['-C', wt, 'add', 'a.txt']);
+  execFileSync('git', ['-C', wt, 'commit', '-q', '-m', 'chore: land via orchestra']);
+
+  const { code, out } = run(r.root, 'land', 'feat');
+  assert.equal(code, 0, out);
 });
