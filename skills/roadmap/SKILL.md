@@ -159,9 +159,14 @@ the block has no field for it, on purpose.
 
 **Be honest about enforcement**: `guard-claim` (`hooks/guard-claim.mjs`) refuses `git worktree add
 -b <branch>` — the one gesture that starts work — for a task that is neither yours-and-open nor
-claimed by you, failing open when the board is unreachable. That is one gesture, not every way work
-could start, so the rules still outlive what it catches; keep them on the paths where no tool is
-watching. The third rule needs no enforcement offline: there is no field to write a status into.
+claimed by you, failing open when the board is unreachable. It fails open too where a claim cannot be
+recorded at all — offline, and for a `destination: local` roadmap in any mode, `claim` succeeds
+without writing anything, so no claim ever reaches the board and a guard that demanded one refused
+the task you had just claimed. There the branch ref, and git's own refusal of a name it already has,
+are the interlock; online, where an issue's assignee records the claim, the refusal stands. That is
+one gesture, not every way work could start, so the rules still outlive what it catches; keep them on
+the paths where no tool is watching. The third rule needs no enforcement offline: there is no field
+to write a status into.
 
 ## 6. Writing a good task
 

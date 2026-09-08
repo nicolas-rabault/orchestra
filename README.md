@@ -154,7 +154,9 @@ has landed:
   `--continue` / `--quit` exempted, overridden by `ORCHESTRA_GATE=1`); `guard-full-suite` refuses a
   bare invocation of the `suite` gate; `guard-draft` keeps a roadmap draft off `git add`;
   `guard-claim` refuses a `git worktree add -b <branch>` the board does not show claimed by you,
-  failing open when the channel is unreachable and closed on a cached board; `lint-roadmap` reports
+  failing open when the channel is unreachable, and open too on a row no channel carries — offline,
+  and a `destination: local` roadmap in any mode, where a claim is recorded nowhere and demanding
+  one demands what that store cannot produce — and closed on a cached board; `lint-roadmap` reports
   a roadmap format issue after every edit; `orchestra-inbox` injects an unread answer into a live
   interactive session. Every one of them exits 0 and silent with no `.orchestra/config.json`.
 - **`orchestra init [--mode online|offline] [--force] | --detect [--json]`** — see "Opt a project

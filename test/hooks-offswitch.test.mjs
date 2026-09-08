@@ -35,8 +35,7 @@ import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo, ROADMAP } from './helpers/fixture.mjs';
-import { loadConfig } from '../lib/config.mjs';
-import { roadmapCommand } from '../lib/cli/roadmap.mjs';
+import { fakeGhOnPath, foreignClaim } from './helpers/fakeGh.mjs';
 import { writeState, emptyState } from '../lib/register/state.mjs';
 import { inboxPath } from '../lib/register/inbox.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
@@ -51,21 +50,12 @@ after(() => repos.forEach((r) => r.cleanup()));
 
 // An explicit `env`, because the default is to inherit `process.env` wholesale — and inside a
 // landing that carries the two off switches these rows exist to prove are NOT inert.
-function runHook(file, payload) {
+function runHook(file, payload, env = {}) {
   return spawnSync(process.execPath, [join(HOOKS_DIR, file)], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
-    env: hookEnv(),
+    env: hookEnv(env),
   });
-}
-
-// Silences `roadmapCommand`'s own stdout (`out()` writes straight to `process.stdout`) while a
-// row's `build` publishes a fixture roadmap as setup — the same helper
-// `test/hooks-guard-claim.test.mjs` already uses for the same reason.
-function silently(fn) {
-  const realWrite = process.stdout.write.bind(process.stdout);
-  process.stdout.write = () => true;
-  try { fn(); } finally { process.stdout.write = realWrite; }
 }
 
 function write(root, relPath, text) {
@@ -80,6 +70,9 @@ function write(root, relPath, text) {
 //     (`guard-full-suite` needs a `suite` gate; the rest are live under `makeRepo`'s defaults).
 //   - `build(r)`: does whatever ELSE a live run needs (publishing a roadmap task, writing a
 //     malformed file, seeding a register) and returns the payload.
+//   - `env(r)`: optional, for a hook whose live behaviour needs something on PATH — `guard-claim`
+//     reads its board by spawning `bin/orchestra`, so its backend has to be a real binary. Applied
+//     to BOTH runs of the row, so the off-switch half is proven against the same environment.
 //   - `assertLive(res)`: what "this payload was actually acted on" looks like for this hook.
 const ROWS = [
   {
@@ -122,19 +115,19 @@ const ROWS = [
   {
     name: 'guard-claim',
     file: 'guard-claim.mjs',
-    // A branch a board would show as an UNCLAIMED row — the shape `guard-claim` itself refuses,
-    // per `test/hooks-guard-claim.test.mjs`'s "starting an unclaimed task's branch is REFUSED".
-    // Publishing the task is what makes `demo/d1-first-thing` a row the board actually carries;
-    // without it the branch matches nothing and this row would be inert exactly as review found.
-    build: (r) => {
-      const cfg = loadConfig(r.root);
-      const draftsDir = join(r.root, cfg.roadmaps.drafts);
-      mkdirSync(draftsDir, { recursive: true });
-      const draftPath = join(draftsDir, 'demo.md');
-      writeFileSync(draftPath, ROADMAP);
-      silently(() => roadmapCommand({ cfg, args: ['publish', draftPath] }));
-      return { cwd: r.root, tool_input: { command: 'git worktree add ../wt -b demo/d1-first-thing main' } };
-    },
+    // ONLINE, and held by a colleague, because that is now the only board state this hook refuses:
+    // a row whose store records no claim — offline, or a `destination: local` roadmap — fails open
+    // deliberately (`startVerdict`'s `unrecordable`, lib/roadmap/policy.mjs), since demanding a
+    // claim there demands evidence that store cannot produce. This row used to publish an offline
+    // task and assert the refusal; the day the guard stopped refusing it, the row went INERT — the
+    // exact defect this file's header was written about — so it moves to the case that is still a
+    // refusal rather than to a weaker assertion about the same fixture.
+    //
+    // `foreignClaim` is served by a `gh` on PATH (./helpers/fakeGh.mjs): the hook reads its board
+    // by spawning `bin/orchestra`, so the fixture has to exist as a binary that subprocess can run.
+    repoOpts: { mode: 'online' },
+    env: (r) => fakeGhOnPath(r.root, foreignClaim()),
+    build: (r) => ({ cwd: r.root, tool_input: { command: 'git worktree add ../wt -b demo/d1-first-thing main' } }),
     assertLive: (res) => {
       assert.equal(res.status, 2);
       assert.match(res.stderr, /orchestra roadmap claim/);
@@ -214,7 +207,7 @@ for (const row of ROWS) {
   test(`${row.name}: the row's payload is not inert — a real config acts on it`, () => {
     const r = repo(row.repoOpts);
     const payload = row.build(r);
-    const res = runHook(row.file, payload);
+    const res = runHook(row.file, payload, row.env?.(r));
     row.assertLive(res);
   });
 
@@ -225,7 +218,7 @@ for (const row of ROWS) {
     // turning this plugin off is the realistic shape of "no config", and the off switch must hold
     // regardless of what else is sitting under `.orchestra/`.
     rmSync(join(r.root, '.orchestra', 'config.json'), { force: true });
-    const res = runHook(row.file, payload);
+    const res = runHook(row.file, payload, row.env?.(r));
     assert.equal(res.status, 0, `expected exit 0, got ${res.status}\nstderr: ${res.stderr}`);
     assert.equal(res.stdout, '');
     assert.equal(res.stderr, '');

@@ -839,9 +839,9 @@ started *after* the hold was issued.
    `<worktrees>` is the `worktrees` config (`orchestra doctor`'s own row; default
    `.orchestra/worktrees`). **A row carrying a `base` is cut from that sha instead of from the main
    branch** — a pull-request review row always carries one, and `## Pull-request review rows` below
-   says why. The `-b` form is unchanged either way, so `guard-claim` fires the same. **Do not run a
-   dependency install here.** The source project's launch did; a portable protocol cannot know
-   whether a fresh worktree needs one, so if the project
+   says why. The `-b` form is unchanged either way, so `guard-claim` sees the gesture the same.
+   **Do not run a dependency install here.** The source project's launch did; a portable protocol
+   cannot know whether a fresh worktree needs one, so if the project
    needs a per-worktree bootstrap the worker's brief says so — that is one of the things
    `briefExtra` is for.
 
@@ -1186,11 +1186,14 @@ no command writes.
 git worktree add <worktrees>/<slug> -b <branch> <base>
 ```
 
-`<base>` instead of the project's main branch. The `-b` form is unchanged, so `guard-claim` fires
-exactly as it does for anything else, `orchestra roadmap claim` comes first exactly as it does for
-anything else, and the worktree is the pull request as its author wrote it. **A row with no `base`
-is not launchable**: cutting from main would give the worker your own code to review. Say so and
-fetch it rather than launching anyway.
+`<base>` instead of the project's main branch. The `-b` form is unchanged, so `guard-claim` sees the
+gesture exactly as it does for anything else — but a review roadmap is published `destination:
+local`, where a claim is recorded nowhere, so the guard lets the launch through rather than demand
+evidence that store cannot produce (`startVerdict`'s `unrecordable`, `lib/roadmap/policy.mjs`).
+`orchestra roadmap claim` comes first exactly as it does for anything else — the guard is the
+backstop, not the mechanism — and the worktree is the pull request as its author wrote it. **A row
+with no `base` is not launchable**: cutting from main would give the worker your own code to review.
+Say so and fetch it rather than launching anyway.
 
 Everything else is the protocol you already run. The framing pass IS the sweep's own step 6 — the
 board, then the grouped questions, with `options` on every `pending[]` item — so a review row

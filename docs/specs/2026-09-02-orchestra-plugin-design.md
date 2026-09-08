@@ -420,7 +420,10 @@ reads `planetCraft`'s `src/` is dropped; the ledger's shape is unchanged.
 
 `guard-claim` fails **open** when the channel is unreachable (a warning, not a block) and fails
 **closed** on a board served from cache — a cached board is telling you, in as many words, that what
-it knows is out of date. Offline it reads the register, where a claim is a row.
+it knows is out of date. It also fails **open**, silently, on a row no shared channel carries —
+offline, and a `destination: local` roadmap in any mode — because there `claim` succeeds without
+recording anything and the board can never show a claim: a guard demanding one would refuse the task
+you just claimed, and tell you to claim it again. The branch ref is the interlock there.
 
 `guard-measure` is not ported: it guards the execution queue, which is not part of this plugin.
 

@@ -140,6 +140,18 @@ test('claimedByMe comes from the overlay entry when there is one, and from the l
   assert.equal(b.rows[0].claimedByMe, false);
 });
 
+// `shared` is what `startVerdict` (lib/roadmap/policy.mjs) reads to decide whether a claim on this
+// row COULD have been recorded, and it is the one field that turns a refusal into a permission — so
+// it is pinned on the producer side too. It says the overlay carries this key, nothing more: a store
+// whose `claim` writes nothing has no entry to give (lib/store/files.mjs), and the guard that
+// demanded one refused `pr/PR91` a second after it was claimed.
+test('shared says whether the overlay carries the row, and nothing else does', () => {
+  assert.equal(reconcile({ tasks, git: noGit, register: [], overlay: new Map() }).rows[0].shared, false);
+
+  const over = new Map([['demo/D1', { status: 'todo', ref: 5, owner: 'nico', open: false, mine: true, claimedByMe: false }]]);
+  assert.equal(reconcile({ tasks, git: noGit, register: [], overlay: over }).rows[0].shared, true);
+});
+
 test('deps are OVERWRITTEN with the qualified form and drive depsMet', () => {
   const two = parseRoadmap(ROADMAP.replace('- **Deps** —', '- **Deps** D0')).tasks;
   const b = reconcile({ tasks: two, git: noGit, register: [], overlay: new Map() });

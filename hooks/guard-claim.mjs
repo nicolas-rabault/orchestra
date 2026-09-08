@@ -18,6 +18,15 @@
 // blocking on an unreachable channel is worse than the duplicated effort it would prevent. A
 // warning goes to stderr and the command proceeds.
 //
+// It FAILS OPEN, through `startVerdict`, on a row no shared channel carries (`shared: false` on the
+// board row) — offline, and a `destination: local` roadmap in any mode — for the same reason: there
+// is nobody to record a claim with, so the board can never show one and this guard was refusing the
+// worktree for a task the conductor HAD just claimed. Measured on 2026-09-07: `pr/PR91` blocked one
+// second after `orchestra roadmap claim pr/PR91` printed `claimed pr/PR91`, and the wording told the
+// conductor to re-run the command it had just run. Silently, unlike the unreachable board above:
+// offline EVERY row is such a row, and a warning on every worktree add is noise on the ordinary
+// path, not news. What stops a second start there is git refusing a branch name it already has.
+//
 // It FAILS CLOSED on a board served from cache (`board.stale`): a cached board is telling you, in
 // as many words, that what it knows is out of date, and `startVerdict`'s own `stale` branch already
 // refuses on that. No store in THIS plugin caches a board today — `orchestra roadmap board --json`

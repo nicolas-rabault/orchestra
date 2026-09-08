@@ -185,8 +185,11 @@ token:
 git worktree add <worktrees>/<slug> -b pr91-review <base>
 ```
 
-The `-b` form is unchanged, so `hooks/guard-claim.mjs` fires exactly as it does for any other task,
-and the branch that the derivation in §2 reads into existence is created the same way.
+The `-b` form is unchanged, so `hooks/guard-claim.mjs` sees the gesture exactly as it does for any
+other task, and the branch that the derivation in §2 reads into existence is created the same way.
+Its verdict differs, and must: a review roadmap is published `destination: local`, whose `claim`
+records nothing, so the guard fails open there instead of refusing a row whose store can never show
+a claim (§10).
 
 `base` also reaches `invokeCommand`
 ([`lib/monitor/model.mjs`](../../lib/monitor/model.mjs)), which hardcodes `cfg.mainBranch` as the
