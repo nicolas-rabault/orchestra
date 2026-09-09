@@ -159,7 +159,12 @@ has landed:
   one branch at a time behind a lock, the project's own `gates` run in order in the rebased
   worktree, a fast-forward, and the worktree and ref deleted. `--detach` and `await` exist because a
   landing outlives the 600-second ceiling on an agent's tool call; the outcome is on disk, so any
-  session can collect it. A refusing gate returns 11 **and names itself**.
+  session can collect it. A refusing gate returns 11 **and names itself**; a gate whose own process
+  was killed before it reached any verdict — or a machine with no disk left — returns 17 instead, so
+  a branch is never charged for a suite that never judged it. Every passage appends one line to
+  `.orchestra/gate/attempts.jsonl`, and `await` and `queue-list` print the history back: `runs/` is
+  one file per branch and answers "what is happening now", the ledger answers "how many times, and
+  why".
 - **`orchestra roadmap sync`** — online: close what landed, move the `status:` labels, tick each
   programme's checklist, close a finished roadmap. Offline it does nothing, and that is correct:
   there is nowhere to write a status.

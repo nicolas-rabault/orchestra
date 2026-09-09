@@ -80,7 +80,58 @@ test('two land calls in the same second are broken by pid, never both at the hea
 test('the exit table is the interface merge_agent branches on, and it has no 14', () => {
   assert.deepEqual(S.EXIT, {
     ok: 0, usage: 1, conflict: 10, refused: 11, busy: 12, precondition: 13, started: 15, vanished: 16,
+    machine: 17,
   });
+});
+
+// 11 and 17 name different ACTORS, which is the whole reason 17 exists beside a number that already
+// means "refused". `gateOutcome` is where that is decided.
+test('a gate reaches a verdict, or it is killed before it can — and those are not the same refusal', () => {
+  assert.deepEqual(S.gateOutcome({ name: 'suite', status: 1 }),
+    { actor: 'branch', exit: S.EXIT.refused, note: 'gate "suite" refused' });
+  // A signal that reaches this process.
+  assert.equal(S.gateOutcome({ name: 'suite', status: null, signal: 'SIGKILL' }).exit, S.EXIT.machine);
+  // And the one that does not, because the gate runs under a shell: 128+N, signal null.
+  assert.equal(S.gateOutcome({ name: 'suite', status: 134 }).exit, S.EXIT.machine);
+  assert.match(S.gateOutcome({ name: 'suite', status: 137 }).note, /killed by SIGKILL/);
+  // 128+N is a convention, not a guarantee. An unlisted number stays the branch's refusal rather
+  // than being read as a signal on the strength of arithmetic.
+  assert.equal(S.gateOutcome({ name: 'suite', status: 133 }).exit, S.EXIT.refused);
+  assert.equal(S.gateOutcome({ name: 'suite', status: 128 }).exit, S.EXIT.refused);
+  // A timeout stays the branch's: a hang and a loaded machine look identical, and reading a hang as
+  // the machine's sends the agent to land it again for ever.
+  assert.equal(S.gateOutcome({ name: 'suite', status: null, signal: 'SIGTERM', errorCode: 'ETIMEDOUT', timeout: 600 }).exit,
+    S.EXIT.refused);
+});
+
+test('a machine with no room refuses the landing before it accuses the branch', () => {
+  assert.match(S.diskRefusal(200 * 1024 * 1024, '/w'), /0\.20 GiB free.*not at fault/s);
+  assert.equal(S.diskRefusal(S.MIN_FREE_BYTES, '/w'), null);
+  // A filesystem that could not be asked runs the landing: a check that cannot answer must not
+  // become a check that refuses.
+  assert.equal(S.diskRefusal(null, '/w'), null);
+});
+
+test('the attempt ledger answers how many times a branch tried, and what each try came to', () => {
+  const at = (n) => new Date(Date.parse('2026-09-08T10:00:00.000Z') + n * 60_000).toISOString();
+  const entries = [
+    { branch: 'a/one', startedAt: at(0), endedAt: at(4), exit: 11, note: 'gate "suite" refused' },
+    { branch: 'b/two', startedAt: at(5), endedAt: at(6), exit: 0, note: '' },
+    { branch: 'a/one', startedAt: at(7), endedAt: at(9), exit: 17, note: 'gate "suite" was killed by SIGKILL' },
+    { branch: 'a/one', startedAt: at(10), endedAt: at(14), exit: 0, note: '' },
+  ];
+  const s = S.attemptSummary(entries, 'a/one');
+  assert.equal(s.count, 3);
+  assert.equal(s.refusals, 2);
+  assert.deepEqual(s.outcomes.map((o) => o.exit), [11, 17, 0]);
+  assert.equal(s.outcomes[0].seconds, 240);
+  assert.equal(S.attemptSummary(entries, 'c/none'), null);
+
+  const line = S.attemptHistoryLine(s);
+  assert.match(line, /^attempt 3; before this one: exit 11 \(gate "suite" refused\) after 240s, exit 17/);
+  // A first attempt is not a history.
+  assert.equal(S.attemptHistoryLine(S.attemptSummary(entries, 'b/two')), null);
+  assert.equal(S.attemptHistoryLine(null), null);
 });
 
 test('only the configured ledger paths are committed, and they are sorted', () => {

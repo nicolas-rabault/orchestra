@@ -68,11 +68,24 @@ Then act on the exit code `await` gives you:
 | 13 | a precondition failed (dirty tree, missing branch, no worktree, refused cleanup) | report exactly what it named |
 | 15 | `land --detach` started it | run `await` |
 | 16 | killed, and no outcome was recorded | see below |
+| 17 | **the MACHINE refused, not the branch**: a gate's own process was killed before it reached any verdict, or the machine could not run it (no disk space) | not the branch author's problem. If the message names a fix — free space — do that. Otherwise land again **once**, and read the `attempt N; before this one: …` line: a refusal that reproduces is real, and then it is a report, not a retry |
 | anything else | **the process crashed or was killed before it could choose one of the codes above** — a stack trace instead of one of this table's messages, or `130` from the signal handlers (a killed shell, a machine put to sleep). Exit 1 is ambiguous on its own: it is ALSO the ordinary usage code above, so tell the two apart by the message, not the number | read the log tail printed above (or the log named in the last `queue-list` note), then treat it as 16: check whether the branch landed before deciding what to do next |
 
 **Exit 11 always names a gate**, in `await`'s own report and in `orchestra queue-list`. That name is
 the whole verdict: this plugin does not know whether your project's `suite` is vitest or `cargo
 test`, and "the gate named `deadcode` refused, here is its output" is what its author needs.
+
+**Exit 17 names one too, and says the branch is not accused.** The two are told apart by whether the
+gate ever produced a verdict: a suite that ran and went red is 11, a suite whose process was killed —
+`exited 134: its process was killed by SIGABRT`, `killed by SIGKILL` — is 17, because it judged
+nothing. Measured 2026-09-08 in duckJam: four innocent branches refused on one wall-clock assertion
+at load 170, the gate itself killed at 54% "without a failed test or a summary", and 228
+`No space left on device` errors charged to a branch that had caused none of them. Every one of those
+cost a full gate run and a wrong diagnosis before anybody read the output closely.
+
+**Every passage is on the ledger**, one line per attempt in `.orchestra/gate/attempts.jsonl`, and
+`await` and `queue-list` print its summary as `attempt N; before this one: exit 11 (…) after 240s`.
+That line is how you tell a machine hiccup from a real one: read it before you land again.
 
 ### Exit 16 — killed, not finished
 

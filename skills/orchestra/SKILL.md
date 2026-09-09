@@ -839,7 +839,10 @@ started *after* the hold was issued.
 
    or hand the branch to the `merge_agent` agent — a different actor running the same two
    commands with the conflict judgement attached, and the one to hand off to on any other code
-   too: 10 (conflict), 13 (a precondition failed), 16 (killed, no outcome recorded). **Never
+   too: 10 (conflict), 13 (a precondition failed), 16 (killed, no outcome recorded), 17 (the
+   MACHINE refused, not the branch — the gate was killed before it reached any verdict, or there
+   was no disk left; land again once, and the `attempt N; before this one: …` line says whether it
+   already reproduced). **Never
    background either call.** One branch lands at a time behind a lock: landings are serialised,
    so a second one waits for the first and rebases onto the advanced main. The queue orders
    landings and decides nothing about them — whether a row needed the user's look at all is never
@@ -854,8 +857,10 @@ started *after* the hold was issued.
    **subject** against `main`, never a hash, because a landing rebases.
 
    **A REFUSED GATE IS A CLAIM, NOT A VERDICT — and it comes in two flavours you must tell apart
-   before you act.** On 2026-08-26 in planetCraft, MA4 was refused three times and only the
-   first refusal was about MA4:
+   before you act.** Exit 17 is the third case and the tool decides it for you: the gate's own
+   process was killed before it judged anything, or the machine had no disk left, and the branch is
+   not accused. The two below are the ones still left to your judgement, both inside exit 11. On
+   2026-08-26 in planetCraft, MA4 was refused three times and only the first refusal was about MA4:
    - *a golden that moved* — never authorise a re-cut on an attribution you have not seen
      PROVEN, and prove it by ABLATION in both directions on the branch's own worktree: revert
      the suspect alone and re-hash, remove the real suspect alone and re-hash. The outcome that
@@ -869,7 +874,9 @@ started *after* the hold was issued.
      over-subscribed while the suite ran; the test passes on re-run in isolation. All three held
      on MA4's second refusal — the branch was innocent and the gate was reading load. File the
      missing cushion as a finding rather than carrying the suspicion into the next branch:
-     `orchestra tickets add`.
+     `orchestra tickets add`. Measured again 2026-09-08 in duckJam, four branches in one day on one
+     wall-clock assertion at load 170 (`t-0a1q330`) — read the `attempt N; before this one: …` line
+     `await` and `queue-list` print before you believe the third one.
 
    **Drain the row's `postLanding` — the writes the BRANCH could not make.** The `ledgers`
    config lists tracked files the main branch owns, and the gate commits them at the head

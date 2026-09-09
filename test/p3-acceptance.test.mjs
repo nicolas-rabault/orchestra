@@ -542,16 +542,85 @@ test('a worktree registered but missing on disk is a precondition, not a crash',
 // Branch review, item 9: a gate killed by a signal with no `gate.timeout` configured used to blame a
 // timeout that was never set — `gate "x" refused (killed after undefineds)` — because the real
 // timeout case (`ETIMEDOUT`) and a plain signal death shared one branch.
-test('a gate killed by a signal with no timeout configured names the signal, not "undefined"', () => {
+test('a gate killed by a signal accuses the machine, not the branch, and names the signal', () => {
   const r = project([{ name: 'suicide', cmd: 'kill -TERM $$' }]);
   const { branch } = branchWith(r);
   const { code, out } = run(r.root, 'land', branch);
-  assert.equal(code, 11, out);
+  // 17, not 11: the gate reached no verdict on this branch, so its author has nothing to fix.
+  assert.equal(code, 17, out);
+  assert.match(out, /is not accused/);
   // The "why" travels in the queue note (mark's third argument), not in `land`'s own printed
   // line — same place the red-gate acceptance test above reads it from.
   const queue = JSON.parse(readFileSync(join(r.root, '.orchestra', 'gate', 'queue.json'), 'utf8'));
-  assert.match(queue.entries[0].note, /gate "suicide" refused \(killed by SIGTERM\)/);
+  assert.match(queue.entries[0].note, /gate "suicide" was killed by SIGTERM — no verdict on the branch/);
   assert.doesNotMatch(queue.entries[0].note, /undefined/);
+});
+
+// The case that actually happens, and the one `r.signal` cannot see: the gate runs under a shell, so
+// when the gate's OWN process dies of a signal the shell exits 128+N and reports no signal at all.
+// Measured 2026-09-08 in duckJam — a SIGABRT inside onnxruntime's telemetry at teardown, twice,
+// pytest dying with neither a summary nor a traceback, and the branch charged for it (`t-0cvdkrg`).
+test('a gate whose own process is killed under the shell is read as killed, not as a red suite', () => {
+  // The inner shell kills ITSELF (single quotes, so `$$` is the inner pid) and the outer one merely
+  // reports its 134 — which is the shape a crashing pytest leaves, and the shape `r.signal` misses.
+  const r = project([{ name: 'aborts', cmd: "sh -c 'kill -ABRT $$'; s=$?; exit $s" }]);
+  const { branch } = branchWith(r);
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 17, out);
+  const queue = JSON.parse(readFileSync(join(r.root, '.orchestra', 'gate', 'queue.json'), 'utf8'));
+  assert.match(queue.entries[0].note, /gate "aborts" exited 134: its process was killed by SIGABRT/);
+});
+
+// And the ordinary red suite is untouched by all of it: an exit code nobody can read as a signal is
+// still the branch's refusal, still 11.
+test('a gate that simply fails is still the branch, still exit 11', () => {
+  const r = project([{ name: 'red', cmd: 'exit 3' }]);
+  const { branch } = branchWith(r);
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 11, out);
+  const queue = JSON.parse(readFileSync(join(r.root, '.orchestra', 'gate', 'queue.json'), 'utf8'));
+  assert.equal(queue.entries[0].note, 'gate "red" refused');
+});
+
+// Measured 2026-09-09 across duckJam's 108 run records: 107 read `exit: 0` while the journal
+// documents at least eight refusals, one branch landing "at the fourth attempt". One file per
+// BRANCH cannot answer "how many times, and why"; one line per PASSAGE can.
+test('every passage is on the ledger, refusals included, and the queue listing reads it back', () => {
+  const r = project([{ name: 'suite', cmd: 'test ! -f REFUSE' }]);
+  const { branch, wt } = branchWith(r);
+  // The gate runs in the worktree, so the switch that fails it lives there. Untracked, so it is
+  // invisible to the landing's own cleanliness precondition.
+  writeFileSync(join(wt, 'REFUSE'), '');
+  assert.equal(run(r.root, 'land', branch).code, 11);
+  assert.equal(run(r.root, 'land', branch).code, 11);
+  // The queue listing names the history before the branch has landed, which is when it is useful.
+  const listing = run(r.root, 'queue-list').out;
+  assert.match(listing, /attempt 2; before this one: exit 11 \(gate "suite" refused\) after \d+s/);
+
+  rmSync(join(wt, 'REFUSE'));
+  assert.equal(run(r.root, 'land', branch).code, 0);
+
+  const lines = readFileSync(join(r.root, '.orchestra', 'gate', 'attempts.jsonl'), 'utf8')
+    .trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(lines.map((l) => l.exit), [11, 11, 0]);
+  assert.deepEqual(lines.map((l) => l.branch), [branch, branch, branch]);
+  assert.equal(lines[0].note, 'gate "suite" refused');
+  // The successful passage has dropped its queue entry, so it records no note — there is nothing to
+  // say about a landing that landed.
+  assert.equal(lines[2].note, '');
+  for (const l of lines) assert.ok(Date.parse(l.endedAt) >= Date.parse(l.startedAt));
+});
+
+// A landing that never runs a gate must not be able to accuse the branch of anything, and the check
+// that says so is the machine's own. `MIN_FREE_BYTES` is not injectable — the free-space read is one
+// `statfsSync` inside `land` — so this proves the decision and `land`'s use of `EXIT.machine` for it
+// through the exit code the caller actually sees on a real (roomy) machine: nothing refused.
+test('a landing on a machine with room is not refused for space', () => {
+  const r = project([{ name: 'green', cmd: 'true' }]);
+  const { branch } = branchWith(r);
+  const { code, out } = run(r.root, 'land', branch);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /free and land again/);
 });
 
 // Branch review, item 6: the positive control for the shared-channel write, mirroring "an
