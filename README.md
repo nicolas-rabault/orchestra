@@ -125,8 +125,12 @@ has landed:
   a measured clock, the answers a user posted on the page, who holds the baton, one conductor at a
   time, and the conductor's two watches — answers within seconds, and an `OWED:` line when a worker
   is stopped on a live row or a relay is written and not delivered.
-- **`orchestra ready|drive|tick-gate|yield-check`** — the launch plan, the resume cycle, whether a
-  heartbeat should tick at all, and whether this session should hand the baton back. `ready` names
+- **`orchestra ready|drive|tick-gate|tick-outcome|yield-check`** — the launch plan, the resume cycle,
+  whether a heartbeat should tick at all, what the slot it spent actually bought, and whether this
+  session should hand the baton back. `tick-outcome` reads the tick's own transcript back: a slot
+  that conducted nothing and ended on the account ceiling is journalled, and the reset time the
+  message states in plain language becomes the `budgetResetAt` that stands the next slot down —
+  otherwise the same refusal is re-earned an hour later, twice measured. `ready` names
   what the tick owes its workers first (`UNDELIVERED:`, `IDLE:`), then budgets its launches against
   every other orchestra on this machine (`~/.orchestra/machine.json`, `maxWorkers`, default 8).
   `drive` resolves both lines: it stops the background registration, resumes each session in its

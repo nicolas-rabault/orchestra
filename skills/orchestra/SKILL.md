@@ -741,11 +741,21 @@ started *after* the hold was issued.
    turn that never comes.
 
    **Budget refusal is not death**: a turn that prints "You've hit your session limit · resets
-   <time>" means every turn is refused until that time — `drive` prints it as `REFUSED`, writes
-   no receipt, and the row stays owed. Leave the rows claimed, note the reset time in `state.json`
-   (the key is `budgetResetAt`, and `orchestra tick-gate` stands the heartbeat down until it
-   passes rather than spending a session on a refusal already certain), and let the next tick
-   retry. Do not mark workers dead on it.
+   <time>" — or "You've hit your individual spend limit · … your session limit resets <time>",
+   which is the same ceiling in different words — means every turn is refused until that time.
+   `drive` prints it as `REFUSED`, writes no receipt, and the row stays owed. Leave the rows
+   claimed, note the reset time in `state.json` (the key is `budgetResetAt`, and `orchestra
+   tick-gate` stands the heartbeat down until it passes rather than spending a session on a refusal
+   already certain), and let the next tick retry. Do not mark workers dead on it.
+
+   **When the refusal kills the TICK itself, you are not there to write that field, and the
+   heartbeat now writes it for you.** `templates/tick.sh` reads its own session's transcript back
+   through `orchestra tick-outcome`: a slot that conducted nothing and ended on a refusal gets a
+   journal line and, for a budget refusal that states a reset this can read, a `budgetResetAt`. You
+   will therefore sometimes find that field already set by a slot you never saw, and a `tick` line in
+   the journal you did not write. Both are the tool's; leave them. Measured 2026-09-06 in duckJam:
+   without this, the 11:13 and 12:13 slots burned two opus sessions on the identical refusal an hour
+   apart and left nothing anywhere but one line in `tick.log`.
 4. **Inbox — two sources, and you must go and get the second one.**
    ```sh
    orchestra inbox          # what the user answered on the page

@@ -4,8 +4,8 @@
 // conductor's worker watch — so a test here is a test of all three at once.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { obligations, relayOwed, nudgeFor, turnVerdict, turnRefusal, driveSlug, PRE_FORK_GRACE_MS }
-  from '../lib/register/drive.mjs';
+import { obligations, relayOwed, nudgeFor, turnVerdict, turnRefusal, refusalResetAt, driveSlug,
+  PRE_FORK_GRACE_MS } from '../lib/register/drive.mjs';
 
 const row = (id, over = {}) => ({ id, status: 'claimed', session: `${id}-uuid`, sessionName: null, pending: [], ...over });
 
@@ -133,6 +133,46 @@ test('turnRefusal names the three measured non-turns and nothing else', () => {
   assert.match(turnRefusal('Failed to authenticate: OAuth session expired'), /^auth:/);
   assert.match(turnRefusal('Error: Session abc is running as a background session (abc). Run `claude attach abc`'), /^registered:/);
   assert.equal(turnRefusal('Done. 3 commits on the branch, tests green.'), null);
+});
+
+// The wording that cost duckJam two heartbeat slots on 2026-09-06: the old pattern listed the two
+// wordings it had seen, and a turn refused with a third read as one that had produced a report.
+test('the budget pattern is the shape every wording shares, not the list of wordings seen so far', () => {
+  assert.match(turnRefusal("You've hit your individual spend limit · run /usage-credits to ask your admin for a higher limit"), /^budget:/);
+  assert.match(turnRefusal("You've hit your usage limit"), /^budget:/);
+  // Still not a refusal: the shape needs "hit your … limit", not the word on its own.
+  assert.equal(turnRefusal('Raised the retry limit to 5 and landed it.'), null);
+});
+
+test('refusalResetAt reads the stated wall clock into an instant, in the zone the message names', () => {
+  const now = Date.parse('2026-09-06T11:13:04.000Z');
+  assert.equal(refusalResetAt('… your session limit resets 1:40pm (Europe/Paris)', { now }),
+    '2026-09-06T11:40:00.000Z');
+  // Midnight and noon are where a 12-hour clock goes wrong, so both are asserted.
+  assert.equal(refusalResetAt('resets 12:00pm (UTC)', { now }), '2026-09-06T12:00:00.000Z');
+  assert.equal(refusalResetAt('resets 12:30am (UTC)', { now: Date.parse('2026-09-06T23:00:00.000Z') }),
+    '2026-09-07T00:30:00.000Z');
+  // A 24-hour clock, and a bare hour with no minutes.
+  assert.equal(refusalResetAt('resets at 14:00 (UTC)', { now }), '2026-09-06T14:00:00.000Z');
+  assert.equal(refusalResetAt('resets 2pm (UTC)', { now }), '2026-09-06T14:00:00.000Z');
+});
+
+test('refusalResetAt refuses what it cannot trust rather than guessing', () => {
+  const now = Date.parse('2026-09-06T11:13:04.000Z');
+  assert.equal(refusalResetAt("You've hit your session limit", { now }), null);
+  assert.equal(refusalResetAt('resets 1:40pm (Middle/Earth)', { now }), null);
+  assert.equal(refusalResetAt('resets 25:00 (UTC)', { now }), null);
+  assert.equal(refusalResetAt('resets 13:40pm (UTC)', { now }), null);
+  // Tomorrow's 2:10am read at 08:13Z is eighteen hours out — past what this will act on, because a
+  // stand-down taken off a misread clock costs every slot until it expires.
+  assert.equal(refusalResetAt('resets 2:10am (Europe/Paris)', { now: Date.parse('2026-09-07T08:13:00.000Z') }), null);
+});
+
+// A reset stated across a DST boundary must be the instant the clock will really read, not the one
+// today's offset would give it. Europe/Paris leaves summer time at 03:00 local on 2026-10-25.
+test('refusalResetAt solves the zone offset at the reset, not at the moment it is read', () => {
+  const before = Date.parse('2026-10-24T23:00:00.000Z');   // 25 Oct 01:00 local, still UTC+2
+  assert.equal(refusalResetAt('resets 9:00am (Europe/Paris)', { now: before }), '2026-10-25T08:00:00.000Z');
 });
 
 test('driveSlug is the session-name slug: lowercase, one dash per run of non-alphanumerics', () => {

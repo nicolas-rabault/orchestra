@@ -1,12 +1,14 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, readFileSync, writeFileSync, utimesSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync, utimesSync } from 'node:fs';
+import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
 import { writeState, emptyState, statePath } from '../lib/register/state.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
 import { inboxPath } from '../lib/register/inbox.mjs';
 import { journalPath } from '../lib/register/journal.mjs';
-import { decideTick, gateLine } from '../lib/register/tick.mjs';
+import { decideTick, gateLine, tickOutcome } from '../lib/register/tick.mjs';
+import { tickOutcomeCommand } from '../lib/cli/tick.mjs';
 import { yieldVerdict } from '../lib/register/wake.mjs';
 
 const repos = [];
@@ -160,4 +162,112 @@ test('a run-level ask with no id stays open rather than being matched away', () 
 test('a run-level ask that already carries an answer does not hold the tick', () => {
   assert.match(decideTick({ register: reg({ tasks: [{ status: 'landed' }],
     runAsks: [{ id: 'a1', ask: 'x', answer: 'B' }] }) }), /^skip nothing to do/);
+});
+
+// ---- what came back: the 2026-09-06 duckJam slots, verbatim from that project's tick.log ----------
+
+const SPEND = "You've hit your individual spend limit · run /usage-credits to ask your admin for a"
+  + ' higher limit · your session limit resets 1:40pm (Europe/Paris)';
+const SESSION = "You've hit your session limit · resets 8:40pm (Europe/Paris)";
+
+test('a tick refused on the ceiling names the refusal and the instant the next slot may run', () => {
+  const now = Date.parse('2026-09-06T11:13:04.000Z');
+  const o = tickOutcome({ output: `the baton is loose\n${SPEND}\n`, conducted: false, now });
+  assert.equal(o.kind, 'budget');
+  // 1:40pm in Europe/Paris, which is UTC+2 in September — 27 minutes after the slot that was refused.
+  assert.equal(o.resetAt, '2026-09-06T11:40:00.000Z');
+  assert.match(o.text, /stands down until 2026-09-06T11:40:00\.000Z/);
+});
+
+test("the other wording of the same ceiling reads the same, and it is the one the old regex knew", () => {
+  const now = Date.parse('2026-09-06T18:13:03.000Z');
+  assert.equal(tickOutcome({ output: SESSION, conducted: false, now }).resetAt, '2026-09-06T18:40:00.000Z');
+});
+
+// The witness that stops a working tick from being read as a refused one. duckJam's own tick.log
+// holds a conductor's summary quoting the ceiling's wording back — a text match alone would have
+// stood the heartbeat down on the strength of a tick that had just conducted.
+test('a tick that wrote the register is never read as refused, whatever it printed', () => {
+  const now = Date.parse('2026-09-06T18:13:03.000Z');
+  assert.equal(tickOutcome({ output: SESSION, conducted: true, now }), null);
+});
+
+test('the refusal must be the LAST thing printed, not merely somewhere in the transcript', () => {
+  const now = Date.parse('2026-09-06T18:13:03.000Z');
+  const quoted = `the last three slots all died instantly on \`${SESSION}\`\nlanded three rows.`;
+  assert.equal(tickOutcome({ output: quoted, conducted: false, now }), null);
+});
+
+test('a refusal that states no reset this can read still journals, and does not stand the slot down', () => {
+  const o = tickOutcome({ output: "You've hit your session limit", conducted: false });
+  assert.equal(o.kind, 'budget');
+  assert.equal(o.resetAt, null);
+  assert.match(o.text, /names no reset time/);
+});
+
+test('a reset further off than MAX_RESET_AHEAD_MS is not trusted', () => {
+  // 2:10am the next day, read at 08:13Z — 18 hours away, past the twelve this will act on.
+  const now = Date.parse('2026-09-07T08:13:00.000Z');
+  const o = tickOutcome({ output: "You've hit your session limit · resets 2:10am (Europe/Paris)", conducted: false, now });
+  assert.equal(o.resetAt, null);
+});
+
+test('an authentication refusal is journalled and stands nothing down', () => {
+  const o = tickOutcome({ output: 'Failed to authenticate: OAuth session expired', conducted: false });
+  assert.equal(o.kind, 'auth');
+  assert.equal(o.resetAt, null);
+});
+
+test('a tick that conducted nothing and said nothing recognisable is not an outcome', () => {
+  assert.equal(tickOutcome({ output: 'landed three rows and asked one question', conducted: false }), null);
+  assert.equal(tickOutcome({ output: '', conducted: false }), null);
+});
+
+// The command that performs what `tickOutcome` decides, against a real register on disk — the two
+// facts it gathers (the transcript, and whether the register moved) are exactly what the tick.sh
+// line hands it, so this is the whole of constat 2's path bar the shell.
+const transcriptOf = (r, text) => {
+  const p = join(r.root, '.orchestra', 'tick.out');
+  writeFileSync(p, text);
+  return p;
+};
+
+test('tick-outcome writes budgetResetAt, journals the slot, and says so in one line', () => {
+  const r = repo();
+  writeState(r.root, emptyState(r.root));
+  // The command reads the real clock, as it must in production, so the transcript states a reset
+  // half an hour from now rather than a date frozen into the test.
+  const reset = new Date(Math.floor((Date.now() + 30 * 60_000) / 60_000) * 60_000);
+  const hhmm = reset.toISOString().slice(11, 16);
+  // The register as the refused tick left it: last written before this slot started.
+  const before = (Date.now() - 3600_000) / 1000;
+  utimesSync(statePath(r.root), before, before);
+  const from = transcriptOf(r,
+    `the baton is loose\nYou've hit your individual spend limit · your session limit resets ${hhmm} (UTC)\n`);
+
+  const said = [];
+  const write = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (s) => { said.push(s); return true; };
+  try {
+    tickOutcomeCommand({ cfg: { root: r.root },
+      args: ['--from', from, '--since', new Date(Date.now() - 60_000).toISOString()] });
+  } finally { process.stdout.write = write; }
+
+  assert.match(said.join(''), /Tick refused before it conducted anything \(budget:/);
+  assert.equal(JSON.parse(readFileSync(statePath(r.root), 'utf8')).budgetResetAt, reset.toISOString());
+  const journal = readFileSync(journalPath(r.root), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(journal.length, 1);
+  assert.equal(journal[0].kind, 'tick');
+  assert.match(journal[0].text, new RegExp(`stands down until ${reset.toISOString()}`));
+  // And the next slot's gate reads it, which is the whole point of writing it.
+  assert.match(gateLine(r.root), /^skip budget resets/);
+});
+
+test('tick-outcome writes nothing at all for a tick that touched the register', () => {
+  const r = repo();
+  writeState(r.root, emptyState(r.root));
+  const from = transcriptOf(r, SPEND);
+  tickOutcomeCommand({ cfg: { root: r.root }, args: ['--from', from, '--since', '2026-09-06T11:13:04Z'] });
+  assert.equal(JSON.parse(readFileSync(statePath(r.root), 'utf8')).budgetResetAt, null);
+  assert.equal(existsSync(journalPath(r.root)), false);
 });

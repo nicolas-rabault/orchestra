@@ -82,6 +82,12 @@ case "$GATE" in
     ;;
 esac
 
+# The tick's own transcript, kept for exactly as long as it takes to read it back. `tick.log` is
+# append-only and rotated, so the last session's output cannot be found in it without parsing the
+# whole file; this is one slot's output on its own, which is what `tick-outcome` needs and all it
+# needs. Overwritten by the next tick.
+OUT="$DIR/tick.out"
+
 {
   echo "== tick $STAMP ($TRIGGER) =="
   # Never conduct beside a live conductor. `orchestra tick-gate` already stood this tick down for
@@ -98,5 +104,17 @@ esac
   # instant and with the same keychain, showed the bare form fail and this line answer OK — that
   # project's tick log holds 30 of those deaths across the two wordings. A tick fired by the timer
   # inherits no such variable, so this only ever bit a tick started by hand.
-  env -u CLAUDE_CODE_CHILD_SESSION claude -p --dangerously-skip-permissions --model opus "/orchestra tick"
+  #
+  # Through `tee`, so the log keeps every byte it kept before AND `tick-outcome` gets the session's
+  # output as a file it can read back. A pipeline's exit status is the last command's — `tee`'s —
+  # and nothing here reads it, which is unchanged: `claude`'s own code has never been this script's
+  # channel, the log line is.
+  env -u CLAUDE_CODE_CHILD_SESSION claude -p --dangerously-skip-permissions --model opus "/orchestra tick" 2>&1 | tee "$OUT"
+  # What the slot bought. A tick refused by the account ceiling prints one line and writes nothing
+  # at all — no register, no journal, no `budgetResetAt` — so the next slot re-earns the identical
+  # refusal and the monitoring page shows a healthy system. Measured twice on 2026-09-06 in duckJam,
+  # an hour apart, on the same ceiling. This reads the transcript back against `$STAMP` and, when the
+  # tick conducted nothing, journals the refusal and stands the next slot down until the reset the
+  # message states in plain language. It writes NOTHING for a tick that conducted (lib/register/tick.mjs).
+  "$BIN" tick-outcome --from "$OUT" --since "$STAMP"
 } >> "$LOG" 2>&1
