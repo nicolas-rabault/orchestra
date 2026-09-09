@@ -2,7 +2,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
-import { reconcileTasks, computeReadySet, planLaunches, pendingWaiting, gatherGit }
+import { reconcileTasks, computeReadySet, planLaunches, launchHold, pendingWaiting, gatherGit }
   from '../lib/register/ready.mjs';
 
 const repos = [];
@@ -102,4 +102,20 @@ test('an unborn main branch is a project with no landed history, not a crash', (
   const r = repo();
   const git = gatherGit(r.root, { mainBranch: 'trunk' });
   assert.deepEqual(git.mainSubjects, []);
+});
+
+// 2026-09-08 in duckJam: six lines launched at 06:45 were every one refused after reading their
+// brief, while one already-warm session committed nine times in the same window. The conductor made
+// it a ruling by hand that morning; this is the same rule, in the tool.
+test('a launch plan stands down while a worker turn is owed, and names who is holding it', () => {
+  const launches = [{ id: 'r/A1' }, { id: 'r/A2' }];
+  const held = launchHold(launches, { idle: [{ id: 'r/W1' }], undelivered: [{ id: 'r/W2' }] });
+  assert.deepEqual(held.owed, ['r/W2', 'r/W1']);
+  assert.deepEqual(held.deferred, ['r/A1', 'r/A2']);
+});
+
+test('nothing owed, or nothing to launch, holds nothing', () => {
+  assert.equal(launchHold([{ id: 'r/A1' }], { idle: [], undelivered: [] }), null);
+  assert.equal(launchHold([], { idle: [{ id: 'r/W1' }] }), null);
+  assert.equal(launchHold([{ id: 'r/A1' }]), null);
 });

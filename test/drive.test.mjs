@@ -117,6 +117,9 @@ test('the nudge carries the relay text verbatim at its head, and only the contin
   const plain = nudgeFor(row('demo/A1'));
   assert.ok(!plain.includes('message above'));
   assert.match(plain, /final message is your report/);
+  // 6 of 28 driven turns on 2026-09-08 in duckJam replayed a whole suite to learn what their own
+  // last report already said. Both forms of the nudge carry the sentence that stops it.
+  for (const n of [withRelay, plain]) assert.match(n, /do NOT rebase and do NOT re-run the barrier/);
 });
 
 test('turnVerdict: an exit is ended, a live pid is running, a dead pid is vanished, and a null pid is running only briefly', () => {

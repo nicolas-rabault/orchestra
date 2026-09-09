@@ -131,8 +131,10 @@ has landed:
   that conducted nothing and ended on the account ceiling is journalled, and the reset time the
   message states in plain language becomes the `budgetResetAt` that stands the next slot down —
   otherwise the same refusal is re-earned an hour later, twice measured. `ready` names
-  what the tick owes its workers first (`UNDELIVERED:`, `IDLE:`), then budgets its launches against
-  every other orchestra on this machine (`~/.orchestra/machine.json`, `maxWorkers`, default 8).
+  what the tick owes its workers first (`UNDELIVERED:`, `IDLE:`) and proposes NO launch while one is
+  owed (`LAUNCHES HELD:`) — a warm session pays no brief and a new one pays all of it — then budgets
+  its launches against every other orchestra on this machine (`~/.orchestra/machine.json`,
+  `maxWorkers`, default 8).
   `drive` resolves both lines: it stops the background registration, resumes each session in its
   worktree with the row's own relay at the head of the nudge, detached so the turn survives the
   600-second ceiling, and writes the relay's receipt only when that turn has returned — a

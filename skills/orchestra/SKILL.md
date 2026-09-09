@@ -414,6 +414,19 @@ HELD: 3 task(s) are ready and this machine has no slot for them — 8 of 8 are h
 
 **A conductor held to zero says so and does not launch anyway.**
 
+**And width is rarely what is actually holding a run back.** A third line stands the launch plan
+down for a reason that has nothing to do with capacity:
+
+```
+LAUNCHES HELD: 4 ready task(s) wait on 3 owed worker turn(s) (demo/R1, demo/A1, demo/A2) — a warm session pays no brief and a new one pays all of it. Run `orchestra drive`, then `orchestra ready` again.
+```
+
+Measured 2026-09-08 in duckJam, twice over: six lines launched at 06:45 were every one refused after
+reading their brief while one already-warm session committed nine times in the same window; and at
+`--width 40` not one extra line was launchable — every one blocked on a dependency — while
+harvesting three resting workers unblocked seven. **Reach for `orchestra drive` before you reach for
+`--width`.**
+
 The registry is **advisory, never authority** — the truth about a project stays inside that
 project's own register and git. Its errors point one way on purpose: a conductor killed with `-9`
 leaves its worker count behind until its entry is reaped, which under-budgets every other project
@@ -937,7 +950,22 @@ started *after* the hold was issued.
    lands). **This step's own reasoning is still what you are relying on, not an alarm**: the
    guard cannot yet catch a stale read for you.
 8. **Launch, and the names.** Launch each row `orchestra ready` places in `launches` — already
-   width-capped by "The machine's capacity" above. **Claim first, always**, for your own
+   width-capped by "The machine's capacity" above.
+
+   **Re-run `orchestra ready` here, and read `launches` from THAT run.** The plan you read at step 1
+   was computed against a fleet you had not yet harvested, and `launches` is EMPTY while any worker
+   turn is owed — `LAUNCHES HELD: …` in the text, `launchHeld` in the JSON, naming every row that is
+   holding it. That is the tool's rule, not advice: a new worker pays for its whole brief before it
+   produces a line, and a session already open and already on the problem pays for nothing. Measured
+   2026-09-08 in duckJam — six lines launched at 06:45 were every one refused AFTER reading their
+   brief, while one already-warm session committed nine times in the same window — and again from
+   the other side: at `--width 40` not one extra line was launchable, all blocked on dependencies,
+   and harvesting three resting workers unblocked seven. **Width is rarely the constraint; the
+   resting fleet usually is.** If the hold will not lift, it names the row: `orchestra drive` clears
+   a stopped worker, and a row whose session or worktree is gone is relaunched here as usual — that
+   relaunch is not held, because it is not one of these launches.
+
+   **Claim first, always**, for your own
    roadmaps too, now that every roadmap is published:
    ```sh
    orchestra roadmap claim <key>

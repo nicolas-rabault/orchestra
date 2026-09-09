@@ -89,6 +89,39 @@ test('ready names every stopped worker and the undelivered relay, above everythi
   });
 });
 
+// Constat 4 of the 2026-09-09 duckJam retex, and the ruling the conductor had to invent by hand on
+// 09-08 06:47: warm sessions before cold ones. `ready` proposes no launch while a turn is owed, and
+// says whose turn it is waiting on.
+test('the launch plan stands down while a worker turn is owed, and comes back once nothing is', () => {
+  withFakeClaude(() => {
+    const r = fleet();
+    const state = readState(r.root);
+    state.tasks.push({
+      id: 'demo/T1', order: 2, title: 'a fresh line', roadmap: 'demo', deps: [], touches: [], lane: null,
+      branch: 'demo/t1', subjects: [], status: 'todo', design: false, model: null, session: null,
+      sessionName: null, port: null, note: '', pending: [], mine: true,
+    });
+    writeState(r.root, state);
+
+    const { out } = run(r.root, 'ready');
+    assert.match(out, /^LAUNCHES HELD: 1 ready task\(s\) wait on 3 owed worker turn\(s\) \(demo\/R1, demo\/A1, demo\/A2\)/m);
+    assert.ok(!/^launch: /m.test(out), out);
+    const json = JSON.parse(run(r.root, 'ready', '--json').out);
+    assert.deepEqual(json.launches, []);
+    assert.deepEqual(json.launchHeld.deferred, ['demo/T1']);
+    // The ready set itself is unchanged — nothing is hidden, only the plan is deferred.
+    assert.deepEqual(json.ready.map((t) => t.id), ['demo/T1']);
+
+    // Pay every debt and the plan is back, with no further prompting.
+    const paid = readState(r.root);
+    for (const t of paid.tasks) if (t.status === 'claimed') t.status = 'landed';
+    writeState(r.root, paid);
+    const after = run(r.root, 'ready').out;
+    assert.ok(!after.includes('LAUNCHES HELD'), after);
+    assert.match(after, /^launch: demo\/T1 — a fresh line \[opus\] on demo\/t1$/m);
+  });
+});
+
 test('a worker mid-turn is driving, not idle: busy in the agent list, or a --resume process in the table', () => {
   withFakeClaude((fake) => {
     const r = fleet();
