@@ -6,7 +6,7 @@
 // warns about it explicitly rather than leaving a stale key nobody is ever told about.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeRepo } from './helpers/fixture.mjs';
 import { loadConfig, loadConfigOrThrow } from '../lib/config.mjs';
@@ -89,4 +89,34 @@ test('doctor offline: an unreadable CLAUDE.md degrades to a row, never a throw',
 test('doctor online: no trace row', () => {
   const r = repo({ mode: 'online' });
   assert.doesNotMatch(doctorText(loadConfigOrThrow(r.root)), /trace/);
+});
+
+// `.orchestra/.gitignore` is written once by `init` and committed, so a release that adds a path
+// under `.orchestra/` leaves every project that opted in before it exposed. Measured at 0.10.0:
+// planetCraft had opted in at 0.8 and neither `tick.out` nor `tick.wake` was ignored there.
+test('doctor names the paths a committed .gitignore no longer covers, and says nothing when it does', () => {
+  const r = repo();
+  initProject(r.root, { mode: 'online', force: true });
+  const cfg = loadConfigOrThrow(r.root);
+  const path = join(r.root, '.orchestra', '.gitignore');
+
+  // Fresh from this version: nothing missing.
+  assert.match(doctorText(cfg), /\.gitignore\s+covers every path this version writes/);
+
+  // The file as an older version left it.
+  const stale = readFileSync(path, 'utf8').split('\n').filter((l) => l !== 'tick.out' && l !== 'tick.wake');
+  writeFileSync(path, stale.join('\n'));
+  const text = doctorText(cfg);
+  assert.match(text, /\.gitignore\s+2 path\(s\) this version writes are NOT ignored/);
+  assert.match(text, /\n {4}tick\.out\n/);
+  assert.match(text, /\n {4}tick\.wake\n/);
+  assert.ok(text.includes(path));
+});
+
+// Offline projects have no such file — their whole `.orchestra/` is excluded through the clone's own
+// info/exclude, which covers a new path the day it appears — so the row is absent rather than wrong.
+test('doctor says nothing about a .gitignore an offline project deliberately does not have', () => {
+  const r = repo();
+  initProject(r.root, { mode: 'offline', force: true });
+  assert.ok(!doctorText(loadConfigOrThrow(r.root)).includes('.gitignore'));
 });
