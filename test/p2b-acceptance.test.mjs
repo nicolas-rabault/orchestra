@@ -7,13 +7,22 @@
 // presented as one.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SKILL = join(ROOT, 'skills', 'orchestra', 'SKILL.md');
+const REFDIR = join(ROOT, 'skills', 'orchestra', 'reference');
 const read = (p) => readFileSync(p, 'utf8');
+
+// The protocol is a CORE plus references (`SKILL.md`'s own index says which, and why: the core
+// used to be 32.6 k tokens and every tick paid all of it). So every guard below reads the whole
+// SET — a section that moved to a reference is still carried, and one that vanished is still a
+// failure. A guard that read `SKILL.md` alone would have been silently satisfied by the move.
+const refs = () => readdirSync(REFDIR).filter((f) => f.endsWith('.md')).sort();
+const docs = () => [SKILL, ...refs().map((f) => join(REFDIR, f))];
+const readAll = () => docs().map(read).join('\n');
 
 // ---- the §6 checklist -------------------------------------------------------------------------
 // One row per item §6 names. `heading` is the section that carries it — several items share one,
@@ -70,22 +79,15 @@ const OUTLINE = [
   '### A question about a picture must carry the picture',
   '## The hands-on gate',
   '### The dev-server sweep',
-  '## Design→execution handoff (design tasks)',
+  // `reference/worker-briefs.md`'s own order: the renderer first, then the two hand-overs that
+  // call it. It reads the other way round in the source document, where the handoff introduced a
+  // brief the reader had not met yet.
   '## Worker briefs',
+  '## Design→execution handoff (design tasks)',
   '## Retiring a long worker (EXPERIMENT — one row at a time)',
   '## The stand-down tick',
   '### The answer net, and what has no net under it yet',
 ];
-
-// The ten substitutions §6 fixes for every brief — nine from the source phase plus
-// `{projectRules}`, Task 6's own delivery of the offline rules file into the brief — plus the
-// three a PULL-REQUEST REVIEW row adds (2026-09-07-pr-review-in-orchestra-design.md §7): `pr` and
-// `repo` the design names, and `base`, which its own brief text uses and which nothing else could
-// fill. They are also the ONLY single-word braces the document may contain: a config key named in
-// prose is a backticked key name, never a placeholder, and a placeholder off this list is a
-// promise the conductor has nothing to fill from.
-const PLACEHOLDERS = ['branch', 'task', 'title', 'excerpt', 'language', 'branchTests',
-  'specsDir', 'plansDir', 'briefExtra', 'projectRules', 'pr', 'repo', 'base'];
 
 // Every path and command of the source project. A survivor here is transformation 1 or 2 left undone
 // — and a false invocation in a protocol is worse than a false comment, because a worker types it.
@@ -117,29 +119,72 @@ function sectionSlice(text, heading) {
 }
 
 test('every section of spec §6 is present, with the measurement that paid for it', () => {
-  const text = read(SKILL);
+  const texts = docs().map(read);
   const missing = [];
   for (const s of SECTIONS) {
-    const slice = sectionSlice(text, s.heading);
-    if (slice === null) { missing.push(`${s.item}: no heading "${s.heading}"`); continue; }
+    // The slice is taken from whichever document carries the heading — never from the whole set
+    // joined together, which would let an anchor be satisfied by a neighbour in another file.
+    const slice = texts.map((t) => sectionSlice(t, s.heading)).find((x) => x !== null) ?? null;
+    if (slice === null) { missing.push(`${s.item}: no heading "${s.heading}" in any of ${docs().length} documents`); continue; }
     for (const a of s.anchors) if (!a.test(slice)) missing.push(`${s.item}: anchor ${a} absent`);
   }
   assert.deepEqual(missing, []);
 });
 
-test('the outline is complete and in order', () => {
-  const text = read(SKILL);
-  const at = OUTLINE.map((h) => [h, text.indexOf(`\n${h}\n`)]);
-  assert.deepEqual(at.filter(([, i]) => i < 0).map(([h]) => h), []);
-  const order = at.map(([, i]) => i);
-  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+test('the outline is complete, and each document holds its own sections in order', () => {
+  const texts = docs().map((d) => [d, read(d)]);
+  // Present SOMEWHERE: this is the anti-loss guarantee, and it is what the split must not weaken.
+  const home = OUTLINE.map((h) => [h, texts.find(([, t]) => t.includes(`\n${h}\n`))?.[0] ?? null]);
+  assert.deepEqual(home.filter(([, d]) => d === null).map(([h]) => h), []);
+  // In order WITHIN each document. Across files there is no order to hold — a reference is read
+  // when a tick reaches its situation, not in sequence — so the check is per file.
+  for (const [doc, text] of texts) {
+    const mine = OUTLINE.filter((h) => text.includes(`\n${h}\n`)).map((h) => text.indexOf(`\n${h}\n`));
+    assert.deepEqual(mine, [...mine].sort((a, b) => a - b), `out of order in ${doc}`);
+  }
 });
 
-test('the ten brief placeholders are all used, and nothing else is a placeholder', () => {
-  const text = read(SKILL);
-  const found = new Set([...text.matchAll(/(?<!\$)\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((m) => m[1]));
-  assert.deepEqual([...found].filter((p) => !PLACEHOLDERS.includes(p)), []);
-  assert.deepEqual(PLACEHOLDERS.filter((p) => !found.has(p)), []);
+// The index is what makes a reference reachable at all: a conductor reads it to know WHEN to open
+// one. A reference nothing names is a section that has left the protocol without being deleted, and
+// a row naming a file that is not there sends a tick to read nothing.
+test("SKILL.md's index names every reference, and every reference is named by it", () => {
+  const core = read(SKILL);
+  const from = core.indexOf('\n## What is not in this file, and when to read it\n');
+  assert.ok(from >= 0, 'the core must carry the index of what is not in it');
+  const index = core.slice(from, core.indexOf('\n## ', from + 10));
+  assert.deepEqual(refs().filter((f) => !index.includes(`reference/${f}`)), [],
+    'a reference file the index does not name');
+  const named = [...index.matchAll(/reference\/([a-z-]+\.md)/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(named)].sort().filter((f) => !refs().includes(f)), [],
+    'the index names a reference file that does not exist');
+});
+
+// Every `reference/…` pointer ANYWHERE in the set must resolve. This is the cost of the split: a
+// cross-reference that used to be a section name in the same file is now a path, and a path can
+// rot.
+test('every reference/ pointer in the protocol resolves to a file that exists', () => {
+  const bad = [];
+  for (const doc of docs())
+    for (const m of read(doc).matchAll(/reference\/([a-z-]+\.md)/g))
+      if (!refs().includes(m[1])) bad.push(`${doc} -> reference/${m[1]}`);
+  assert.deepEqual([...new Set(bad)], []);
+});
+
+// This used to assert that the thirteen brief placeholders were all used and that nothing else was
+// one — the guarantee that a placeholder off the list is "a promise the conductor has nothing to
+// fill from". `orchestra brief` renders the brief now (lib/register/brief.mjs, covered field by
+// field in test/brief.test.mjs), so there is no substitution table left to keep honest and the
+// guarantee inverts: the protocol must contain NO hand-filled placeholder at all. One reappearing
+// means a brief is being composed by hand again, beside a renderer that already does it.
+test('nothing in the protocol is a hand-filled placeholder any more', () => {
+  const found = new Set([...readAll().matchAll(/(?<!\$)\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((m) => m[1]));
+  assert.deepEqual([...found], []);
+});
+
+test('the protocol sends launches through `orchestra brief`, not through a template', () => {
+  const core = read(SKILL);
+  assert.match(core, /orchestra brief <key>/);
+  assert.match(core, /IS the brief — do not compose one/);
 });
 
 // Every `orchestra …` the document names must be a subcommand `bin/orchestra` actually dispatches,
@@ -190,11 +235,11 @@ function invocationsIn(text) {
 }
 
 test('every command the protocol names either exists or is roll-called with its phase', () => {
-  const text = read(SKILL);
-  const from = text.indexOf('\n## What is not here yet\n');
-  const to = text.indexOf('\n## The six nevers\n');
-  assert.ok(from >= 0 && to > from, 'the roll-call section must come before the nevers');
-  const rollCall = text.slice(from, to);
+  const text = readAll();
+  // The roll-call moved to its own reference with the rest of "What is not here yet"; it is the
+  // whole of that file, so the slice is the file.
+  const rollCall = read(join(REFDIR, 'not-here-yet.md'));
+  assert.ok(rollCall.includes('## What is not here yet'), 'the roll-call section must be in reference/not-here-yet.md');
   const cmds = registered();
   const verbs = roadmapVerbs();
   const invocations = invocationsIn(text);
@@ -212,7 +257,7 @@ test('every command the protocol names either exists or is roll-called with its 
 });
 
 test('no path or command of the source project survives', () => {
-  const text = read(SKILL);
+  const text = readAll();
   assert.deepEqual(FORBIDDEN.filter((f) => text.includes(f)), []);
 });
 

@@ -187,3 +187,20 @@ test('excerptOf is the same text both stores publish, so the two modes cannot dr
   assert.equal(excerptOf(row).split('\n')[0], '### D1 — First thing');
   assert.match(excerptOf(row), /\*\*Acceptance\.\*\* A\./);
 });
+
+// The design->execution handoff: the row's `Design` stays `yes` — it is a fact about how the task
+// was written — so without this the second session on that worktree is told once more not to write
+// implementation code.
+test('--model overrides what the row implies, for the design→execution handoff', () => {
+  const r = published({}, ROADMAP.replace('- **Design** no', '- **Design** yes'));
+  assert.match(run(r.root, ['demo/D1']).stdout, /Do not write implementation code/);
+  const handed = run(r.root, ['demo/D1', '--model', 'execution']).stdout;
+  assert.doesNotMatch(handed, /Do not write implementation code/);
+  assert.match(handed, /You never merge/);
+});
+
+test('an unknown --model is refused, not silently ignored', () => {
+  const res = run(published().root, ['demo/D1', '--model', 'excution']);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /unknown --model "excution"/);
+});

@@ -22,7 +22,7 @@ Run it from anywhere inside the project. If `CLAUDE_PLUGIN_ROOT` is unset, the b
 
 **`orchestra doctor` first, always.** It prints the resolved configuration, marks every key that
 fell back to a default, and names the mode. If it says the project has not opted in, go to
-**Onboarding a new project** below and do that first. Every subcommand but three exits 0 and
+`reference/first-run.md` and do that first. Every subcommand but three exits 0 and
 silent otherwise, on purpose, and that silence is what makes the plugin safe to install globally.
 The three exceptions are `doctor` itself, `orchestra instances` and `orchestra init`, none of which
 need a project config to answer — `instances` because it answers about the MACHINE rather than
@@ -32,91 +32,28 @@ a project has one, read off `doctor` `mode`, `name`, `id`, `language`, `mainBran
 `pr.ledger` and `pr.direction` when this tick has a pull-request review row on it — and nothing
 else.
 
-## Onboarding a new project (`orchestra init`)
 
-**Run this once, before anything else, in a project `doctor` says has not opted in.** `init`
-always writes `.orchestra/config.json`; everything else it writes depends on the mode you choose
-below. Online: a committed `.orchestra/.gitignore`, and `templates/CLAUDE-rules.md` appended to the
-project's `CLAUDE.md` (creating it if there is none). Offline: no `.gitignore` at all —
-`/.orchestra/` is excluded from this clone through its own `info/exclude` instead — and the same
-rules written to `.orchestra/CLAUDE-rules.md`, never to `CLAUDE.md`, which `init` touches only to
-remove a block a previous online `init` left there. See `lib/cli/init.mjs` for exactly what each
-of those holds. What it cannot do is guess: `detect(root)` only proposes a gate or a branch-test
-command it found real evidence of (a script in `package.json`, a `Cargo.toml`, a `pyproject.toml`,
-a `go.mod`, a Makefile `test:` target), and anything it did not find goes in its `missing` list
-rather than being invented — a gate that does not run is a gate that refuses every landing.
+## What is not in this file, and when to read it
 
-Ask, in this order:
+This file is the tick. Seven things a tick needs only SOMETIMES live beside it, in
+`reference/`, and a tick that does not reach one never pays for it — the whole point: measured
+2026-09-09, this skill cost 32.6 k tokens at every conductor boot and rode in the prefix of all
+five hundred-odd requests that followed, so a tick that launched nothing still paid for the
+hands-on gate, the pull-request rows and the stand-down.
 
-1. **Run `orchestra init --detect --json` first**, before asking anything. It never writes. Read
-   its `buildSystem`, `gates`, `branchTests`, `ledgers` and `missing`.
-2. **`mode`** — the one key with no default, so ask it even when detection found everything else:
-   - `online` — roadmaps are GitHub issues, so every developer on the repository sees who is
-     working on what (needs the `gh` CLI, authenticated).
-   - `offline` — roadmaps are markdown under `.orchestra/roadmaps`, excluded from this clone and
-     never committed by orchestra itself, and "is somebody already working on this" is answered for
-     this machine only.
-3. **Everything named in `missing`**, one at a time, only if detection actually left it empty:
-   - `suite` — no recognised test command at all. Ask what runs the whole suite, if anything does
-     yet. A project with nothing here can still adopt orchestra; it just lands without a gate.
-   - `branchTests` — no fast, changed-files-only test command. Ask what a worker should run on
-     every iteration instead of the whole suite, if there is one.
-   Take "there isn't one" as a real, valid answer — do not press for a command that does not exist.
-4. **Run `orchestra init --mode <answer>`.** Everything `detect` found is picked up automatically;
-   nothing needs to be re-typed back in.
-5. **Anything the user answered in step 3 has to be added by hand**, in `.orchestra/config.json`,
-   after `init` runs — a `gates` entry (`{"name": ..., "cmd": ...}`, cheapest first) or a
-   `branchTests` string. `init` has no flag for supplying one itself, on purpose: the same rule
-   that keeps it from inventing a command keeps it from taking one it cannot verify either.
-   Re-running `init --force` later overwrites the whole file, including anything added this way.
-6. **`init` prints two steps it cannot take.** Do them: run `orchestra install-heartbeat`, and
-   satisfy the one-time interactive acceptance of `claude --dangerously-skip-permissions` — proven
-   on a throwaway session by **Preflight** below, before planning any launch.
+Read one when the tick reaches its situation, and not before:
 
-**Runtime state resolves to the main checkout, never to the worktree you are standing in.** Every
-subcommand does that for itself. What it cannot do for you is the register you edit **by hand**:
-`.orchestra/state.json` has no subcommand that writes it, so a path typed after a `cd` into a
-worktree writes the wrong file. Use the main checkout's absolute path, and check that the register's
-own `root` key names the project you think you are conducting.
+| Read | When |
+|---|---|
+| `reference/first-run.md` | `orchestra doctor` says this project has not opted in, or there is no `state.json` at all, or this MACHINE has never launched a `--bg` worker. Onboarding, adoption and preflight |
+| `reference/asking-the-user.md` | Before you put a question to the user, and before you decide not to. The framing pass, the one interruption, the decision template |
+| `reference/hands-on-gate.md` | A row's acceptance needs a human to look, or you are about to start a dev server. The gate, and the dev-server sweep |
+| `reference/pull-request-rows.md` | This tick has a row on the standing `pr` roadmap |
+| `reference/worker-briefs.md` | You need to know what `orchestra brief` renders and why, a design row reaches its handoff, or you are considering retiring a long worker |
+| `reference/stand-down.md` | Every row is terminal — the roadmap is finished |
+| `reference/not-here-yet.md` | You are about to reach for something and want to know whether this plugin has it |
 
-## What is not here yet
-
-The single roll-call of what remains a genuine limitation or a deliberate **Never**, now that every
-command this plugin ships actually exists.
-
-- **A limitation, not an absence: `orchestra roadmap sync`.** It exists (see The tick, step 7);
-  offline it does nothing, and that is correct (spec §4.1) — there is nowhere to write a status.
-- **A limitation, not an absence: `ledgers` defaults to empty.** `orchestra init` proposes the
-  ticket file (`.orchestra/tickets.jsonl`) into it for a fresh project, but nothing forces a project
-  to keep it there. The gate commits what that key lists at the head of every landing; with nothing
-  listed it commits nothing, and a conductor's `postLanding` remains the way a branch gets any OTHER
-  main-branch ledger written.
-- **A limitation, not an absence: the monitoring page sees only the ports orchestra recorded.** It
-  asks `lsof` about the `port` written on a register row and on each `pending[]` item, and about
-  nothing else — a band of the machine's ports was one project's own toolchain and does not travel
-  to a project whose dev server lives somewhere else entirely. So a dev server on a port no
-  register row names is invisible to the page. That question is answered by the dev-server sweep
-  below, which is a shell procedure and not the page's job.
-  **A port is not the only thing the card can offer to open**, though: `what to open` draws a
-  button for every entry in the row's `links[]` as well, and derives one more for a pull-request
-  review row from the row id and `origin` — see The hands-on gate. What it will never do is guess.
-- **Never wire an answer's delivery to CREATE a conductor instead of to REACH the live one.** The
-  page never does: when a beat under a minute old belongs to a live pid, it says so and that
-  session's `orchestra watch-answers` loop hands over the answer within seconds; otherwise it says
-  the answer is in the inbox and the next tick will read it, and it starts nothing itself. An
-  answer typed while nobody is beating therefore waits. Where `orchestra install-heartbeat` is
-  installed for this project, that wait has a floor of one heartbeat slot; where it is not, the
-  wait ends only when a person runs a tick by hand. Either way it still waits, and that wait is
-  the whole cost, paid deliberately: wiring the delivery of an answer to CREATE a conductor
-  instead of to REACH the live one cost six conductor identities in half an hour on 2026-08-13 in
-  planetCraft, two `merge_agent` runs twelve seconds apart on one branch, and three answers left
-  unread because the register kept naming a reader that had already died. See `### The answer
-  net, and what has no net under it yet` for what still cannot be covered.
-- **Never propose a cron entry for the heartbeat.** `orchestra install-heartbeat` renders a launchd
-  agent (macOS) or a systemd user timer (Linux) — never a crontab entry, because a cron job runs
-  outside the login session and cannot read the login keychain: every tick died on `Not logged in`,
-  eight consecutive ticks, seven hours lost, on the night of 2026-08-12/13 in planetCraft.
-- **Never**: a retrospective tool (spec §13 — its metrics belong to the source project).
+They are prose, not summaries: each one is the section it used to be, moved whole.
 
 ## The six nevers
 
@@ -129,7 +66,7 @@ command this plugin ships actually exists.
    refused, at a cost of hours each. What you may never do is land in SILENCE: the landing goes in
    the journal and in the checkpoint, and the user keeps a veto by revert.
 2. Never answer a design question in the user's place. One bounded exception: at the
-   design→execution boundary you adopt a brainstorm's own recommendation (see Design→execution
+   design→execution boundary you adopt a brainstorm's own recommendation (see `reference/worker-briefs.md`'s Design→execution
    handoff).
 3. Never write into a worktree you did not launch — **unless all three of these hold: its session
    is absent from `claude agents --json`; no file under it has changed in 60 minutes
@@ -144,7 +81,7 @@ command this plugin ships actually exists.
    `node_modules/`, `target/`, `.venv/`, `__pycache__/`, a build directory — and only git knows
    which of those this project has. A dependency tree freshly installed by a dead worker would
    otherwise read as sixty seconds of activity in any language.)
-4. Never start a dev server before a task reaches the hands-on gate.
+4. Never start a dev server before a task reaches the hands-on gate (`reference/hands-on-gate.md`).
 5. Never trust `.orchestra/state.json` over git — for a LOCAL task; git wins there, correct the
    register. A SHARED task, online, is the opposite: another developer's landing closes its issue
    but that commit never reaches your local main, so git under-reports it forever — the closed
@@ -218,8 +155,8 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    id belongs in `state.json`'s `pending[]` and not here, and the file is `journal.jsonl`.
 
    `kind` is `launch` · `question` · `answer` · `report` · `landing` · `note` · `tick` · `ruling`
-   (that last one is a decision you took instead of asking — see The framing pass); `task` is
-   the row id (`null` for a line about the tick itself). For `question` (the Decision Template's
+   (that last one is a decision you took instead of asking — see `reference/asking-the-user.md`); `task` is
+   the row id (`null` for a line about the tick itself). For `question` (the decision template's
    own `The question:` line, that one sentence and not the whole body — the rail is a history, not
    a second copy of the card), `answer` (the user's reply you relayed), `report` and `landing`,
    `text` is a sentence you already wrote for the user — the append is free. For `launch`, `tick`
@@ -235,7 +172,7 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    edited later and the hash drifts out from under it. The explicit id survives both.
 
    **And when the question puts a choice to the user, write `options` on the item too** — an
-   array of `{"letter", "text"}`, the SAME options the decision template has just made you
+   array of `{"letter", "text"}`, the SAME options the decision template (`reference/asking-the-user.md`) has just made you
    formulate. This is copying, not composing: the `Options:` line you wrote for the user, one
    entry per option, **in the language you are speaking to them** — that text goes straight to
    the screen unaltered, and the page has no idea which language it is in.
@@ -256,7 +193,7 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
 
    The page offers one button per option, and it offers NOTHING when the item carries none: it
    never invents a choice, because a button the user clicks is sent back as their decision. And
-   `ask` itself is the decision template's whole body, never a one-sentence summary of it — that
+   `ask` itself is the decision template's whole body (`reference/asking-the-user.md`), never a one-sentence summary of it — that
    is the page's only text, and what it costs to compress is measured there (see The decision
    template). An item that genuinely puts no choice — a hands-on instruction, an FYI — carries no
    `options`, and that is correct.
@@ -264,13 +201,13 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    **A question about the RUN does not go on a row at all** — it goes in `runAsks[]` at the top of
    the register. A run has ended by the time such a question is put, so every row is terminal, and a
    terminal row cannot carry a question anybody will see: that is ticket `t-0antbtb`, and the
-   stand-down tick below is where the shape and the two guards are written out.
+   stand-down tick (`reference/stand-down.md`) is where the shape and the two guards are written out.
 
    **A QUESTION THAT IS NOT IN `pending[]` (OR IN `runAsks[]`) DOES NOT EXIST.** The page shows
    exactly those items and nothing else; a question you only wrote in chat is invisible there, so the user
    opens the page, sees nothing waiting, and asks you why. That happened in planetCraft on
    2026-08-12 to two decisions in a row, and the user's own words for it were "pourquoi je n'ai
-   pas les notifications". So the Decision Template and the `pending[]` item are ONE act, not two:
+   pas les notifications". So the decision template and the `pending[]` item are ONE act, not two:
    write the item in the same turn you put the question to the user, every time, even when they
    are sitting right there — especially then, because a question asked mid-conversation is exactly
    the one that never gets written down.
@@ -353,46 +290,6 @@ has answered from the page** — no `id`, no stamp, no hook read, before that fi
    rather than a human report, not a promise about one: an unstamped answer costs you one repeated
    relay, and a stamped-but-unacted answer costs the user their decision, silently — the worse of
    the two failures.
-
-## The framing pass, and the one interruption
-
-The user's standing instruction, 2026-08-14 in planetCraft: **take the maximum of information at
-framing, then decide alone — no more than one interruption per row during development.**
-
-**At adoption, before any launch**, go through every row of the roadmap and produce its
-**anticipated decision list**: each fork the row will plausibly hit, with your recommendation and
-what each branch costs. All rows at once, one document, one sitting. Put them to the user together.
-Write each answer onto its row as `decisions: [{q, answer, at}]`. **Those are binding and are never
-re-asked** — a recorded answer that gets asked again is the failure this pass exists to prevent.
-
-**Then one interruption per row, for the row's whole life**, and the measurements say what to spend
-it on. In planetCraft, across one roadmap: thirteen merge approvals asked, thirteen granted, none
-refused, zero defects caught. Three human looks at a page, three serious defects caught, every one
-past a green suite. So:
-
-- a row that ships **something a human looks at or uses** → its one interruption is the
-  **hands-on gate**, unchanged;
-- a row that ships nothing of the sort → **no interruption**: it lands once every configured gate
-  is green (`gates`).
-
-Everything else you decide yourself, from the recorded decisions, the roadmap and the project's own
-rules, which reach a worker as `briefExtra`. **Every such decision is journalled as a `ruling`** —
-the question, what you chose, why, and the precedent you leaned on:
-
-```sh
-orchestra journal ruling dev-loop/S3 "old cross-build curves: kept empty with their reason, per the framing answer on S3"
-```
-
-The rulings are visible in the checkpoint, in the journal, and on the page, whose rail carries a
-`ruling` line like every other journalled line — so deciding alone stays visible to a later reader
-and any of them can be broken.
-**Exceeding the budget is not forbidden — it is recorded.** When you genuinely must ask a second
-time, say in the same breath what framing failed to anticipate; that is the input that makes the
-next framing pass better, and it is the only way this regime improves rather than drifts.
-
-What this costs, stated plainly so nobody discovers it later: a wrong solo ruling now runs until the
-next checkpoint instead of being stopped within the hour. The exposure is a fork framing did not
-anticipate and no precedent covers — which is exactly what the `ruling` lines make visible.
 
 ## The machine's capacity — the budget owns it, and you do not
 
@@ -574,7 +471,7 @@ started *after* the hold was issued.
    arms neither.
 
    Then `orchestra ready --json`. Read `claude agents --json` and `ListAgents`. If there is no
-   state file, go to Adoption. If `state.json`'s `conductor.session` is not you, you are a
+   state file, go to `reference/first-run.md`'s Adoption. If `state.json`'s `conductor.session` is not you, you are a
    replacement: record yourself, and SendMessage every live worker a new hello — "new conductor;
    reply to this address; resend any pending question". A question lost in the handover is
    re-collected by step 3's probe, not dropped.
@@ -672,7 +569,7 @@ started *after* the hold was issued.
    and `.out`, so the session that reads it need not be the one that started it.
 
    **Then read every report `drive` printed and decide per row**: a done-report → `review` (the
-   hands-on gate) or hand it to `merge_agent`; a question → `pending[]`, and ask the user; still
+   hands-on gate, `reference/hands-on-gate.md`) or hand it to `merge_agent`; a question → `pending[]`, and ask the user; still
    working → it is `IDLE:` again at your next `ready`, and `drive` again. A worker that keeps
    saying "done" while its row stays `claimed` costs a wasted turn per cycle — that is your undone
    status change showing, not a reason to stop driving.
@@ -795,7 +692,7 @@ started *after* the hold was issued.
    cursor's side.
 
    Then process worker messages. Classify both: *blocking* (the worker cannot continue) → relay
-   to the user immediately in the Decision Template; *non-blocking* (ready to test, an approval,
+   to the user immediately in the decision template (`reference/asking-the-user.md`); *non-blocking* (ready to test, an approval,
    an FYI) → append to that row's `pending` in `state.json`.
 
    **A review worker reporting a `merge` verdict is the one moment anything writes `subjects`, and
@@ -803,7 +700,7 @@ started *after* the hold was issued.
    squash can produce — `<title>` and `<title> (#<N>)` — plus the branch's commit subjects, onto
    that row's `subjects` in `state.json`. No gate runs on a review row, so step 6's recorder never
    sees it; a row that reaches its merge with `subjects: []` can never derive `landed`
-   (`## Pull-request review rows`).
+   (`reference/pull-request-rows.md`).
 
    The page is the writer of `.orchestra/inbox.jsonl`, so this command now has something to print:
    the oldest answers nobody has taken yet, whether they answer a `pending[]` item or are a free
@@ -814,7 +711,7 @@ started *after* the hold was issued.
    started nothing and is simply sitting there; this read is what collects it.
 5. **Checkpoint.** A checkpoint is the moment you stop trickling questions out one at a time and
    present every pending decision to the user together, grouped and ordered, each in its Decision
-   Template — the act the journal and the framing pass both mean when they call a landing or a
+   template — the act the journal and the framing pass both mean when they call a landing or a
    ruling "visible in the checkpoint". You reach one when: the user addresses you; pending count
    ≥ 3; or the ready set is empty while decisions pend. In a headless tick (`claude -p`), never
    present — instead, **if `orchestra ready` printed a `WAITING:` line, send ONE
@@ -843,7 +740,7 @@ started *after* the hold was issued.
    merge the maintainer clicked on GitHub and this checkout has since fetched — so tell the user at
    the checkpoint like any other landing, and then stop. `orchestra land` is never called on a
    review row, no gate runs on one, and nothing in this step deletes its worktree or its ref
-   (`## Pull-request review rows`, which says when they do go and what you do own instead).
+   (`reference/pull-request-rows.md`, which says when they do go and what you do own instead).
 
    **When the user approves a merge, this is the hand-off — and you still never merge BY HAND: that
    rule outlives its enforcement, and `guard-main-commit` is what holds it now — it refuses `git
@@ -982,11 +879,22 @@ started *after* the hold was issued.
    not the mechanism.
    ```sh
    git worktree add <worktrees>/<slug> -b <branch> <the project's main branch>
-   claude --bg -n orchestra-<project id>-<task slug> --model <model> --dangerously-skip-permissions "<brief>"
+   claude --bg -n orchestra-<project id>-<task slug> --model <model> --dangerously-skip-permissions "$(orchestra brief <key>)"
    ```
+   **`orchestra brief <key>` IS the brief — do not compose one.** It renders the whole prompt from
+   the row and the config: the task's own excerpt, the `Touches` files already located and sized,
+   the spec and plan on disk for this task, the commit the worktree was cut from, `branchTests`,
+   `briefExtra`, the project's rules, and the right one of the three models (execution, design,
+   review) for the row. `--relaunch` and `--handover <n>` prefix it for the two take-over cases.
+   It was a fourteen-row substitution table filled by hand, once per launch, 123 times in duckJam
+   alone — and the worker then spent its first four to eleven Bash calls rediscovering what the
+   brief could have told it, and re-read that rediscovery for the rest of its life.
+   `reference/worker-briefs.md` says what it renders and why; you need it to CHANGE a brief, not
+   to send one.
+
    `<worktrees>` is the `worktrees` config (`orchestra doctor`'s own row; default
    `.orchestra/worktrees`). **A row carrying a `base` is cut from that sha instead of from the main
-   branch** — a pull-request review row always carries one, and `## Pull-request review rows` below
+   branch** — a pull-request review row always carries one, and `reference/pull-request-rows.md`
    says why. The `-b` form is unchanged either way, so `guard-claim` sees the gesture the same.
    **Do not run a dependency install here.** The source project's launch did; a portable protocol
    cannot know whether a fresh worktree needs one, so if the project
@@ -1088,723 +996,3 @@ started *after* the hold was issued.
    guarantees a tick every hour whatever happens to you, standing down while you are alive so it
    cannot become a second conductor beside you. Where it has not, nothing but your own two watches
    wakes you, and a session closed on an unfinished roadmap is what going quiet looks like.
-
-## Adoption (first run, or state lost)
-
-**A roadmap published after adoption enrols itself — do NOT hand-copy its rows.** `orchestra
-roadmap publish` writes a register row for every task it publishes, and `orchestra roadmap enrol`
-is the catch-up for what publish cannot reach: a roadmap published from another developer's
-machine, and anything published before adoption existed. `board` names that command on the orphan
-line itself. This section is what runs when there is NO table at all; it is not the way a new
-roadmap gets in, and treating it as such is what left 22 tasks out on 2026-08-19, 15 on 08-25 and
-28 on 09-02 in planetCraft, each caught by a human reading the board.
-
-Read-only. Build the task table from `orchestra roadmap board --json`, which returns one row per
-task with `key`, `order`, `deps`, `touches`, `lane`, `branch`, `design`, derived `status` and
-`issue`. **The board emits both `key` and already-resolved `deps`** — a task's own `Deps` field
-may name a bare sibling id or a `<roadmap>/<ID>` cross-file one, and `reconcile()`
-(`lib/roadmap/board.mjs`) resolves either into a qualified key before it ever leaves the board. So
-**a register row's `id` IS the board row's `key`, and a register row's `deps` IS the board row's
-`deps`, byte-for-byte** — a register row is a direct copy, nothing to resolve on the way in. **A
-register row's `roadmap` is the slug in both modes, never a file path — the path form is what
-forced that very rule in planetCraft, and it left the field pointing at a draft `publish` had
-already deleted; the slug is what both stores already key on.**
-
-`orchestra ready` (`lib/register/ready.mjs`'s `computeReadySet`) trusts this and does no
-resolution of its own: it matches `deps` against `id` byte-for-byte, and throws — naming the
-offender — rather than schedule anything if a row's `id` or any of its `deps` is not already
-qualified. Getting this wrong once already emptied the ready set silently, in planetCraft:
-qualifying `id` without qualifying `deps` to match made every dependency look unmet, even a landed
-one, with no error anywhere.
-
-Inventory in-flight branches, worktrees and live sessions WITHOUT writing to any of them. Then
-present to the user: the table, who holds what, and the launch plan — and launch nothing until
-they approve it. Record their approval in `state.json` (`adopted: true`); ticks are autonomous
-from then on.
-
-## Preflight (once per machine, before the first launch)
-
-Prove the three mechanisms the whole protocol rests on, on one throwaway session, BEFORE planning
-any launch:
-
-```sh
-claude --bg -n orchestra-preflight --model haiku --dangerously-skip-permissions "reply OK and stop"
-claude agents --json | grep orchestra-preflight
-claude stop orchestra-preflight
-```
-
-If any of them is refused, put **one** question to the user carrying the exact command and the
-exact refusal, and stop the tick. Do not discover this one launch at a time, and **do not try to
-grant it to yourself** — editing `settings.json` to widen your own permissions is a hard boundary
-and will be refused too. Measured 2026-08-12 in planetCraft: three consecutive ticks were spent
-finding this out one refusal at a time (the launch flag refused, then the settings edit refused,
-then the allow-rule the user added turning out not to cover the flag), and the user ended up
-typing four launch commands into a terminal himself. Two hours forty-four minutes, before a single
-worker existed.
-
-**Retry a failed launch once, identically, before calling it a failure.** In planetCraft,
-`claude: command not found` appeared twice in a row from a shell whose `PATH` was correct, and an
-identical retry succeeded seconds later.
-
-## The decision template
-
-**Before you put ANY question mid-development, three checks.** Was it already answered at framing —
-`decisions[]` on the row (see The framing pass, and the one interruption)? Can you answer it
-yourself from a recorded decision, the project's own rules (which reach a worker as `briefExtra`),
-or a precedent already set on another row? Has this row already spent its one interruption? If any
-of those lands, **rule and journal it instead of asking** (`kind: ruling`). The two most expensive
-questions of the 2026-08-12/14 roadmap, in planetCraft, were both of this kind: releasing a file
-hold owned by a branch abandoned two weeks earlier, which no rule ever created, waited 8 h 07; and
-taking over four worktrees whose sessions were provably dead waited two hours forty-four before the
-answer came back "yes, all four" in six minutes.
-
-Every question is written once and lands in two places: the message you put in chat, and the `ask`
-of its `pending[]` item. **The `ask` carries that whole body, word for word — never a summary of
-it.** The page prints `ask` and nothing else, so a body squeezed into one line there is the
-question asked with the half that made it answerable taken out. Measured 2026-09-08 in duckJam,
-where every ask was one dense sentence: of the twelve answers given from the page that day, two
-were not answers at all — "Ta question n'a aucun sens, je ne comprends rien" and "pourquoi tu as
-besoin de 2 personnes ?" — each costing a full round trip before the question could even be
-understood, and one of the two had to be asked twice.
-
-**Write it for someone who has never seen the code AND does not know the project's vocabulary.**
-The first half of that is the easy half: no path, no function name, no identifier, no millisecond.
-The second half is the one that fails. Every word a worker uses for a thing — the name of a model,
-a mode, a stage, a score, a policy — is a word learnt inside the code, and on the page it means
-nothing. Three tests, and a body failing any of them is rewritten before it is sent:
-
-- **what you name is something the user can see or do**, never what the code calls it;
-- **every number says what it counts and what would be good** — "scores 0.312 where the other
-  scores 4.580" is two numbers and no question, "falls over on 31 tries out of 32" is a fact
-  anyone can judge. A number that will not speak that way belongs in the footer;
-- **the question itself is one sentence, ends in a question mark, and reads on its own.** If the
-  user has to reconstruct what is being asked from the paragraph above it, it is not a question
-  yet.
-
-**And relaying is rewriting, never quoting.** A worker's sentence was written by the one person who
-has been reading that code all day; passed through untouched, it carries their vocabulary straight
-onto the page. That is where nearly every unreadable ask comes from.
-
-That same duckJam question, before and after — the failure is not the length, it is that every
-noun in it was learnt in the code:
-
-> written: "Round 04: the published walker falls 31 times out of 32 and scores 0.312, where the
-> recovery policy scores 4.580. The round is passable, but by a tool other than the season's. Is
-> that the intended shape?"
-> asked: "Nobody can finish round 04: the character players download falls over on 31 of its 32
-> tries. A different character, one that is not part of the season, does finish it. Do we keep
-> round 04 as it is, or make it beatable by the season's own character?"
-
-The body carries no markdown — the page prints it verbatim, so `**` shows as two asterisks — and
-its labels are plain words in the user's language. The bracket header is the chat message's alone:
-the card already names the row, its kind and its port.
-
-> [<ID> — <title> · `<branch>` · session `<name>` · server :<port>]  ← the chat message only
-> Where it stands: <one sentence, about the thing itself, in plain language>
-> The question: <one sentence, ending in a question mark>
-> Why it is yours to decide: <what makes the choice real: what each option costs, which rules or
-> earlier answers apply, what is waiting behind it>
-> Options: A) … · B) … · C) …
-> <sub>Technical: <the numbers, names and paths, for when the user wants them>
-> Pictures: <repo-relative path(s) to any screenshot the question is about></sub>
-
-The trailing `server :<port>` is present only on a row that actually serves something. A CLI, a
-library or a firmware image drops it, and the one command that shows the change goes in the body
-instead — see The hands-on gate.
-
-Relay the user's answer back to the worker verbatim, plus whatever context the worker needs.
-
-### A question about a picture must carry the picture
-
-You have no way to show the user an image and they have no way to open one you only describe, so a
-question like "which of these two arms reads better?" is unanswerable unless the file itself is on
-screen. **Name every screenshot the question is about by its repo-relative path, in the `<sub>`
-footer** — `.orchestra/images/c1-altitude-branch.png`, `.orchestra/images/s1-dossier-home.png`. The
-page reads those paths out of the ask, resolves them against the checkout, the worker's worktree
-and `.orchestra/images/`, and draws each one as a thumbnail beside the question, one click from
-full size. Nothing else is required of you: there is no field to fill and no upload.
-`.orchestra/images/` is also the one directory `orchestra archive-images` sweeps.
-
-The footer is where they belong precisely because the body stays free of paths — a path in the body
-would break the plain-language rule above, and a path in the footer breaks nothing.
-
-The same reading applies to a `note` and to a journal line, so a capture worth keeping is worth
-naming in either. Ask a worker that reports a measurement from a frame to write the frame's path
-where it says what it measured; a note that says "it looks wrong now" with no path is a claim the
-user cannot check.
-
-## The hands-on gate
-
-When a worker reports built, first ask what the row actually ships. **If it ships nothing a human
-looks at or uses, there is no gate**: it lands once every configured gate is green (`gates`), the
-`landing` line goes in the journal, and the checkpoint carries it (never #1) — **except a
-pull-request review row, which never lands and runs no gate at all**: nothing here owns that
-branch, so the maintainer clicks Merge on GitHub and the row's `landed` derives on its own
-(`## Pull-request review rows`). Seven of the sixteen rows of the dev-loop roadmap, in planetCraft,
-shipped nothing of the sort, and every one of their approvals was granted unread.
-
-Otherwise: tell the worker to put the thing in front of the user — **with the project's own
-command; the worker knows it and you do not need to** — and to report exactly how it is reached.
-Two shapes, and the row is one or the other: a project that SERVES something reports the port it
-actually bound plus its pid; a CLI, a library, a firmware image or a data pipeline reports the one
-command that shows the change, to be run from the worktree. Set the row to `review`, and add a
-`pending[]` item — `kind: "hands-on"` — carrying whichever it is: a port goes on the
-item's own `port` field, which the card prints beside the kind, and into the chat message's header;
-a command goes in the ask itself, where the user can copy it.
-
-**And anything the user must OPEN that is not a localhost port goes on the ROW, in `links[]`** —
-`{"label": "…", "url": "…"}`, as many as the row earns. The card draws one button per entry under
-`what to open`, beside the dev server, reading `open <label> →`. So **the label is a noun phrase
-naming the destination in plain words** — `the staging deploy`, `the CI run`, `the Figma frame`,
-`the published report` — never `link`, never `here`, never a bare URL: the button has to say what
-it is to somebody who did not read the ask. The card names the host underneath it, which is the
-half of the promise the reader can check.
-
-Three rules that come with it, and the first is not new:
-
-- **Never hand out a URL you have not fetched AND READ** (below). A `links[]` entry is a URL you
-  are handing out; it is under that rule exactly as an ask's URL is.
-- **Only `http` and `https` reach the page.** Anything else is dropped silently by
-  `openablesFor` (`lib/monitor/model.mjs`), so a `file://` path you meant as a convenience simply
-  does not appear. Say the path in the ask instead.
-- **A link outlives the gate; a port does not.** `links[]` is the row's standing context — the
-  place the work can be looked at for as long as the row is open — where the `port` on a
-  `pending[]` item dies with the question. Put a thing that stays on the row, and a thing that is
-  the gate itself in the item.
-**The user's validation IS the approval** — do not then ask a second time for the merge; that
-second question is the one this roadmap paid for thirteen times over, in planetCraft (see The
-framing pass, and the one interruption). What follows validation is step 6's business (see The
-tick): record the branch's commit `subjects` in the row BEFORE the hand-off — that is what makes
-landed detection work. The hand-off is the two commands above, and a landing deletes the worktree
-and the ref — **on a review row there is no hand-off**: nothing lands, the worktree and the ref
-stay until the row is terminal, and the subjects to record are the pull request's
-(`## Pull-request review rows`).
-
-**Never hand out a URL you have not fetched AND READ**, and never a command you have not run.
-For a URL, not `curl` — it cannot reach a localhost server this shell can see listening. Fetch it
-and look at the body (`node` here is the PLUGIN's own runtime, always present wherever `orchestra`
-runs, and says nothing about what the project is written in):
-
-```sh
-node -e 'fetch(process.argv[1],{signal:AbortSignal.timeout(4000)}).then(r=>r.text())
-  .then(t=>console.log(t.replace(/\s+/g," ").slice(0,200))).catch(e=>console.log("FAILED",e.message))' <url>
-```
-
-The status code is worthless here: in planetCraft the dev server answers 200 with the
-application's own entry page for any path at all, so a wrong path looks healthy from every angle
-except the one that matters. Measured 2026-08-13 in planetCraft: an ask sent the user to the wrong
-path, nothing flagged it, and he lost a whole test run to it. **Any dev server with a catch-all
-route does this**, so reading the first 200 characters is the entire check.
-
-**And when a worktree is deleted, kill whatever server it started and close any page open on it,
-explicitly.** A server whose directory has been removed keeps serving — which reads as a live page
-showing stale code, and is indistinguishable from a working one until someone trusts it. Servers
-are killed **by pid**, never by pattern.
-
-**Three rules `{branchTests}` — the subset gate — cannot enforce for you**, all paid for on
-2026-08-14 in planetCraft:
-
-- a branch that is a **new consumer** of a module another in-flight row has just rewritten needs
-  the full suite. A dead-code sweep on the main branch removed an export that a branch in flight
-  had just started importing; different lines, so git merged both sides happily and produced a
-  runtime `TypeError`. Neither the diff nor the dead-code gate could see it — the gate was right on
-  main and the branch was right on itself;
-- **land an unused-export sweep LAST**, after everything in flight against the same modules;
-- a `branchTests` command that selects by import graph can select exactly ONE file for a tool
-  nothing imports but its own test. When the subset looks suspiciously small, **say the number out
-  loud** and run the full suite instead of trusting it.
-
-### The dev-server sweep
-
-**And sweep for the ones you did not start, once per tick** — killing your own on deletion is not
-enough, because the server that hurts is the one nobody remembers launching. A dev server in the
-MAIN checkout takes the ticket ledger's queue lock and writes its tickets into main's ledger, which
-is what refused a landing on 2026-08-25 in planetCraft: one orphan was found and killed that
-afternoon, its worktree deleted that morning, and another was still listening forty hours later,
-from the main checkout, when the run was reviewed.
-
-**Run it from the main checkout**, and a second time from `worktrees` if the project puts its
-worktrees outside it: a listener is selected by its WORKING DIRECTORY, not by its process name.
-The source project matched `node` alone, which is a statement about one toolchain — a Rust, Python
-or Go dev server holding a port out of a deleted worktree does exactly the same damage and would
-never have appeared. Everything listening from outside this project's trees is somebody else's and
-is not printed at all, which is what keeps the machine's own daemons out of the output.
-
-```sh
-lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $2"\t"$9}' | sort -u |
-while IFS=$'\t' read -r pid addr; do
-  case "$(ps -o command= -p "$pid" 2>/dev/null)" in *orchestra*monitor*) continue;; esac
-  cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | grep '^n' | head -1 | cut -c2-)
-  case "$cwd" in
-    "$PWD")   v="MAIN CHECKOUT -> ask, never kill";;
-    "$PWD"/*) [ -d "$cwd" ] && v="WORKTREE -> leave" || v="ORPHAN -> kill";;
-    *)        continue;;
-  esac
-  echo "pid=$pid port=${addr##*:} age=$(ps -o etime= -p $pid|tr -d ' ')  $v"
-done
-```
-
-Three details, each one a wrong answer the first drafts gave: **skip your own page** — this
-plugin's own monitoring page runs from the main checkout and, in planetCraft, had been up eight
-days, so without that `case` the sweep reports the conductor's own instrument as a suspect every
-hour, and `orchestra instances` is the second way to recognise it, by the port its row for this
-project names; `$NF` is `(LISTEN)`, the address is `$9`; and `lsof -Fn` answers `p<pid>`/`f<fd>`/
-`n<path>`, so take the first `n` line, not the second line.
-
-**ORPHAN is the only verdict that kills.** A server in the main checkout may be the USER's, so it
-becomes a question — a note nobody reads is how one survived forty hours.
-
-## Design→execution handoff (design tasks)
-
-A row whose `design` field is true — the roadmap's own `**Design** yes`, set by
-`lib/roadmap/parse.mjs` — launches on the design model, with the Design brief below: its only
-deliverable is the committed spec (`docs.specs`) and plan (`docs.plans`) on its own branch. It must
-not write implementation code, and its session ends there.
-
-When it reports done: **adopt the plan's own recommended approach — do NOT ask the user.** This is
-the one bounded exception to never #2: a stated recommendation is acted on, not relayed to the user
-as a question. If the design genuinely ends in a fork with no recommendation, THAT is a blocking
-question. Then launch a fresh execution-model session on the SAME worktree, with the brief "read
-the committed spec and plan, execute the plan," and update `model` on the row. Do not kill
-anything first: a completed background session costs nothing.
-
-**Where the two models come from.** The launch plan (`planLaunches`, `lib/register/ready.mjs`)
-sets each launched row's `model` from that same `design` field — the design model when it is true,
-the execution model otherwise — and the tick prints the choice in its launch line
-(`lib/cli/tick.mjs`):
-```
-launch: <id> — <title> [fable] on <branch>
-```
-for a design row, `[opus]` for any other. So the choice is the roadmap's, made when the task was
-written — not a judgment call the conductor makes at launch time.
-
-## Pull-request review rows
-
-A sixth thing this protocol conducts, and it is not a sixth KIND of row: a pull request is an
-ordinary task. Spec: `docs/specs/2026-09-07-pr-review-in-orchestra-design.md`. The `pr-sweep` skill
-writes the roadmap and `pr-triage` is what its workers follow.
-
-**What one is.** A row on the standing `pr` roadmap, published `destination: local` so it reaches
-neither the issue tracker nor anything the repository carries. Its ID is `PR<number>`, its branch is
-`pr<number>-review`, and its register row carries **`base`** — the sha of the pull request's own
-head, fetched by the sweep (`git fetch origin pull/<N>/head`). `base` is the only field on that row
-no command writes.
-
-**The launch differs in exactly one token**, and step 8's launch line names it:
-
-```sh
-git worktree add <worktrees>/<slug> -b <branch> <base>
-```
-
-`<base>` instead of the project's main branch. The `-b` form is unchanged, so `guard-claim` sees the
-gesture exactly as it does for anything else — but a review roadmap is published `destination:
-local`, where a claim is recorded nowhere, so the guard lets the launch through rather than demand
-evidence that store cannot produce (`startVerdict`'s `unrecordable`, `lib/roadmap/policy.mjs`).
-`orchestra roadmap claim` comes first exactly as it does for anything else — the guard is the
-backstop, not the mechanism — and the worktree is the pull request as its author wrote it. **A row
-with no `base` is not launchable**: cutting from main would give the worker your own code to review.
-Say so and fetch it rather than launching anyway.
-
-Everything else is the protocol you already run. The framing pass IS the sweep's own step 6 — the
-board, then the grouped questions, with `options` on every `pending[]` item — so a review row
-arrives with its forks already answered. Its one interruption, **when it has one**, is the hands-on
-gate: a pull request that ships something a human looks at or uses gets the same treatment as any
-other such row — the maintainer opens the server the worker started and tries the PR themselves. A
-pull request that ships nothing of the sort gets no interruption at all, exactly as
-`## The hands-on gate` says of everything else; its verdict and its pending review are reported at
-the checkpoint like any other report. The review brief's own dev-server line is conditional for
-this reason.
-
-**The card links out to the pull request on its own, and you write nothing to make it.** The page
-reads the number off the row id (`PR<number>`, the branch as fallback) and the repository out of
-this checkout's `origin`, and draws `open the pull request on GitHub →` under `what to open`
-(`pullRequestUrl`, `lib/monitor/model.mjs`). So **do not put the pull request in `links[]`** — a
-hand-written copy collapses onto the derived button anyway, deduplicated by URL, and writing it is
-work that buys nothing. `links[]` on a review row is for everything else the maintainer should be
-able to open: a preview deployment the PR builds, the run that failed.
-
-**How a row ends.** Never by anything anybody types.
-
-| The worker's verdict | What happens | Status |
-|---|---|---|
-| `merge` | the maintainer clicks Merge on GitHub; one of the row's recorded subjects — the PR title, with and without ` (#<N>)` — reaches main | `landed`, derived, on a later tick |
-| `review` | a pending review is left; the ball is with the maintainer, then the author | `review` until the PR moves |
-| `decline` | a direction file is written and a decline note drafted to paste | `dropped` |
-| `dismissed` | one ledger line and nothing else | `dropped` |
-
-The ledger's word is `dismissed`, not `dismiss`: `orchestra pr log` accepts `review`, `merge`,
-`decline` and `dismissed`, and refuses anything else rather than writing it.
-
-Three mechanical consequences, each verified against the derivation and none of them obvious:
-
-- **`landed` needs two things you own.** First, the row's `subjects` must carry **the pull
-  request's TITLE IN BOTH ITS SQUASHED FORMS — `<title>` and `<title> (#<N>)` — alongside the
-  branch's commit subjects**, written at the moment step 4 names: the worker's `merge` verdict. No
-  gate runs on a review row, so nothing else will ever write them. Both forms, because
-  `deriveLocalStatus` matches an exact string and **GitHub's DEFAULT squashed subject is the title
-  with the number appended**; a repository whose `squash_merge_commit_title` is set the other way
-  writes the title alone. Recording both costs one array element and is right either way, where
-  recording one misses `deriveLocalStatus`'s match on the ordinary squash merge, not on the edge
-  case below. Second, THIS checkout's main must have fetched the merge — `gatherGit` reads local
-  refs and nothing fetches for you. Until both hold, a merged PR still reads `claimed`.
-- **`dropped` is terminal and stops the scheduler** (`orchestra ready` skips it, `orchestra archive`
-  files the row away), but the board derives from git, which has no `dropped` to derive: so
-  `orchestra roadmap board` prints one `correction:` line for such a row until the next sweep drops
-  the task or `archive` takes the row. That is noise, not a disagreement. Say so at the checkpoint;
-  do not "fix" the row by changing its status back.
-- **Delete the worktree and the `pr<number>-review` ref only once the row is TERMINAL** — `dropped`
-  after a `decline` or a `dismissed`, or `landed` once the merge has derived. No gate runs on a
-  review row, so nothing else will delete them, and a leftover ref on a terminal row keeps the board
-  deriving `claimed` and collides with the next sweep's fetch of the same PR.
-  **On `merge` before it has landed, and on `review`, the ref is load-bearing and stays.** It is
-  what `deriveLocalStatus` reads as `claimed`, so deleting it early is precisely what manufactures a
-  phantom relaunch: `reconcileTasks` sees the ref gone, writes the row back to `todo` with
-  `ref gone; check worktree before relaunch`, `computeReadySet` admits it to the ready set, and the
-  tick prints a `launch:` line for a pull request the maintainer has already been asked about. A
-  second worker then drafts a second pending review on a PR that already has one.
-
-**The one thing you never do: merge the pull request, or run `orchestra land` on a review row.** The
-gate is for branches this project owns. `pr-triage`'s first hard rule is the worker's and it is
-yours: the only write anywhere on GitHub is a PENDING review, private to the maintainer. No merge,
-no close, no label, no assignee, no comment. Orchestra having a merge gate does not soften it.
-
-**The squash-merge hole, stated rather than discovered.** Recording the title in both its forms is
-what makes an ORDINARY squash derivable: GitHub's default squashed subject is the PR title with
-` (#<N>)` appended, a repository configured the other way writes the title alone, and the row
-carries both so neither configuration has to be known. What is left is narrower — a squash whose
-subject the maintainer REWROTE in the merge
-box is a subject the register never recorded, so §2's derivation cannot see the merge and the row
-reads `claimed` after a real one. The next sweep catches it — it reads the pull
-request's state from GitHub, not from git — so the failure is bounded by one sweep interval and is
-never silent. It is deliberately not worth code: recording a second identity for the same commit
-would be a second source of truth for a fact GitHub already answers.
-
-## Worker briefs
-
-Every launch and every hand-over below fills a brief from the same ten substitutions, plus — for a
-relaunch or a hand-over only — `<the project's main branch>` (`orchestra doctor`'s `mainBranch` row)
-and `<n>`, the turn count, and — for a pull-request review row only — the last three rows of the
-table. One table, read once:
-
-| Placeholder | Filled from |
-|---|---|
-| `{branch}` | the row's `branch` |
-| `{task}` | the row's qualified key, `<roadmap>/<ID>` |
-| `{title}` | the row's title |
-| `{excerpt}` | the task's own section, verbatim: offline from the file under `roadmaps.published`, online from the issue body |
-| `{language}` | `orchestra doctor`'s `language` row |
-| `{branchTests}` | `orchestra doctor`'s `branchTests` row. **When it prints `—`, the project has configured none**: the Hard rules clause "run {branchTests} on every iteration, never the project's full suite" becomes "run the project's own tests for what you changed, and say which" |
-| `{specsDir}` | `orchestra doctor`'s `docs.specs` row |
-| `{plansDir}` | `orchestra doctor`'s `docs.plans` row |
-| `{briefExtra}` | `orchestra doctor`'s `briefExtra` row, pasted verbatim. Empty means the paragraph is omitted entirely |
-| `{projectRules}` | the contents of `.orchestra/CLAUDE-rules.md` when that file exists (offline mode — `init` writes it there instead of into the committed `CLAUDE.md`), pasted verbatim. Absent means the paragraph is omitted entirely: online, the same rules are already in the project's `CLAUDE.md`, which every session reads |
-| `{pr}` | the pull request's number — the digits of the row's `PR<number>` id, which is also what its branch names |
-| `{repo}` | `gh repo view --json nameWithOwner -q .nameWithOwner`, or the `repo` field `orchestra pr scan --json` already prints. Never a repository name you typed |
-| `{base}` | the row's `base`: the sha of the pull request's head, written by the sweep. A row without one is not launchable |
-
-`{briefExtra}` is the replacement for the source brief's appeals to one project's own subject map:
-it is where a project states the rules a prompt cannot derive on its own — where its code lives,
-what a worker must never touch, whether a fresh worktree needs a bootstrap step (step 8, above,
-already runs no dependency install, for exactly that reason).
-
-Fill the placeholders and pass the result as the `claude --bg` prompt — step 8, above, gives
-the rest of the launch line. Execution brief (the execution model):
-
-```
-You are a dev agent working ONLY in this worktree, on branch {branch}.
-Task {task} — {title}. Your roadmap excerpt, verbatim:
-{excerpt}
-Hard rules: never work on the main branch; run {branchTests} on every iteration, never the project's
-full suite; everything you commit is English.
-{projectRules}
-{briefExtra}
-Your roadmap excerpt above names its `Touches` files: START FROM THEM. Reach for a repository-wide
-search only when the excerpt and the rules above have both failed you. This is not a style note:
-every file you open stays in front of every later request of this session, so a sweep at turn 10 is
-still being paid for at turn 200.
-Write to me in {language} — questions, reports, anything of yours that reaches me. That is not in
-tension with the rule above: what you commit is English, what you say to me reaches one person on
-one machine.
-Protocol: your conductor will message you a hello. SENDING A MESSAGE BACK DOES NOT WORK — a worker
-session cannot resolve the conductor's address, measured three times, and a report sent that way
-reaches nobody. Instead: STATE YOUR REPORT OR QUESTION AS YOUR FINAL MESSAGE AND STOP. The conductor
-watches for your session leaving the working state and resumes you, and what you printed comes back
-on that resume. Design question → state it and stop until answered. Built → say so; put it in
-front of me only when told, with the project's own command, and report exactly how it is reached —
-the port you ACTUALLY bound plus its pid if you started a server, otherwise the one command that
-shows the change (servers are killed by pid here, never by pattern). You never merge, and whether
-your branch needs a human look first is your conductor's call, not yours.
-```
-
-Design brief (the design model): the same header and rules as above, then:
-
-```
-This task's design is open. Use superpowers:brainstorming, then superpowers:writing-plans. Your
-deliverable is the committed spec ({specsDir}) and plan ({plansDir}) on this branch, with a
-recommended approach stated. Do not write implementation code. State your done-report as your final
-message (see the protocol above — messaging the conductor does not work); your session ends there.
-```
-
-Review brief (the execution model, because a review row's `Design` is always `no`) — see
-`## Pull-request review rows` above for what a review row is and how it ends:
-
-```
-You are reviewing pull request #{pr} on {repo}, in this worktree, checked out at the PR's own head.
-Task {task} — {title}. Your roadmap excerpt, verbatim:
-{excerpt}
-Follow the pr-triage skill exactly; its hard rules are yours. Never publish anything on GitHub
-except a PENDING review. Never merge, close, label or assign. Never write a direction principle the
-maintainer did not state.
-Before anything else: git fetch origin pull/{pr}/head, and say whether it has moved since {base}.
-{projectRules}
-{briefExtra}
-Write to me in {language}.
-Protocol: your conductor will message you a hello. SENDING A MESSAGE BACK DOES NOT WORK. State your
-report or question as your FINAL MESSAGE and stop.
-When this PR ships something a human reads or runs, start the dev server and report the port it
-ACTUALLY bound plus its pid: the maintainer tests it themselves at the hands-on gate. If it has
-somewhere of its own to be looked at — a preview deployment, a published report, the failing run —
-report that URL too, named in plain words, and only if you have fetched and read it.
-Record your verdict before you stop:
-  orchestra pr log {pr} <verdict> --head <sha> --comment <id> --note "…"
-```
-
-Relaunch brief (dead session, intact worktree): the original brief — execution, design or review,
-whichever the row was launched with — prefixed with:
-
-```
-A previous session worked this task and died. Its worktree is intact. Before anything else: read
-git log <the project's main branch>..{branch} and git status in this worktree, and continue from
-what exists — do not restart the task from scratch.
-```
-
-Handover brief (the previous session was ALIVE and retired on purpose — see below): the original
-brief, prefixed with:
-
-```
-A previous session took this task to <n> turns and was retired to drop its accumulated context. It
-committed its work and wrote where it had got to. Before anything else: read
-git log <the project's main branch>..{branch}, git status in this worktree, and the `note` on your
-row. Continue from there — do not restart, and do not re-read files the note tells you are already
-done.
-```
-
-## Retiring a long worker (EXPERIMENT — one row at a time)
-
-A worker's context grows monotonically, roughly 2 K tokens a turn from its own tool results —
-measured in planetCraft — and every request re-reads the whole prefix. Measured on one run in
-planetCraft: sessions started at 57 K and reached 400–740 K, and one worker's request cost ten
-times more at its last turn than at its first. Cutting a long session in two saves 20–30 % of its
-read tokens, measured on that same run in planetCraft.
-
-**What that buys is quota, not speed.** A turn's duration tracks what it OUTPUTS, not the context
-behind it — measured flat over 1 831 turns in planetCraft. But the five-hour ceiling is a token
-budget: on that run in planetCraft, four workers and the conductor hit it within forty minutes of
-each other, and the whole fleet stopped for 1 h 36. Fewer tokens bought a later exhaustion, not a
-faster turn.
-
-**Measure before you act, and act on ONE row.** The saving depends on how much a handover has to
-re-read, which nothing has directly measured: at a 50 K re-acquisition it works out to 31 %, at
-150 K to 13 %, and below roughly 110 turns splitting costs more than it saves. That sensitivity is
-exactly why this is an
-**EXPERIMENT**, not a settled rule: what it saves on one project's shape of task is not a promise
-about yours.
-
-**This plugin ships no tool that measures a session's token use.** The source project scores every
-handover with its own scanner; this plugin carries none. The turn count is therefore the only
-signal a conductor has here.
-
-Past ~120 turns on a row you are willing to experiment on: ask the worker to commit, write where it
-got to into its row's `note`, and stop it. Then launch a **NEW** session on the same worktree with
-the Handover brief above — **never `--resume`**, which keeps precisely the context this is trying
-to drop. Journal it as a `note` with the turn count, so a later measurement can judge what the
-hand-over actually cost. Keep both limits: do not do this to more than one row until that number
-exists, and never to a row in the middle of a hands-on gate.
-
-## The stand-down tick
-
-**It is a heartbeat's own end-of-run duty.** The three commands below all ship —
-`orchestra tick-gate`, `orchestra archive` and `orchestra archive-images` — and the loop that calls
-the first of them hourly is `orchestra install-heartbeat`'s own `templates/tick.sh`. So this
-section is not a description of a timer; it is what a conductor's own last tick on a roadmap does
-before it goes quiet, whether that tick is fired by a person or by the loop itself.
-
-`orchestra tick-gate` answers in **one line whose first word is the verb**:
-
-```sh
-orchestra tick-gate
-```
-
-```
-skip a conductor is live (<session>, pid N)
-skip no register — orchestra has not been adopted here
-skip budget resets <ts>
-skip nothing to do — 87 row(s), all landed or dropped
-run hold-awake
-run — took the baton back from <session> (pid N), beating but silent for 97 min
-```
-
-A line rather than JSON, because its consumer is `/bin/sh` and a shell that has to parse JSON is a
-shell that will one day parse it wrong. **The exit code is deliberately NOT the channel** — a gate
-that cannot answer must not be able to stop the heartbeat, and a `set -e` in some future caller
-would turn a non-zero exit into exactly that. The shell reads the first word of the line and
-nothing else.
-
-**Order matters, and the conductor rule runs first.** The cost of a second conductor is corruption
-— two writers on one register — while the cost of a late tick is only lateness. It stands down for
-a conductor that is live **and conducting**, never merely live: the beat proves only that a session
-can be REACHED, and a window left open and untouched has already silenced the heartbeat for good
-once, not merely in theory — step 1 carries the measurement.
-
-`absent` and `unreadable` are told apart **by errno**, not guessed: the register is rewritten in
-place, so a failed read is most likely a mid-write and the tick runs; an absent register is a
-machine where nobody has ever typed `/orchestra`, and firing a session at it hourly buys nothing.
-
-Four things override the stand-down, each a way orchestra could otherwise go permanently deaf: an
-unconsumed answer in the inbox — **the one that matters most**, and more so here than in the
-project this was extracted from, whose page spawned a tick from its own reply button: this page
-starts nothing, so an answer typed while nobody is beating waits for a tick, and a gate that
-ignored the inbox would stand that tick down and swallow, in silence, the answer the user had just
-typed; a `pending[]` item on any row, whatever that row's status; an
-undelivered relay; and any row not yet terminal — this last one is what prints `hold-awake`.
-
-**It holds the machine awake while work is in flight.** `hold-awake` is the word the gate's line
-carries whenever a row is still non-terminal; the shell that turns that word into a wake lock is
-`templates/tick.sh`'s own `caffeinate` step, not this command's — `tick-gate` only prints the word.
-Keep the reason it exists: eight heartbeat slots of 1 h 23 to 3 h 26 were lost to sleep in one
-46-hour roadmap in planetCraft, about six hours of it, one of them killing a worker mid-turn.
-
-**It stands down when there is nothing to do, and every decision is logged**, so a heartbeat that
-went quiet always says why — the four `skip` lines above are the whole of it. An unused heartbeat
-costs nothing on purpose: once a roadmap finishes, an hourly session that reads sixteen landed rows
-and exits is real budget for no work — the account ceiling was hit twice during the roadmap this
-measurement came from, in planetCraft, freezing everything for 2 h 48. Waking it back up costs one
-`/orchestra`: adoption writes `todo` rows, and the very next slot returns `run`.
-
-**A GREEN REGISTER IS NOT A FINISHED RUN, and the stand-down tick is where you say so.** Every row
-terminal means the roadmaps are done; it says nothing about what the run FOUND on its way there.
-The council of 2026-08-24/26 in planetCraft landed fifteen lines and opened seventeen tickets doing
-it, three of them S1 — one of which was the runtime wall at the far end of the very advice another
-line had just landed to fix. All seventeen were filed correctly and none was routed anywhere.
-
-So on the tick that stands orchestra down, before the stand-down: list what the run opened, name
-the S1s and S2s in the journal and at the checkpoint, and put one question there, in the Decision
-Template — work them down, or leave them for the queue. **Do not open the lines yourself**: a
-finished roadmap is the user's moment to choose the next one.
-
-**THAT QUESTION GOES IN `runAsks[]`, AT THE TOP OF THE REGISTER, AND NEVER ON A ROW.** It is a
-question about the RUN, and a run has ended by the time you are asking it: every row is terminal,
-which is the one state in which no row can carry a question at all. Written into the last row's
-`pending[]` it is invisible — the page drops a roadmap whose every row has finished, correctly, and
-the question leaves the screen with the frame. In planetCraft on 2026-09-02, at the end of the
-`inertes` roadmap, that is exactly what happened: the item was well formed, the journal had its
-`question` line, the ask had its options, every check available said the question existed, and the
-user's own words were "je ne vois pas de question sur la page". They were right and the conductor was
-wrong to tell them it was there. The previous run's end-of-run question HAD been answered, so the
-path works some nights and not others, depending on the order the rows finish in (ticket
-`t-0antbtb`).
-
-Same item shape as a row's, plus the roadmap it is about, and the `id` and `askedAt` are as
-obligatory here as anywhere:
-
-```json
-"runAsks": [{"id":"inertes-standdown-1","roadmap":"inertes","kind":"decision",
-             "askedAt":"2026-09-02T23:40:00Z","ask":"…","options":[
-  {"letter":"A","text":"work the seven tickets down now"},
-  {"letter":"B","text":"leave them for the queue"}]}]
-```
-
-It is retired the way a row's item is, into a top-level `runAnswered[]`, keeping its `askedAt` and
-gaining an `answeredAt` — and `runAnswered[]` is authority over `runAsks[]` on the page, so an ask
-moved and still listed cannot come back for the length of that write.
-
-Two things then hold it up, and neither of them is your vigilance. The page draws `runAsks[]` in its
-own frame, docked over the canvas and counted both in the corner list and in the strip — a frame no
-row can empty, because it hangs on no row. And **the stand-down gate refuses to stand down while a
-run-level ask is unanswered, naming it**: `orchestra tick-gate` prints `run — 1 run-level
-question(s) waiting on you: inertes-standdown-1` where it printed `skip nothing to do`, so the
-silence this defect used to be is a refusal you can read. That command is also the check worth making
-before you tell the user a question is on the page: the instruction used to claim it was there with
-no way at all to verify the claim. `orchestra archive --write`, on this same tick, leaves both arrays
-exactly where they are — they are structural, like `pending`, and for the same reason.
-
-**File each S1 and S2 as a ticket, not just a journal note.** `orchestra tickets add --severity
-S1|S2 --kind bug|friction|design|perf --title '<title>' --subject '<one line>'` (or `--fingerprint`
-when the finding already carries one) as you name it in the journal, rather than leaving it to a
-note nobody re-reads. `orchestra tickets list --severity S1` is the sweep itself, for whoever opens
-the next roadmap and was not on this one.
-
-**Then archive the finished rows, on that same tick.**
-
-```sh
-orchestra archive --write
-```
-
-It moves every terminal row's `note`, `subjects`, `decisions` and `touches` — and the register's
-own top-level prose with them — into `.orchestra/archive.jsonl`. This is more precise than it
-sounds: a finished row **leaves the register entirely**, unless a surviving row still depends on
-it, or it still carries an unanswered question in `pending[]` — in either case it stays stripped
-of exactly those four fields (`pending` is never one of them), so dependency resolution, the
-heartbeat's own stand-down check above, and the progress bar keep working. It is a MOVE: nothing
-is deleted.
-
-Keep the measurement it exists for: measured 2026-08-30 in planetCraft, at the end of one roadmap,
-`state.json` was 202 KB and 87 of its 87 rows were terminal — not one live row — with 136 KB of
-that in post-mortem notes describing work landed weeks earlier, and every hourly tick re-read all
-of it. This is not tidiness, it is the register you rehydrate from.
-
-It refuses while a conductor is live — the register is rewritten in place and a conductor holds it
-in memory across a whole tick, so a write underneath one would silently lose everything that tick
-decided — and it is a no-op when nothing is terminal, so it is safe on any tick. It sits here
-rather than earlier because a row's note is worth having in the register while its roadmap is still
-running.
-
-**Then the photographs those notes point at.**
-
-```sh
-orchestra archive-images --write
-```
-
-Prose is not the weight — pictures are: measured 2026-09-02 in planetCraft, the register's own
-runtime directory held 70.2 MB in 199 files, of which 68 MB was 114 screenshots and boards, every
-one belonging to a run that had landed weeks earlier. The sweep asks one question of each
-photograph: can any live surface still draw it? Three can — an open `pending` ask on any row
-whatever its status, the `note` of a row that is not terminal, and a journal or inbox line about
-work that is still running. The rest are filed as `photo` lines in the same archive, each carrying
-its size and the finished row or line that named it, before the file is removed.
-
-Two things about it worth stating on their own:
-
-- **The sweep's world is `.orchestra/images/`, never `.orchestra/`.** In this plugin `.orchestra/`
-  also holds `config.json` and defaults to holding `worktrees/`, so a sweep of the whole directory
-  would walk into a live worktree, decide no register line names the project's own pictures, and
-  delete them.
-- **It carries no conductor refusal, deliberately, and needs none: it rewrites no register.** Its
-  hazard is a different one — a picture a worker has just taken and nobody has cited yet — and a
-  clock answers it where a lock cannot. Measured over the 22 photographs the journal named, in
-  planetCraft: the gap between a file being written and the first line citing it was at most
-  1.2 hours, and negative for three of them (the file was rewritten after the sentence). Seven
-  days is 140x the worst measured gap.
-
-### The answer net, and what has no net under it yet
-
-An answer normally reaches a conductor through none of this: the two-second watch armed at step 1
-hands it over in seconds. The page starts nothing either way — it reaches the conductor whose beat
-is live and never creates one — so an answer typed while nobody is beating sits in the inbox until
-the next tick reads it.
-
-What the watch cannot cover, in the code's own words: an answer **already sitting when the watch
-was armed** — its first round announces nothing and only remembers what is already there — and one
-left behind by **a tick that died before relaying it**, because the watch dies with the session
-too.
-
-**Where it is installed, the net under it is the heartbeat, and it is a floor, never a wake-up
-call.** `orchestra install-heartbeat`'s hourly tick is `decideTick`'s own first override
-(`lib/register/tick.mjs`): an unconsumed answer in the inbox forces `run` even when every other
-row is terminal, so an answer typed while nobody is beating waits at most one heartbeat slot
-rather than for ever — in a project that has run `install-heartbeat`. **Where it has not, there
-is still no net at all**: the wait ends only when a person runs a tick by hand, exactly as before
-this phase. Either way it is a wait, not a delivery — see the Never in `## What is not here yet`
-for why that shape is deliberate and what the other shape cost. Never propose a cron entry as a
-substitute: a cron tick cannot read the login keychain, so it would catch nothing while reading as
-protection.

@@ -107,19 +107,25 @@ test('every hook hooks.json wires is a row test/hooks-offswitch.test.mjs actuall
       }
     }
   }
-  // The acceptance line's own count: spec §10 names seven hooks, and this is the positive control
-  // against a wiring change that silently drops one — a matrix with fewer rows than `hooks.json`
-  // has entries would otherwise pass this coupling check vacuously.
-  assert.equal(wired.size, 7, `expected 7 wired hooks, found ${[...wired].join(', ')}`);
+  // Spec §10's seven RULES are wired as FOUR processes: the four that fire on a Bash call share
+  // `guard-bash.mjs`, because four node processes per Bash call cost four times the machine to
+  // answer the same question (that hook's own header carries the measurement). So the positive
+  // control is now two counts, and both matter — the files that are wired, and the rules the
+  // matrix proves. Either one drifting alone is the silent drop this control exists to catch.
+  assert.equal(wired.size, 4, `expected 4 wired hook files, found ${[...wired].join(', ')}`);
 
   const matrixSource = readFileSync(join(ROOT, 'test', 'hooks-offswitch.test.mjs'), 'utf8');
   const uncovered = [...wired].filter((file) => !matrixSource.includes(`file: '${file}'`));
   assert.deepEqual(uncovered, [],
     'a hook wired in hooks.json has no row in the off-switch matrix — see test/hooks-offswitch.test.mjs');
 
-  // The behavioural proof itself — that each of these seven really does exit 0 and silent with no
+  const rows = [...matrixSource.matchAll(/^\s+name: '([a-z-]+)',$/gm)].map((m) => m[1]);
+  assert.equal(rows.length, 7, `spec §10 names seven rules; the matrix has ${rows.length}: ${rows.join(', ')}`);
+
+  // The behavioural proof itself — that each of those seven really does exit 0 and silent with no
   // `.orchestra/config.json`, and really does something with one — is test/hooks-offswitch.test.mjs's
-  // own table, run there rather than duplicated here.
+  // own table, run there rather than duplicated here. That file also reads `guard-bash.mjs`'s own
+  // dispatch list, so a rule added inside it without a row fails there.
 });
 
 // ---------------------------------------------------------------------------------------------
