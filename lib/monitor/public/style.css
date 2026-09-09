@@ -443,6 +443,21 @@ main { display: grid; grid-template-columns: 340px 1fr; grid-template-rows: auto
 .ask { border: 1px solid var(--alert); border-radius: 10px; padding: 12px; background: #f2545b0d; }
 .ask .kind { font: 11px var(--mono); color: var(--alert); text-transform: uppercase; letter-spacing: .1em; }
 .ask p { margin: 6px 0 10px; white-space: pre-wrap; }
+/* One section of context per label the template declares, the label drawn as the heading it is.
+   The whole body used to be printed as a single paragraph, so a labelled context, the question and
+   a paragraph of justification reached the reader as one undifferentiated grey block. */
+.ask .section { margin: 0 0 10px; }
+/* The kind line and the first label are both small, upper-case and letter-spaced, so with no gap
+   between them they read as one two-line heading. */
+.ask .kind + .section { margin-top: 8px; }
+.ask .section .label { font: 600 10px var(--mono); color: var(--dim);
+  text-transform: uppercase; letter-spacing: .1em; }
+.ask .section p { margin: 2px 0 0; }
+/* The question, on its own and last, directly above the buttons that answer it. Bigger and
+   brighter than its context, because it is the one sentence the card exists to put. */
+.ask .q { margin: 12px 0 10px; padding-left: 10px; border-left: 2px solid var(--alert);
+  font: 600 14px/1.5 var(--sans); color: var(--hi); white-space: pre-wrap; }
+.ask.answered .q { border-left-color: var(--answered); }
 /* An answered block is the same block, calmed: teal instead of red, everywhere the red was. */
 .ask.answered { border-color: var(--answered); background: #2ec4b60d; }
 .ask.answered .kind { color: var(--answered); }

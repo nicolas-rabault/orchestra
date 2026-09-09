@@ -362,6 +362,29 @@ test('buildModel raises attention on a row with an open pending item, and gives 
   assert.deepEqual(m.nodes[0].pending[0].options.map((o) => o.letter), ['A', 'B']);
 });
 
+// The card printed the whole body as one paragraph, so a reader met a labelled context, a question
+// and a paragraph of justification in one undifferentiated grey block — and the notification list
+// in the corner, which excerpts the ask, showed the first ninety characters of the CONTEXT and
+// never the question. The item carries the two apart so both surfaces can put the question where
+// the reader looks.
+test('buildModel reads an ask apart into its context and its question, and drops the options the buttons carry', () => {
+  const ask = [
+    'Where it stands: the picture of the arm falls behind the arm.',
+    'The question: do we send the review?',
+    'Why it is yours to decide: the workaround it carries is no longer needed.',
+    'Options: A) send it · B) hold',
+    '<sub>Technical: PR #73</sub>',
+  ].join('\n');
+  const options = [{ letter: 'A', text: 'send it' }, { letter: 'B', text: 'hold' }];
+  const [node] = buildModel({ ...base, register: [regRow({ pending: [{ kind: 'question', ask, options }] })] }).nodes;
+  assert.deepEqual(node.pending[0].context, [
+    { label: 'Where it stands', text: 'the picture of the arm falls behind the arm.' },
+    { label: 'Why it is yours to decide', text: 'the workaround it carries is no longer needed.' },
+  ]);
+  assert.deepEqual(node.pending[0].question, { label: 'The question', text: 'do we send the review?' });
+  assert.equal(node.pending[0].footer, 'Technical: PR #73');
+});
+
 // The user answered on the page and the node kept pulsing red, with nothing anywhere acknowledging
 // the answer: `pending[]` clears only when the conductor processes the item, which is minutes away
 // at best. The inbox already holds the answer and `unconsumed` already knows whether orchestra has

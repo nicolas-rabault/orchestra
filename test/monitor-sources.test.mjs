@@ -12,7 +12,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  UNFILED, registerKey, parseOptions, itemOptions, splitAsk,
+  UNFILED, registerKey, parseOptions, itemOptions, splitAsk, askSections,
 } from '../lib/monitor/keys.mjs';
 import {
   SERVERS_TTL_MS, BOARD_SUCCESS_TTL_MS, readState, readJournal, readInbox, readBoard,
@@ -99,6 +99,122 @@ test('splitAsk separates the template\'s <sub> footer from the body, and keeps b
 test('splitAsk leaves an ask with no footer exactly as it was, and survives an absent one', () => {
   assert.deepEqual(splitAsk('does it still tremble?'), { body: 'does it still tremble?', footer: '' });
   assert.deepEqual(splitAsk(undefined), { body: '', footer: '' });
+});
+
+// Every ask leLab's own conductor wrote in 2026-09 put `Technical:` in the body with no `<sub>`
+// around it, so seven hundred characters of PR numbers and commit shas were printed as part of the
+// question. The template says that block IS the footer; the tags are how it is usually marked, not
+// what makes it one.
+test('splitAsk reads a trailing plain Technical: block as the footer, tags or no tags', () => {
+  assert.deepEqual(
+    splitAsk('The question: send it?\nTechnical: PR #73, head e2ee719.\nPictures: a.png'),
+    { body: 'The question: send it?', footer: 'Technical: PR #73, head e2ee719.\nPictures: a.png' },
+  );
+});
+
+test('splitAsk leaves a Technical: block alone when it is not the tail of the ask', () => {
+  const ask = 'Technical: 6.7 ms\nThe question: send it?';
+  assert.deepEqual(splitAsk(ask), { body: ask, footer: '' });
+});
+
+// ---------------------------------------------------------------------------------------------
+// keys.mjs: askSections — the context/question split the page reads the body through
+// ---------------------------------------------------------------------------------------------
+
+test('askSections lifts the question out and keeps every other section as context, in order', () => {
+  const body = [
+    'Where it stands: the 3D picture of the arm falls behind the real arm.',
+    'The question: do you want to send them the review that has been drafted for you?',
+    'Why it is yours to decide: the same contribution carries a workaround that is no longer needed.',
+  ].join('\n');
+  assert.deepEqual(askSections(body), {
+    context: [
+      { label: 'Where it stands', text: 'the 3D picture of the arm falls behind the real arm.' },
+      { label: 'Why it is yours to decide', text: 'the same contribution carries a workaround that is no longer needed.' },
+    ],
+    question: { label: 'The question', text: 'do you want to send them the review that has been drafted for you?' },
+  });
+});
+
+// duckJam speaks French to its user, and French puts a space before the colon. A parser keyed on
+// the template's English labels would read that whole ask as one unlabelled paragraph.
+test('askSections reads a label in any language, and a space before the colon', () => {
+  const body = 'Où on en est : les deux classements sont debout.\nLa question : est-ce que ça te va ?';
+  assert.deepEqual(askSections(body), {
+    context: [{ label: 'Où on en est', text: 'les deux classements sont debout.' }],
+    question: { label: 'La question', text: 'est-ce que ça te va ?' },
+  });
+});
+
+test('askSections keeps a multi-line section whole, up to the next label', () => {
+  const body = 'Where it stands: one thing.\nand a second line.\nThe question: ready?';
+  assert.deepEqual(askSections(body).context, [
+    { label: 'Where it stands', text: 'one thing.\nand a second line.' },
+  ]);
+});
+
+test('askSections does not read a mid-sentence colon as a label', () => {
+  const body = 'Two shapes, and the row is one or the other: a project that serves something reports its port.';
+  assert.deepEqual(askSections(body), {
+    context: [{ label: '', text: body }],
+    question: null,
+  });
+});
+
+// A URL at the start of a line is the case that breaks a naive `word:` rule — `http` is a plausible
+// label and `//127.0.0.1` a plausible text. The template's labels are always followed by a space.
+test('askSections does not read a bare URL as a label', () => {
+  const body = 'http://127.0.0.1:8073 is where it runs.\nThe question: ready?';
+  assert.deepEqual(askSections(body).context, [
+    { label: '', text: 'http://127.0.0.1:8073 is where it runs.' },
+  ]);
+});
+
+test('askSections reads an ask with no label at all as the question when it asks one', () => {
+  assert.deepEqual(askSections('does it still tremble?'), {
+    context: [],
+    question: { label: '', text: 'does it still tremble?' },
+  });
+});
+
+test('askSections leaves a body that asks nothing entirely as context', () => {
+  assert.deepEqual(askSections('go and look at the arm, then tell me what you saw.'), {
+    context: [{ label: '', text: 'go and look at the arm, then tell me what you saw.' }],
+    question: null,
+  });
+});
+
+// The template puts `Why it is yours to decide` AFTER the question, and that section can end on a
+// question mark of its own. The one being answered is the last, because the question the template
+// makes obligatory is the one the options belong to.
+test('askSections takes the last interrogative section as the question', () => {
+  const body = 'Where it stands: is it slow?\nThe question: do we ship it?';
+  assert.deepEqual(askSections(body).question, { label: 'The question', text: 'do we ship it?' });
+  assert.deepEqual(askSections(body).context, [{ label: 'Where it stands', text: 'is it slow?' }]);
+});
+
+// The `Options:` line is re-rendered as buttons three lines below it, so printing it in the body is
+// printing the same sentence twice. Dropped only when the buttons carry every letter it names —
+// otherwise dropping it would hide a choice the user was offered.
+test('askSections drops the Options line when the buttons carry every letter it names', () => {
+  const body = 'Where it stands: two ways.\nThe question: which?\nOptions: A) ship it · B) hold';
+  const opts = [{ letter: 'A', text: 'ship it' }, { letter: 'B', text: 'hold' }];
+  assert.deepEqual(askSections(body, opts).context, [
+    { label: 'Where it stands', text: 'two ways.' },
+  ]);
+});
+
+test('askSections keeps the Options line when the buttons are missing one of its letters', () => {
+  const body = 'The question: which?\nOptions: A) ship it · B) hold · C) ask again';
+  const opts = [{ letter: 'A', text: 'ship it' }];
+  assert.deepEqual(askSections(body, opts).context, [
+    { label: 'Options', text: 'A) ship it · B) hold · C) ask again' },
+  ]);
+});
+
+test('askSections survives an empty body and an absent one', () => {
+  assert.deepEqual(askSections(''), { context: [], question: null });
+  assert.deepEqual(askSections(undefined), { context: [], question: null });
 });
 
 // ---------------------------------------------------------------------------------------------

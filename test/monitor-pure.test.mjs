@@ -450,7 +450,21 @@ const listNode = (over = {}) => ({ key: 'lod/C2', id: 'C2', pending: [], ...over
 
 test('openQuestions lists one row per unanswered question, and says how many pictures it carries', () => {
   const nodes = [listNode({ pending: [{ id: 'q1', kind: 'hands-on', ask: 'look at this', answer: null, images: [{ rel: 'top.png' }] }] })];
-  assert.deepEqual(openQuestions(nodes), [{ key: 'lod/C2', id: 'C2', item: 'q1', kind: 'hands-on', ask: 'look at this', images: 1 }]);
+  assert.deepEqual(openQuestions(nodes),
+    [{ key: 'lod/C2', id: 'C2', item: 'q1', kind: 'hands-on', ask: 'look at this', question: null, images: 1 }]);
+});
+
+// The corner list excerpts what it is given to ninety characters, so being given the whole body
+// meant it showed the opening of the CONTEXT — "Where it stands: the 3D picture of the arm slowly
+// falls behind the real arm during a lo…" — on every ask the template shapes, and the question the
+// row exists to surface was never on it.
+test('openQuestions carries the question apart from the body, for the row to show instead of the context', () => {
+  const nodes = [listNode({ pending: [{
+    id: 'q1', kind: 'question', answer: null, images: [],
+    ask: 'Where it stands: the arm lags.\nThe question: do we send the review?',
+    question: { label: 'The question', text: 'do we send the review?' },
+  }] })];
+  assert.equal(openQuestions(nodes)[0].question, 'do we send the review?');
 });
 
 // The same rule the red pulse is drawn from: a task with one question answered and one still open
