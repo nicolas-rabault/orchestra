@@ -153,3 +153,15 @@ test('doctor online: a committed roadmaps directory is not a problem — visibil
   const r = repo({ mode: 'online', config: { roadmaps: { published: 'docs/roadmaps' } } });
   assert.doesNotMatch(doctorText(loadConfigOrThrow(r.root)), /is not excluded from this clone/);
 });
+
+// The row used to answer a missing exclusion with `orchestra init --mode offline --force`, and
+// `initProject` rebuilds config.json from `detect()` when forced — so following doctor's own advice
+// on any project that had hand-tuned `gates`, `branchTests` or `briefExtra` destroyed all of it to
+// append one line. The fix is the append itself, named exactly.
+test('doctor offline: a missing exclusion is answered with the append, never with init --force', () => {
+  const r = repo();
+  const text = doctorText(loadConfigOrThrow(r.root));
+  assert.match(text, /\/\.orchestra\/ is not excluded/);
+  assert.doesNotMatch(text, /init --mode offline --force/);
+  assert.match(text, /printf .*info\/exclude/);
+});
