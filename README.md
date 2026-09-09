@@ -102,13 +102,21 @@ gate and `roadmap sync`, one monitoring page for the whole machine and `orchestr
 guard hooks, `orchestra init`, the ticket queue and the heartbeat — every phase of the extraction
 has landed:
 
-- **`/orchestra`** — the conductor protocol: the nevers, the journal, the framing pass, the nine
-  steps of a tick, the hands-on gate, and the worker briefs as templates a project fills from its
-  own config (`briefExtra` is where it pastes its own hard rules).
+- **`/orchestra`** — the conductor protocol: the nevers, the journal, the budget and the nine steps
+  of a tick, in `SKILL.md`; and seven situations a tick reaches only sometimes — first run, asking
+  the user, the hands-on gate, pull-request rows, the worker briefs, the stand-down tick, and what
+  is not here yet — beside it under `reference/`, read when a tick reaches one and not before. The
+  core was 32.6 k tokens and rode in the prefix of every request a conductor made; it is 18.9 k.
 - **`/roadmap`** — the skill: the grammar, the board, and the nine roadmap subcommands.
 - **`orchestra doctor`** — the resolved configuration, and how a project with no config is told
   what to write. It also warns when a config still carries a leftover `monitor.port` key, which
   nothing reads any more now that one page serves the whole machine.
+- **`orchestra brief <key> [--relaunch | --handover <n>] [--model <m>] [--repo <owner/name>]`** —
+  the worker's brief, rendered from the row and the config rather than composed by hand once per
+  launch. It carries the task's excerpt, its `Touches` files already located and sized, the spec
+  and plan on disk for it, and the commit the worktree was cut from — the four to eleven Bash calls
+  every measured worker session spent rediscovering the project, and then re-read for the rest of
+  its life.
 - **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve|sync>`**. A roadmap may
   declare `destination: local` in its frontmatter and then publishes under `roadmaps.published`
   whatever the mode is — visible to this machine only, which is what a pull-request sweep uses.
@@ -175,14 +183,18 @@ has landed:
   there is nowhere to write a status.
 - **`merge_agent`** — the agent that runs the gate, resolves a conflict and reports. Nothing else
   should land a branch.
-- **The guard hooks** (`hooks/hooks.json`) — `guard-main-edit` and `guard-main-commit` keep main
-  integrate-only (the second refuses `git commit` **and** `git merge` on it too, `--abort` /
-  `--continue` / `--quit` exempted, overridden by `ORCHESTRA_GATE=1`); `guard-full-suite` refuses a
-  bare invocation of the `suite` gate; `guard-draft` keeps a roadmap draft off `git add`;
-  `guard-claim` refuses a `git worktree add -b <branch>` the board does not show claimed by you,
+- **The guard hooks** (`hooks/hooks.json`) — four processes carrying seven rules. `guard-main-edit`
+  keeps a write off the main checkout; `guard-bash` carries the four rules that fire on a Bash call,
+  in ONE process and cheapest-first, because four of them meant 45 768 node processes across
+  duckJam's measured worker traffic to answer the same question four times. Its rules: `mainCommit`
+  keeps main integrate-only for `git commit` **and** `git merge` (`--abort` / `--continue` /
+  `--quit` exempted, overridden by `ORCHESTRA_GATE=1`); `fullSuite` refuses a
+  bare invocation of the `suite` gate — `orchestra doctor` says INACTIVE when no gate is named that;
+  `draft` keeps a roadmap draft off `git add`;
+  `claim` refuses a `git worktree add -b <branch>` the board does not show claimed by you,
   failing open when the channel is unreachable, and open too on a row no channel carries — offline,
   and a `destination: local` roadmap in any mode, where a claim is recorded nowhere and demanding
-  one demands what that store cannot produce — and closed on a cached board; `lint-roadmap` reports
+  one demands what that store cannot produce — and closed on a cached board. `lint-roadmap` reports
   a roadmap format issue after every edit; `orchestra-inbox` injects an unread answer into a live
   interactive session. Every one of them exits 0 and silent with no `.orchestra/config.json`.
 - **`orchestra init [--mode online|offline] [--force] | --detect [--json]`** — see "Opt a project
