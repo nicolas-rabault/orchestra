@@ -86,7 +86,8 @@ const ROWS = [
   },
   {
     name: 'guard-main-commit',
-    file: 'guard-main-commit.mjs',
+    file: 'guard-bash.mjs',
+    rule: 'mainCommit',
     build: (r) => ({ cwd: r.root, tool_input: { command: 'git commit -m x' } }),
     assertLive: (res) => {
       assert.equal(res.status, 2);
@@ -95,7 +96,8 @@ const ROWS = [
   },
   {
     name: 'guard-full-suite',
-    file: 'guard-full-suite.mjs',
+    file: 'guard-bash.mjs',
+    rule: 'fullSuite',
     repoOpts: { config: { gates: [{ name: 'suite', cmd: 'npm test' }] } },
     build: (r) => ({ cwd: r.root, tool_input: { command: 'npm test' } }),
     assertLive: (res) => {
@@ -105,7 +107,8 @@ const ROWS = [
   },
   {
     name: 'guard-draft',
-    file: 'guard-draft.mjs',
+    file: 'guard-bash.mjs',
+    rule: 'draft',
     build: (r) => ({ cwd: r.root, tool_input: { command: 'git add .orchestra/drafts/foo.md' } }),
     assertLive: (res) => {
       assert.equal(res.status, 2);
@@ -114,7 +117,8 @@ const ROWS = [
   },
   {
     name: 'guard-claim',
-    file: 'guard-claim.mjs',
+    file: 'guard-bash.mjs',
+    rule: 'claim',
     // ONLINE, and held by a colleague, because that is now the only board state this hook refuses:
     // a row whose store records no claim — offline, or a `destination: local` roadmap — fails open
     // deliberately (`startVerdict`'s `unrecordable`, lib/roadmap/policy.mjs), since demanding a
@@ -201,6 +205,19 @@ test('every hook registered in hooks.json has a row in this matrix', () => {
   const registered = registeredHooks();
   const covered = new Set(ROWS.map((row) => row.file));
   assert.deepEqual([...registered].sort(), [...covered].sort());
+});
+
+// `guard-bash.mjs` carries FOUR rules in one process (its own header says why), so the check above
+// can no longer see a new rule the way it used to see a new file: adding one to that hook's
+// dispatch list would leave this matrix silently one row short — the exact gap this file exists to
+// close, one level down. So the dispatch list itself is read, and every rule in it must have a row.
+test('every rule in guard-bash.mjs\'s dispatch list has a row in this matrix', () => {
+  const src = readFileSync(join(HOOKS_DIR, 'guard-bash.mjs'), 'utf8');
+  const m = /for \(const rule of \[([^\]]+)\]\)/.exec(src);
+  assert.ok(m, "guard-bash.mjs has no `for (const rule of [...])` dispatch list to read");
+  const dispatched = m[1].split(',').map((s) => s.trim()).filter(Boolean);
+  const covered = ROWS.filter((row) => row.rule).map((row) => row.rule);
+  assert.deepEqual([...dispatched].sort(), [...covered].sort());
 });
 
 for (const row of ROWS) {

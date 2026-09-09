@@ -18,7 +18,7 @@ import { hookEnv } from './helpers/hookEnv.mjs';
 
 const HOOKS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 const EDIT_HOOK = join(HOOKS_DIR, 'guard-main-edit.mjs');
-const COMMIT_HOOK = join(HOOKS_DIR, 'guard-main-commit.mjs');
+const COMMIT_HOOK = join(HOOKS_DIR, 'guard-bash.mjs');
 
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };

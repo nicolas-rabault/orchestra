@@ -14,7 +14,7 @@ import { hookEnv } from './helpers/hookEnv.mjs';
 import { loadConfig } from '../lib/config.mjs';
 import { roadmapCommand } from '../lib/cli/roadmap.mjs';
 
-const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'guard-claim.mjs');
+const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'guard-bash.mjs');
 
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };

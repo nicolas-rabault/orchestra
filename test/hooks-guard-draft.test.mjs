@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo } from './helpers/fixture.mjs';
 
-const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'guard-draft.mjs');
+const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'guard-bash.mjs');
 
 const repos = [];
 const repo = (opts) => { const r = makeRepo(opts); repos.push(r); return r; };

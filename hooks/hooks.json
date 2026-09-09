@@ -1,5 +1,5 @@
 {
-  "description": "Guards that keep an opted-in project's main branch integrate-only, its merge gate for the merge gate alone, its drafts local, and its shared tasks claimed before they start; a roadmap format check that runs after every edit; and the one hook that speaks, handing an interactive conductor the answers waiting on the monitoring page.",
+  "description": "Guards that keep an opted-in project's main branch integrate-only, its merge gate for the merge gate alone, its drafts local, and its shared tasks claimed before they start; a roadmap format check that runs after every edit; and the one hook that speaks, handing an interactive conductor the answers waiting on the monitoring page. One process per tool call, never one per rule: a Bash call fires `guard-bash.mjs` alone, which runs its four rules cheapest-first.",
   "hooks": {
     "PreToolUse": [
       {
@@ -17,23 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-main-commit.mjs\"",
-            "statusMessage": "Checking the main-is-integrate-only commit guard"
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-full-suite.mjs\"",
-            "statusMessage": "Checking the full-suite guard"
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-draft.mjs\"",
-            "statusMessage": "Checking the draft guard"
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-claim.mjs\"",
-            "statusMessage": "Checking the claim guard"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-bash.mjs\"",
+            "statusMessage": "Checking the orchestra Bash guards"
           }
         ]
       }
