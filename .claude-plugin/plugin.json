@@ -1,6 +1,6 @@
 {
   "name": "orchestra",
-  "version": "0.10.1",
-  "description": "Conduct a project's roadmaps with background worker sessions, a monitoring page and a one-at-a-time merge gate. Roadmaps live on GitHub or as committed markdown.",
+  "version": "0.10.2",
+  "description": "Conduct a project's roadmaps with background worker sessions, a monitoring page and a one-at-a-time merge gate. Roadmaps live on GitHub, or as markdown this clone keeps to itself.",
   "author": { "name": "Nicolas Rabault" }
 }

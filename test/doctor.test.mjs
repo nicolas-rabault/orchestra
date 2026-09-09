@@ -120,3 +120,36 @@ test('doctor says nothing about a .gitignore an offline project deliberately doe
   initProject(r.root, { mode: 'offline', force: true });
   assert.ok(!doctorText(loadConfigOrThrow(r.root)).includes('.gitignore'));
 });
+
+// The trace row's three original probes read the exclude file, the tracked paths whose own NAME
+// says orchestra, and CLAUDE.md. None of them looks at a config key, so a project that repoints a
+// path orchestra WRITES at a committed directory — measured in a real offline project on
+// 2026-09-09: `roadmaps.published: docs/roadmaps`, fourteen roadmaps in the index — got a row
+// reading "2 problem(s)" that named neither the directory nor the files.
+test('doctor offline: a published-roadmaps directory git tracks is named, with the untracking', () => {
+  const r = repo({ config: { roadmaps: { published: 'docs/roadmaps' } } });
+  mkdirSync(join(r.root, 'docs', 'roadmaps'), { recursive: true });
+  writeFileSync(join(r.root, 'docs', 'roadmaps', 'demo.md'), '# demo\n');
+  r.git('add', '-A');
+  r.git('commit', '-q', '-m', 'roadmaps');
+  const text = doctorText(loadConfigOrThrow(r.root));
+  assert.match(text, /git tracks 1 file\(s\) under roadmaps\.published \(docs\/roadmaps\)/);
+  assert.match(text, /git rm --cached -r -- docs\/roadmaps/);
+});
+
+test('doctor offline: a written path git can still see is named before anything is tracked', () => {
+  const r = repo({ config: { roadmaps: { published: 'docs/roadmaps' } } });
+  const text = doctorText(loadConfigOrThrow(r.root));
+  assert.match(text, /roadmaps\.published \(docs\/roadmaps\) is not excluded from this clone/);
+});
+
+test('doctor offline: a configured ledger is named — the gate commits it at every landing', () => {
+  const r = repo({ config: { ledgers: ['.orchestra/tickets.jsonl'] } });
+  const text = doctorText(loadConfigOrThrow(r.root));
+  assert.match(text, /the merge gate commits \.orchestra\/tickets\.jsonl at every landing/);
+});
+
+test('doctor online: a committed roadmaps directory is not a problem — visibility is the point', () => {
+  const r = repo({ mode: 'online', config: { roadmaps: { published: 'docs/roadmaps' } } });
+  assert.doesNotMatch(doctorText(loadConfigOrThrow(r.root)), /is not excluded from this clone/);
+});

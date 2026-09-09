@@ -189,6 +189,36 @@ clean, or names each failure:
 
 Online, the row is absent.
 
+### Amended 2026-09-09: the config keys, not just the default paths
+
+The three probes above read the exclude file, the tracked paths whose own **name** says orchestra,
+and `CLAUDE.md`. None of them reads a config key — and every path orchestra writes is a key
+precisely so a project can repoint it. Measured in a real offline project: `roadmaps.published` set
+to `docs/roadmaps` (a directory the repository carries), fourteen published roadmaps in the index,
+`ledgers` naming `.orchestra/tickets.jsonl` — and the row read `2 problem(s)`, naming none of it.
+§2's sentence about a project that "has deliberately chosen to commit its roadmaps" stands as a
+statement about whose choice it is; what was missing is that the choice was never reported back
+against the promise it breaks.
+
+So the row gains two probes, over `roadmaps.drafts`, `roadmaps.published`, `worktrees`,
+`tickets.file`, `pr.ledger` and `pr.direction`:
+
+- **git tracks files under it** — `git ls-files` filtered by `p === rel || p.startsWith(rel + '/')`,
+  one rule for a file key and a directory key alike, minus anything the `TRACE` probe already
+  named. Fixed by `git rm --cached -r -- <rel>`.
+- **git can still see it** — `git check-ignore -q -- <rel>` exits non-zero, so the next `git add -A`
+  takes whatever orchestra writes there. The two are independent and both are reported: untracking
+  without excluding puts the directory straight back.
+
+And one probe over `ledgers`, which is the only key whose *purpose* is to make orchestra commit —
+`commitLedgers` (§4) stages and commits every path in it on the main branch at each landing. Offline
+it is named even when nothing under it is tracked yet, because the commit is what the configuration
+is for and it arrives at the next landing.
+
+Reported, never refused. The merge gate refusing a landing that carried a roadmap file would turn a
+layout the project is entitled to choose into a landing it cannot make, with no migration; `doctor`
+naming the consequence leaves the choice where §2 put it.
+
 ## 8. What this does not cover
 
 - A commit made by a human directly on the main branch, outside the gate. No hook and no process
