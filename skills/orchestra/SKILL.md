@@ -576,10 +576,14 @@ started *after* the hold was issued.
    ```
    Exit 0 means it is yours; exit 1 prints who holds it, and you stop the tick there — journal one
    line and hand back. Release it in step 9, and only there: while you hold it, no headless tick
-   will start. A holder that is provably gone is broken automatically — a dead pid for a tick, a
-   stopped beat for a conductor — so a killed session cannot wedge the heartbeat. Arm the answer
-   watch before you rely on this: your beat is what proves you are alive, and a conductor that
-   holds the lock without beating is one the next tick will correctly break.
+   will start. A holder that is provably gone is broken automatically — a dead pid for a tick, and
+   for a conductor either a stopped beat or ninety minutes without a write to the register — so
+   neither a killed session nor a session that stops conducting can wedge the heartbeat. That second
+   half is the same window `yield-check` uses, deliberately: measured 2026-09-06/07 in duckJam, when
+   this lock used the beat alone it refused eight heartbeat slots for a session `yield-check` had
+   already ruled loose, and three answers the user had typed sat unread for 3 h 35. Arm the answer
+   watch before you rely on this: your beat is what proves you are alive, and a conductor that holds
+   the lock without beating is one the next tick will correctly break.
 
    **Then check that you are the only conductor anyway.** The lock stops two conductors from
    *starting* together; it cannot see one that began before it existed — six sessions took the
