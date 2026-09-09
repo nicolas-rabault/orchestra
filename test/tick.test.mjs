@@ -7,8 +7,8 @@ import { writeState, emptyState, statePath } from '../lib/register/state.mjs';
 import { writeBeat } from '../lib/register/beat.mjs';
 import { inboxPath } from '../lib/register/inbox.mjs';
 import { journalPath } from '../lib/register/journal.mjs';
-import { decideTick, gateLine, tickOutcome } from '../lib/register/tick.mjs';
-import { tickOutcomeCommand } from '../lib/cli/tick.mjs';
+import { decideTick, gateLine, tickOutcome, tickWake } from '../lib/register/tick.mjs';
+import { tickOutcomeCommand, tickWakeCommand } from '../lib/cli/tick.mjs';
 import { yieldVerdict } from '../lib/register/wake.mjs';
 
 const repos = [];
@@ -270,4 +270,44 @@ test('tick-outcome writes nothing at all for a tick that touched the register', 
   tickOutcomeCommand({ cfg: { root: r.root }, args: ['--from', from, '--since', '2026-09-06T11:13:04Z'] });
   assert.equal(JSON.parse(readFileSync(statePath(r.root), 'utf8')).budgetResetAt, null);
   assert.equal(existsSync(journalPath(r.root)), false);
+});
+
+// ---- the slot after a ceiling ---------------------------------------------------------------
+
+test('a budget skip arms one wake at the reset, and nothing else arms anything', () => {
+  const now = Date.parse('2026-09-06T11:13:04.000Z');
+  const w = tickWake({ gate: 'skip budget resets 2026-09-06T11:40:00.000Z', now });
+  assert.equal(w.at, '2026-09-06T11:40:00.000Z');
+  // 26 min 56 s to the reset, plus the margin that puts the woken tick on the right side of it.
+  assert.equal(w.seconds, 1616 + 30);
+
+  assert.equal(tickWake({ gate: 'skip nothing to do — 3 row(s), all landed or dropped', now }), null);
+  assert.equal(tickWake({ gate: 'run hold-awake', now }), null);
+  assert.equal(tickWake({ gate: 'skip a conductor is live (s1, pid 7)', now }), null);
+  // A reset already past is the grid's business, not a wake's.
+  assert.equal(tickWake({ gate: 'skip budget resets 2026-09-06T10:00:00.000Z', now }), null);
+  assert.equal(tickWake({ gate: 'skip budget resets soon', now }), null);
+  // The same reset restated by a later slot is the same wake.
+  assert.equal(tickWake({ gate: 'skip budget resets 2026-09-06T11:40:00.000Z', armedFor: '2026-09-06T11:40:00.000Z', now }), null);
+  // A reset that MOVED is a different one and deserves its own.
+  assert.ok(tickWake({ gate: 'skip budget resets 2026-09-06T17:10:00.000Z', armedFor: '2026-09-06T11:40:00.000Z', now }));
+});
+
+test('tick-wake prints the seconds once and remembers what it armed', () => {
+  const r = repo();
+  const at = new Date(Date.now() + 20 * 60_000).toISOString();
+  const said = [];
+  const write = process.stdout.write.bind(process.stdout);
+  const call = () => {
+    process.stdout.write = (s) => { said.push(s); return true; };
+    try { tickWakeCommand({ cfg: { root: r.root }, args: ['--gate', `skip budget resets ${at}`] }); }
+    finally { process.stdout.write = write; }
+  };
+  call();
+  assert.equal(said.length, 1);
+  assert.ok(Number(said[0]) > 0);
+  assert.equal(readFileSync(join(r.root, '.orchestra', 'tick.wake'), 'utf8').trim(), at);
+  // The next slot on the same reset arms nothing and prints nothing.
+  call();
+  assert.equal(said.length, 1);
 });

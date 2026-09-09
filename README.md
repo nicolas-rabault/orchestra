@@ -125,12 +125,15 @@ has landed:
   a measured clock, the answers a user posted on the page, who holds the baton, one conductor at a
   time, and the conductor's two watches — answers within seconds, and an `OWED:` line when a worker
   is stopped on a live row or a relay is written and not delivered.
-- **`orchestra ready|drive|tick-gate|tick-outcome|yield-check`** — the launch plan, the resume cycle,
-  whether a heartbeat should tick at all, what the slot it spent actually bought, and whether this
-  session should hand the baton back. `tick-outcome` reads the tick's own transcript back: a slot
-  that conducted nothing and ended on the account ceiling is journalled, and the reset time the
-  message states in plain language becomes the `budgetResetAt` that stands the next slot down —
-  otherwise the same refusal is re-earned an hour later, twice measured. `ready` names
+- **`orchestra ready|drive|tick-gate|tick-outcome|tick-wake|yield-check`** — the launch plan, the
+  resume cycle, whether a heartbeat should tick at all, what the slot it spent actually bought, when
+  to come back, and whether this session should hand the baton back. `tick-outcome` reads the tick's
+  own transcript back: a slot that conducted nothing and ended on the account ceiling is journalled,
+  and the reset time the message states in plain language becomes the `budgetResetAt` that stands the
+  next slot down — otherwise the same refusal is re-earned an hour later, twice measured.
+  `tick-wake` then arms one detached sleep at that instant, so the reopened window is not rounded
+  away by the hourly grid; it is best effort in the strongest sense, and the grid is untouched
+  underneath it. `ready` names
   what the tick owes its workers first (`UNDELIVERED:`, `IDLE:`) and proposes NO launch while one is
   owed (`LAUNCHES HELD:`) — a warm session pays no brief and a new one pays all of it — then budgets
   its launches against every other orchestra on this machine (`~/.orchestra/machine.json`,

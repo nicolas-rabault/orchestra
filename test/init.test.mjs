@@ -263,7 +263,8 @@ test('initProject online: writes .orchestra/.gitignore with exactly the paths th
   assert.deepEqual(lines, [
     'state.json', 'journal.jsonl', 'inbox.jsonl', 'archive.jsonl', 'pr-log.jsonl',
     'conductor.beat.json', 'tick.lock', '.queue.lock', 'drafts/', 'roadmaps/', 'direction/',
-    'worktrees/', 'images/', 'gate/', 'drive/', 'tick.sh', 'tick.out', '*.log', '*.err', '*.tmp',
+    'worktrees/', 'images/', 'gate/', 'drive/', 'tick.sh', 'tick.out', 'tick.wake',
+    '*.log', '*.err', '*.tmp',
   ]);
   // Neither of the two committed paths under `.orchestra/` is ignored.
   assert.equal(lines.includes('config.json'), false);

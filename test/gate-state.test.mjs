@@ -450,3 +450,24 @@ test('the main branch is rebased onto its upstream only when the upstream really
   // only when the upstream moved, and the message has to name the fix.
   assert.equal(S.syncMainDecision({ upstream: 'origin/main', behind: 2, dirty: true }), 'refuse');
 });
+
+// LP6, 2026-09-08 in duckJam: the gate merged LP2, its process died before releasing, and LP6 sat
+// `queued` for two hours with nothing naming it. `held` and `blocked` are the record doing its job
+// and must never be reported this way — they are waiting for a person, on purpose.
+test('a queued or landing entry with no live process is a stall; a held or blocked one is not', () => {
+  const entries = [
+    { branch: 'a/queued-alone', state: 'queued' },
+    { branch: 'b/landing-dead', state: 'landing' },
+    { branch: 'c/queued-waiting', state: 'queued' },
+    { branch: 'd/held', state: 'held' },
+    { branch: 'e/blocked', state: 'blocked' },
+    { branch: 'f/landing-live', state: 'landing' },
+  ];
+  const holder = { pid: 10, branch: 'f/landing-live', epoch: 1 };
+  const waiters = [{ pid: 11, branch: 'c/queued-waiting', epoch: 2 }];
+  assert.deepEqual(S.stalledEntries({ entries, holder, waiters }).map((e) => e.branch),
+    ['a/queued-alone', 'b/landing-dead']);
+  // No holder and no waiters at all: every queued or landing entry is a stall.
+  assert.deepEqual(S.stalledEntries({ entries, holder: null, waiters: [] }).map((e) => e.branch),
+    ['a/queued-alone', 'b/landing-dead', 'c/queued-waiting', 'f/landing-live']);
+});

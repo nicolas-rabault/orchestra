@@ -769,6 +769,11 @@ started *after* the hold was issued.
    the journal you did not write. Both are the tool's; leave them. Measured 2026-09-06 in duckJam:
    without this, the 11:13 and 12:13 slots burned two opus sessions on the identical refusal an hour
    apart and left nothing anywhere but one line in `tick.log`.
+
+   And a slot that stands down on that field arms one wake at the reset rather than handing back to
+   the hourly grid, so a tick can arrive at any minute of the hour — `(wake)` in `tick.log` marks
+   one. Best effort only: the grid is untouched underneath it and is still what guarantees a tick at
+   all. On 2026-09-06 the ceiling reopened at 08:10Z and the first worker commit landed at 12:00.
 4. **Inbox — two sources, and you must go and get the second one.**
    ```sh
    orchestra inbox          # what the user answered on the page

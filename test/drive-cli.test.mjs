@@ -6,7 +6,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -119,6 +119,30 @@ test('the launch plan stands down while a worker turn is owed, and comes back on
     const after = run(r.root, 'ready').out;
     assert.ok(!after.includes('LAUNCHES HELD'), after);
     assert.match(after, /^launch: demo\/T1 — a fresh line \[opus\] on demo\/t1$/m);
+  });
+});
+
+// Constat 6c: LP6 sat `queued` in the merge queue for two hours on 2026-09-08 after the gate merged
+// LP2 and died before releasing. `queue-list` would have said so and nobody ran it; the tick's own
+// command says it now.
+test('ready names a branch left in the merge queue with no live process behind it', () => {
+  withFakeClaude(() => {
+    const r = fleet();
+    const gate = join(r.root, '.orchestra', 'gate');
+    mkdirSync(gate, { recursive: true });
+    writeFileSync(join(gate, 'queue.json'), `${JSON.stringify({ version: 1, entries: [
+      { branch: 'demo/a1', worktree: 'x', enqueuedAt: Math.floor(Date.now() / 1000) - 7200, state: 'queued', note: '' },
+      { branch: 'demo/a2', worktree: 'x', enqueuedAt: Math.floor(Date.now() / 1000) - 60, state: 'held', note: 'gate "suite" refused' },
+    ] }, null, 2)}\n`);
+    writeFileSync(join(gate, 'holder'), '');
+    writeFileSync(join(gate, 'waiters'), '');
+
+    const { out } = run(r.root, 'ready');
+    assert.match(out, /^STALLED: demo\/a1 has been queued in the merge queue for 2\.0h with no live process — run `orchestra land demo\/a1` again$/m);
+    // A refused branch is waiting for its author, by design, and is never reported as a stall.
+    assert.ok(!out.includes('STALLED: demo/a2'), out);
+    const json = JSON.parse(run(r.root, 'ready', '--json').out);
+    assert.deepEqual(json.stalled.map((s) => s.branch), ['demo/a1']);
   });
 });
 

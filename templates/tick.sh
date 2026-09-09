@@ -66,7 +66,27 @@ TRIGGER="${ORCHESTRA_TRIGGER:-manual}"
 GATE="$("$BIN" tick-gate 2>/dev/null)" || GATE=""
 [ -n "$GATE" ] || GATE="run gate-unavailable"
 case "$GATE" in
-  skip*) echo "== tick $STAMP ($TRIGGER) not run: ${GATE#skip } ==" >> "$LOG"; exit 0 ;;
+  skip*)
+    echo "== tick $STAMP ($TRIGGER) not run: ${GATE#skip } ==" >> "$LOG"
+    # A slot stood down because the account ceiling has not lifted knows exactly when it will, and
+    # handing back to the hourly grid loses up to fifty-nine minutes of a window that has just
+    # opened. `orchestra tick-wake` (lib/register/tick.mjs) prints the seconds to sleep for that one
+    # case and nothing for every other `skip`, and it arms at most one wake per reset instant.
+    #
+    # BEST EFFORT, AND ONLY EVER EARLIER. The sleep is a detached subshell this script does not wait
+    # for; a machine that sleeps, a torn-down process group, or a lost child costs the wake and
+    # nothing else, because the hourly grid is untouched and still fires. The woken run takes the
+    # lock itself, exactly like any other, so it can never conduct beside one.
+    WAKE="$("$BIN" tick-wake --gate "$GATE" 2>/dev/null)" || WAKE=""
+    if [ -n "$WAKE" ]; then
+      echo "== tick $STAMP ($TRIGGER) armed a wake in ${WAKE}s, at the reset ==" >> "$LOG"
+      # `trap - EXIT` first: a subshell inherits this script's release trap, and `$$` inside it is
+      # still the PARENT's pid, so leaving it armed would fire a release for a lock this subshell
+      # never took. It is identity-checked and would refuse, but a lock call nobody meant to make is
+      # not something to leave lying in a background job.
+      (trap - EXIT; sleep "$WAKE"; ORCHESTRA_TRIGGER=wake "$DIR/tick.sh") >/dev/null 2>&1 &
+    fi
+    exit 0 ;;
 esac
 
 # Work is in flight, so keep the machine from sleeping under it — self-renewing (each hourly tick
