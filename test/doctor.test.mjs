@@ -165,3 +165,33 @@ test('doctor offline: a missing exclusion is answered with the append, never wit
   assert.doesNotMatch(text, /init --mode offline --force/);
   assert.match(text, /printf .*info\/exclude/);
 });
+
+// The two gate silences. Both were measured on 2026-09-09: duckJam names its only gate `pytest`,
+// so the suite guard had never once fired there and read in the config exactly like one that
+// works; and no project anywhere sets `skipWhenAllPathsMatch`, so every landing runs everything —
+// six duckJam landings, 135 minutes of gate time, several for branches that touched only documents.
+test('doctor names the suite guard as inactive when no gate is called `suite`', () => {
+  const r = repo({ config: { gates: [{ name: 'pytest', cmd: 'uv run pytest -q' }] } });
+  const text = doctorText(loadConfig(r.root));
+  assert.match(text, /suite guard\s+INACTIVE/);
+  assert.match(text, /gates are named pytest/);
+});
+
+test('doctor says nothing about the suite guard when a gate IS called `suite`', () => {
+  const r = repo({ config: { gates: [{ name: 'suite', cmd: 'npm test' }] } });
+  assert.doesNotMatch(doctorText(loadConfig(r.root)), /suite guard/);
+});
+
+test('doctor names the missing gate skips, and stops once a gate declares one', () => {
+  const without = repo({ config: { gates: [{ name: 'suite', cmd: 'npm test' }] } });
+  assert.match(doctorText(loadConfig(without.root)), /gate skips\s+none — every landing runs every gate/);
+
+  const with_ = repo({ config: { gates: [{ name: 'suite', cmd: 'npm test', skipWhenAllPathsMatch: ['docs/**'] }] } });
+  assert.doesNotMatch(doctorText(loadConfig(with_.root)), /gate skips/);
+});
+
+test('a project with no gates at all gets neither line — there is nothing to advise about', () => {
+  const text = doctorText(loadConfig(repo().root));
+  assert.doesNotMatch(text, /suite guard/);
+  assert.doesNotMatch(text, /gate skips/);
+});
