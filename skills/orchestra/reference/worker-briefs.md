@@ -1,8 +1,8 @@
 # Worker briefs — what `orchestra brief` renders, and the two hand-overs
 
 `orchestra brief <key>` renders the brief; you do not compose one. Read this when you need to know
-WHAT it renders and why, when a design row reaches its handoff, or when you are considering
-retiring a long worker.
+WHAT it renders and why, when a design row reaches its handoff, or when `orchestra ready` prints a
+`RETIRE:` line and you want to know what the hand-over does and what decided it.
 
 ## Worker briefs
 
@@ -95,34 +95,92 @@ launch: <id> — <title> [fable] on <branch>
 for a design row, `[opus]` for any other. So the choice is the roadmap's, made when the task was
 written — not a judgment call the conductor makes at launch time.
 
-## Retiring a long worker (EXPERIMENT — one row at a time)
+## Retiring a long worker
 
-A worker's context grows monotonically, roughly 2 K tokens a turn from its own tool results —
-measured in planetCraft — and every request re-reads the whole prefix. Measured on one run in
-planetCraft: sessions started at 57 K and reached 400–740 K, and one worker's request cost ten
-times more at its last turn than at its first. Cutting a long session in two saves 20–30 % of its
-read tokens, measured on that same run in planetCraft.
+A worker's context only grows, and every request re-reads the whole of it, so a session's cost is
+not its length — it is its PREFIX INTEGRATED OVER its length. Measured 2026-09-09 across duckJam's
+122 worker sessions: a worker boots at 34 k, grows 1.18 k a request, and ends at 253 k median and
+707 k worst. 4.17 billion tokens read to produce 30.7 million written, 131 to 1. Past a point,
+carrying the prefix costs more than starting over on the same worktree.
 
-**What that buys is quota, not speed.** A turn's duration tracks what it OUTPUTS, not the context
-behind it — measured flat over 1 831 turns in planetCraft. But the five-hour ceiling is a token
-budget: on that run in planetCraft, four workers and the conductor hit it within forty minutes of
-each other, and the whole fleet stopped for 1 h 36. Fewer tokens bought a later exhaustion, not a
-faster turn.
+**The tick does not decide this and you do not estimate it. `orchestra ready` says when.**
 
-**Measure before you act, and act on ONE row.** The saving depends on how much a handover has to
-re-read, which nothing has directly measured: at a 50 K re-acquisition it works out to 31 %, at
-150 K to 13 %, and below roughly 110 turns splitting costs more than it saves. That sensitivity is
-exactly why this is an
-**EXPERIMENT**, not a settled rule: what it saves on one project's shape of task is not a promise
-about yours.
+```sh
+orchestra cost                     # what every live session costs, and why each is or is not firing
+orchestra retire <key>             # the hand-over: wrap-up turn, note onto the row, session stopped
+```
 
-**This plugin ships no tool that measures a session's token use.** The source project scores every
-handover with its own scanner; this plugin carries none. The turn count is therefore the only
-signal a conductor has here.
+`ready` prints one `RETIRE:` line per row past its threshold, carrying the two numbers the decision
+rests on — what one more request from that session costs, and what a replacement would start at.
+`orchestra cost` prints the whole fleet including the rows that are NOT firing, with the reason,
+because "nothing fired" is only useful if you can see what held it back.
 
-Past ~120 turns on a row you are willing to experiment on: ask the worker to commit, write where it
-got to into its row's `note`, and stop it. Then launch a **NEW** session on the same worktree with
-`orchestra brief <key> --handover <n>` — **never `--resume`**, which keeps precisely the context this is trying
-to drop. Journal it as a `note` with the turn count, so a later measurement can judge what the
-hand-over actually cost. Keep both limits: do not do this to more than one row until that number
-exists, and never to a row in the middle of a hands-on gate.
+### What the threshold is, and why that number
+
+`retireAt`, 200 000 tokens of prefix, a config key. It was chosen by replaying all 122 real sessions
+under this rule, cutting whenever it fired and paying a fresh boot plus a re-acquisition R:
+
+| `retireAt` | R = 30 k | R = 60 k | R = 100 k | R = 150 k |
+|---|---|---|---|---|
+| 150 k | +45.7 % | +35.1 % | +18.4 % | −1.8 % |
+| **200 k** | **+36.0 %** | **+31.3 %** | **+21.1 %** | **+7.6 %** |
+| 250 k | +26.1 % | +22.7 % | +18.2 % | +10.7 % |
+
+200 k is the lowest round threshold that is POSITIVE at every re-acquisition cost simulated, at
+about one hand-over per session. 150 k saves more when a hand-over is cheap and loses when it is
+not. Raise `retireAt` if your project's hand-overs are expensive; the rule also raises it by itself,
+which is the next paragraph.
+
+### The three guards, and the one that makes it safe
+
+**Twice its own boot.** A session is never retired below twice the prefix of its OWN first request.
+This is not a belt-and-braces rule — it is what stops the mechanism destroying itself. A threshold
+below `boot + R` means the REPLACEMENT is born already over the line and is retired again on its
+next request, for ever: simulated at R = 150 k against a 100 k threshold, that is 141 hand-overs per
+session and **160 % more tokens read than doing nothing at all**. The floor closes it without
+needing to know R, because a session's own boot IS `boot + R` for the replacement of an expensive
+hand-over — so an expensive hand-over automatically raises the bar for the next one on that row, and
+nothing has to be remembered anywhere. Same simulation with the floor on: −17 % and 1.4 hand-overs,
+bad but bounded, and no runaway anywhere in the sweep.
+
+**Twenty requests.** 11 % of sessions cross 200 k with fewer than twenty requests left to run, and a
+hand-over they pay for is never recouped.
+
+**Never mid-anything.** Not a row being driven (its prefix is already out of date and the turn's
+work would be lost), not one waiting on the user (the answer is coming back to THAT session), not
+one waiting on the gate (its worker has already finished), not a terminal row. `orchestra retire`
+re-asks every one of these against the register as it is when it runs, not as the tick found it —
+and there is deliberately no `--force`: every refusal is a case where the hand-over loses work or
+costs more than it saves.
+
+### What a hand-over actually does, and where it stops
+
+1. It drives ONE wrap-up turn, with the plugin's own prompt: commit everything, then make your final
+   message a note under four headings — DONE, NEXT, FILES, TRAPS. **The note is the re-acquisition**,
+   and the table above is how much the note's quality is worth: a vague note makes the replacement
+   re-read the branch to find out where it is, which is the whole cost the hand-over was avoiding.
+   That is why the prompt is the tool's and not yours.
+2. It writes that note onto the row, and only then stops the session. A crash between the two leaves
+   the note recorded and the worker alive, which is the recoverable way round.
+3. **It stops there. It does not launch the replacement.** What it leaves is a live row with a
+   branch, a worktree, a note and no session — which `ready` reports as `RELAUNCH:` — so the
+   replacement starts through the launch path that already exists and is already guarded. A second
+   launch path written into the tool would be a second copy of the session-naming, the claim gesture
+   and the journal line to keep right.
+
+So a retirement completes across two ticks, and that is the safe way round: if anything dies
+halfway, the row is either untouched or waiting to be relaunched, and the tick knows how to finish
+both. **A wrap-up that produced no note retires nothing** and says so, exit 1, session untouched.
+
+**What this buys is quota first and speed second.** The five-hour ceiling is a token budget — on one
+planetCraft run four workers and the conductor hit it within forty minutes of each other and the
+whole fleet stopped for 1 h 36 — and 31 % fewer tokens read buys a later exhaustion. There is a
+latency effect too, and it is real but modest: measured over 21 858 duckJam requests, the
+request-to-request floor roughly doubles from 0.5 s below 50 k to 1.0 s past 400 k, while the median
+gap plateaus past 150 k.
+
+**`RELAUNCH:` is not only for retirements.** Any worker killed by hand, by a reboot or by a stray
+`claude stop` leaves the same state, and until 2026-09-09 NOTHING REPORTED IT: a `claimed` row with
+a live branch, a live worktree and no session appeared in `ready`, in `blocked` and in all three
+obligations as nothing at all. The skill had always told you to relaunch such a row at the launch
+step; the row you were to notice was invisible.

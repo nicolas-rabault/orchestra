@@ -49,7 +49,7 @@ Read one when the tick reaches its situation, and not before:
 | `reference/asking-the-user.md` | Before you put a question to the user, and before you decide not to. The framing pass, the one interruption, the decision template |
 | `reference/hands-on-gate.md` | A row's acceptance needs a human to look, or you are about to start a dev server. The gate, and the dev-server sweep |
 | `reference/pull-request-rows.md` | This tick has a row on the standing `pr` roadmap |
-| `reference/worker-briefs.md` | You need to know what `orchestra brief` renders and why, a design row reaches its handoff, or you are considering retiring a long worker |
+| `reference/worker-briefs.md` | You need to know what `orchestra brief` renders and why, a design row reaches its handoff, or `ready` prints a `RETIRE:` line |
 | `reference/stand-down.md` | Every row is terminal — the roadmap is finished |
 | `reference/not-here-yet.md` | You are about to reach for something and want to know whether this plugin has it |
 
@@ -547,9 +547,27 @@ started *after* the hold was issued.
    UNDELIVERED: dome/DW1 [claimed] — relay written 2026-09-08T06:52:00Z, 180 min ago
    IDLE: forge/F6 [claimed] — orchestra-fc69aa-f6 stopped 2026-09-08T09:55:02Z — last words: report: rebased, tests green, waiting for your look
    IDLE: media/SC2 [claimed] — orchestra-fc69aa-sc2 background session idle
+   RELAUNCH: dome/DW9 [claimed] — the branch is there and no session is — no note on the row — relaunch on the same worktree with `orchestra brief dome/DW9 --relaunch`
+   RETIRE: dome/DW6 [claimed] — 732 requests, prefix 707k (booted 36k, threshold 200k), 282790k read so far. Every further request re-reads 707k; a replacement on the same worktree starts near 36k. Run `orchestra retire dome/DW6`.
    driving: arena/PV1 [claimed] — driven turn pid 40798
    owed: 3 worker turn(s) — orchestra drive
+   relaunch: 1 live row(s) with no session — dome/DW9
    ```
+   **`RELAUNCH:` is an obligation too**, and a newer one: a live row whose branch and worktree are
+   there and whose worker is not. Any worker killed by hand, by a reboot or by a stray `claude stop`
+   leaves one, and until 2026-09-09 nothing reported it at all — such a row appeared in `ready`, in
+   `blocked` and in all three obligations as nothing whatever, while this document told you to
+   relaunch it. Relaunch it with the brief the line names, from step 8's launch line; it is not held
+   by `LAUNCHES HELD:`, because it is not a new launch.
+
+   **`RETIRE:` is NOT an obligation — it is an offer, and it is measured.** A worker's context only
+   grows and every request re-reads the whole of it, so past a point carrying the prefix costs more
+   than starting over on the same worktree. `orchestra cost` prints the whole fleet with the reason
+   each row is or is not firing; `orchestra retire <key>` drives one wrap-up turn, writes the note
+   it produces onto the row, stops the session and leaves the row for the `RELAUNCH:` above. It
+   refuses a row being driven, waiting on the user, waiting on the gate, too young, or unmeasurable,
+   and it has no `--force`. The threshold, the three guards and the simulation that chose the number
+   are in `reference/worker-briefs.md`; you need none of it to act on the line.
    **Both lines are obligations for this tick, not information. A tick may not end with either
    outstanding.** `IDLE:` is a row that is not terminal, has a session, is not waiting on the
    USER (no open `pending[]` item, not `review`), and has no turn running anywhere — not `busy`

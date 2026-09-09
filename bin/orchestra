@@ -8,6 +8,8 @@ import { journalCommand, inboxCommand, beatCommand, watchAnswersCommand, watchWo
 import { readyCommand, tickGateCommand, tickOutcomeCommand, tickWakeCommand, yieldCheckCommand } from '../lib/cli/tick.mjs';
 import { driveCommand } from '../lib/cli/drive.mjs';
 import { briefCommand } from '../lib/cli/brief.mjs';
+import { costCommand } from '../lib/cli/cost.mjs';
+import { retireCommand } from '../lib/cli/retire.mjs';
 import { archiveCommand, archiveImagesCommand } from '../lib/cli/archive.mjs';
 import { landCommand, awaitCommand, queueListCommand } from '../lib/cli/gate.mjs';
 import { monitorCommand, instancesCommand } from '../lib/cli/monitor.mjs';
@@ -31,6 +33,8 @@ register('lock', { run: lockCommand });
 register('ready', { run: readyCommand });
 register('drive', { run: driveCommand });
 register('brief', { run: briefCommand });
+register('cost', { run: costCommand });
+register('retire', { run: retireCommand });
 register('tick-gate', { run: tickGateCommand });
 register('tick-outcome', { run: tickOutcomeCommand });
 register('tick-wake', { run: tickWakeCommand });

@@ -117,6 +117,15 @@ has landed:
   and plan on disk for it, and the commit the worktree was cut from — the four to eleven Bash calls
   every measured worker session spent rediscovering the project, and then re-read for the rest of
   its life.
+- **`orchestra cost [--json]`** — what every live session actually costs, measured off its own
+  transcript rather than estimated from its turn count: requests, boot prefix, current prefix, total
+  read, and for each row whether it is past the retirement threshold or which guard is holding it.
+- **`orchestra retire <key>`** — hand a long worker's work to a fresh session on the same worktree.
+  It drives one wrap-up turn asking for a note under four headings, writes that note onto the row,
+  stops the session and clears it — leaving the row for `ready`'s `RELAUNCH:` line, so the
+  replacement starts through the launch path that is already guarded. The threshold (`retireAt`,
+  200 k of prefix) was chosen by replaying 122 real sessions; a session is never retired below twice
+  its own boot, which is what stops an expensive hand-over retiring its own replacement for ever.
 - **`orchestra roadmap <lint|board|publish|enrol|claim|release|open|reserve|sync>`**. A roadmap may
   declare `destination: local` in its frontmatter and then publishes under `roadmaps.published`
   whatever the mode is — visible to this machine only, which is what a pull-request sweep uses.

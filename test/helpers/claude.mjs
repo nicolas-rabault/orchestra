@@ -21,7 +21,9 @@ case "$1" in
   -p)
     printf '%s' "$5" > "$D/prompt-$3.txt"
     while [ -f "$D/hold" ]; do sleep 0.05; done
-    if [ -f "$D/refuse" ]; then cat "$D/refuse"; else echo "report: turn done for $3"; fi ;;
+    if [ -f "$D/refuse" ]; then cat "$D/refuse";
+    elif [ -f "$D/answer" ]; then cat "$D/answer";
+    else echo "report: turn done for $3"; fi ;;
 esac
 `;
 
@@ -43,6 +45,10 @@ export function withFakeClaude(fn) {
     hold: () => writeFileSync(join(dir, 'hold'), ''),
     release: () => rmSync(join(dir, 'hold'), { force: true }),
     refuse: (text) => writeFileSync(join(dir, 'refuse'), `${text}\n`),
+    // What a turn PRINTS when it succeeds — a worker's report, or the hand-over note a wrap-up
+    // turn is asked for. `refuse` is the same mechanism for the opposite outcome, and the two are
+    // separate files so a suite cannot accidentally assert a refusal against a successful reply.
+    answer: (text) => writeFileSync(join(dir, 'answer'), `${text}\n`),
     calls: () => { try { return readFileSync(join(dir, 'calls.log'), 'utf8'); } catch { return ''; } },
     prompt: (uuid) => { try { return readFileSync(join(dir, `prompt-${uuid}.txt`), 'utf8'); } catch { return null; } },
   };

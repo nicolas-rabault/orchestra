@@ -84,7 +84,10 @@ const OUTLINE = [
   // brief the reader had not met yet.
   '## Worker briefs',
   '## Design→execution handoff (design tasks)',
-  '## Retiring a long worker (EXPERIMENT — one row at a time)',
+  // No longer "(EXPERIMENT — one row at a time)": the plugin measures a session's real token use
+  // now (`orchestra cost`) and the threshold was chosen by simulation over 122 real sessions, so
+  // the caveat the old title carried has an answer.
+  '## Retiring a long worker',
   '## The stand-down tick',
   '### The answer net, and what has no net under it yet',
 ];
