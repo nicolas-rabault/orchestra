@@ -177,3 +177,21 @@ test('a project may point pr.direction at a committed directory', () => {
   assert.ok(cfg.defaulted.includes('pr.ledger'));
   r.cleanup();
 });
+
+test('external linked worktree uses main config instead of an unrelated parent config', () => {
+  const r = repo({ mode: 'offline' });
+  const outer = realpathSync(mkdtempSync(join(tmpdir(), 'orchestra-external-')));
+  const wt = join(outer, 'worker');
+  try {
+    mkdirSync(join(outer, '.orchestra'));
+    writeFileSync(join(outer, '.orchestra/config.json'), JSON.stringify({ mode: 'online' }));
+    execFileSync('git', ['worktree', 'add', '--detach', wt], { cwd: r.root, stdio: 'pipe' });
+    rmSync(join(wt, '.orchestra'), { recursive: true, force: true });
+    assert.equal(findConfig(wt), join(r.root, '.orchestra/config.json'));
+    assert.equal(loadConfig(wt).root, r.root);
+    assert.equal(loadConfig(wt).mode, 'offline');
+  } finally {
+    execFileSync('git', ['worktree', 'remove', '--force', wt], { cwd: r.root, stdio: 'pipe' });
+    rmSync(outer, { recursive: true, force: true });
+  }
+});
