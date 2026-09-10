@@ -164,8 +164,8 @@ first time it is opened, whether or not it ever is. **The inbox side costs nothi
 has answered from the page** — no `id`, no stamp, no hook read, before that first answer exists.
 
 1. **Append one line to `.orchestra/journal.jsonl` per event** — that file, and never
-   `inbox.jsonl`, which is the page's file and the one thing you never write. One writer per file
-   is what makes this lock-free; two writers is the only way it can corrupt. Create
+   `inbox.jsonl`, which is the page's file and the one thing you never write. The conductor writes orchestration events; workers may publish progress notes only through
+   the atomic `progress` command described above. Never append raw file content. Create
    `journal.jsonl` on your first event — the command does that itself — do not wait for it to
    exist.
 
