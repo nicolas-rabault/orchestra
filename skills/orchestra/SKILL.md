@@ -46,7 +46,7 @@ else.
 
 ## What is not in this file, and when to read it
 
-This file is the tick. Seven things a tick needs only SOMETIMES live beside it, in
+This file is the tick. Runtime-specific and occasional instructions live beside it, in
 `reference/`, and a tick that does not reach one never pays for it — the whole point: measured
 2026-09-09, this skill cost 32.6 k tokens at every conductor boot and rode in the prefix of all
 five hundred-odd requests that followed, so a tick that launched nothing still paid for the
@@ -56,6 +56,7 @@ Read one when the tick reaches its situation, and not before:
 
 | Read | When |
 |---|---|
+| `reference/codex.md` | Before conducting from Codex desktop; native independent tasks replace only Claude's transport |
 | `reference/first-run.md` | `orchestra doctor` says this project has not opted in, or there is no `state.json` at all, or this MACHINE has never launched a `--bg` worker. Onboarding, adoption and preflight |
 | `reference/asking-the-user.md` | Before you put a question to the user, and before you decide not to. The framing pass, the one interruption, the decision template |
 | `reference/hands-on-gate.md` | A row's acceptance needs a human to look, or you are about to start a dev server. The gate, and the dev-server sweep |
