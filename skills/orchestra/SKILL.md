@@ -44,6 +44,19 @@ a project has one, read off `doctor` `mode`, `name`, `id`, `language`, `mainBran
 else.
 
 
+## Roadmap worker engines
+
+There is one conductor per project, regardless of how many worker engines are used. Reserve a
+roadmap's engine locally with `orchestra roadmap runtime <slug> claude` or `codex`; omit the
+engine to inspect it, or use `inherit` to remove the reservation. This is separate from ownership
+and claims. An existing session keeps its recorded runtime (missing means legacy Claude).
+A new worker follows the roadmap reservation, otherwise the conductor runtime, otherwise Claude.
+Read the launch plan's runtime and use that engine's transport; never silently substitute the
+other engine when unavailable. Codex models are the user's native defaults, not Claude labels.
+Every worker emits `orchestra notify <task-key>` before its final report/question; with an enabled
+Codex conductor this queues an event, while Claude retains its existing watches. The final report
+and ordinary claims, human-look and landing rules remain unchanged.
+
 ## What is not in this file, and when to read it
 
 This file is the tick. Runtime-specific and occasional instructions live beside it, in

@@ -112,31 +112,20 @@ ticks. Inspect existing automations and update rather than duplicate. The prompt
 the project and this skill, poll real worker tasks, read the inbox, drive owed native turns, apply
 the normal gates, and remain quiet unless something meaningful changes or the user must act.
 Use the app automation tool, not a shell cron or the Claude `install-heartbeat` command.
-The heartbeat must check the inbox every minute (`FREQ=MINUTELY;INTERVAL=1`). Update an existing
-conductor heartbeat instead of adding a second one. Keep full roadmap reconciliation hourly
-when nothing has changed. First run `orchestra inbox`
-and inspect native workers using saved cursors and immediate `wait_threads` snapshots. A changed
-worker, completion, attention flag, unanswered monitor reply, or outstanding landing requires
-processing now, not after an hour. Exit silently only if none of these needs action and the last
-full tick is less than an hour old. Store that full-tick timestamp as `conductor.lastFullTickAt` only
-after a complete tick. Missing timestamps require a full tick. Inbox checks do not advance it.
-A scheduled tick must release the conductor lock when done, just like an interactive tick.
+Use event delivery as the primary path. After verifying `codex queue` wakes the existing native
+conductor on this host, record `conductor.eventTransport: "codex-queue"`. The monitoring server
+queues a wake after saving an answer, a completed landing queues a wake after recording its
+outcome, and each worker calls `orchestra notify <task-key>` immediately before its final report
+or question. These signals address the existing conductor UUID; they never create a session.
+The notification is only a wake: read the inbox and native report/gate evidence as authority.
+A worker signal may arrive before its final message: wait for that turn to complete before
+consuming its report. Never respond to a wake by sending another wake.
 
-Codex desktop does not provide Claude's persistent `Monitor` tool or `SendMessage` semantics.
-Do not start a detached loop and claim it wakes this conversation: it does not. Poll inbox during
-active ticks and use the minute heartbeat between turns. The UserPromptSubmit inbox hook only
-injects answers when a turn starts; it cannot wake an idle conductor. Never present that hook
-alone as automatic delivery. A minute schedule is polling, not instantaneous notification;
-host availability and scheduler delays still apply.
-
-Prefer an actual host-supported event transport when it is available and verified to wake this
-same conductor. `codex queue` accepting text proves queueing, not that an idle desktop task starts
-a turn. Likewise an app-server protocol schema does not prove that the desktop exposes its
-control socket. Test the exact endpoint against a known session before enabling such a bridge;
-never start a competing conductor or silently substitute a separate CLI daemon. Until verified,
-keep the native heartbeat fallback. Claude keeps its Monitor answer/worker watches and the
-hourly recovery heartbeat; Codex uses native task completion waits while active. Neither runtime
-should schedule ordinary work that an already-received event can advance.
+Keep one hourly native heartbeat as recovery for lost events, a stopped monitor or an unavailable
+queue command. If event transport is unavailable on a host, use a minute heartbeat temporarily
+and say why; do not pretend queue acceptance is proof of consumption. Preserve the inbox and
+report on a delivery failure and let recovery reconcile them. The monitor distinguishes a queued
+wake from a consumed answer. Do not retry ambiguous queue submissions blindly.
 
 On every wake, process monitor answers BEFORE routine reporting. An answer is already a user
 instruction: never wait for a chat message or ask whether to relay it. Acquire the native lock,
@@ -146,6 +135,14 @@ only through the answers actually handled. On failed or ambiguous dispatch, do n
 the answer: inspect the worker before retrying. Human acceptance continues to the configured
 landing gates without another merge approval. Publish new questions in pending and the journal
 in the same turn; a final worker report or a chat-only question is not a monitor question.
+
+Use native completion waits while active rather than waiting for the recovery schedule. Claude
+keeps its Monitor answer/worker watches; workers of either engine use notify to wake a Codex
+conductor. Codex queue wake was observed on this host after a short delay: an immediate idle
+snapshot is not evidence of failure. Do not start a separate app-server daemon to imitate the
+native desktop endpoint. Keep full reconciliation timestamps as conductor.lastFullTickAt only
+after completing a full tick, never merely after an inbox check.
+
 Take `orchestra lock acquire --kind conductor --session <threadId> --runtime codex`.
 Keep the tick lock only during the tick, and never fabricate a live process beat. A native lock
 uses a conservative four-hour lease when no process heartbeat exists; release it at the end of

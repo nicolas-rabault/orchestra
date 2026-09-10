@@ -440,3 +440,17 @@ test('an image naming an unknown project is refused', async () => {
   await handlerFor(fixture('alpha'))(fakeReq('GET', '/api/image?project=ffffff&p=.orchestra/images/shot.png'), res);
   assert.equal(res.code, 400);
 });
+
+test('saves an answer before waking the existing conductor and reports queueing honestly', async () => {
+  const f = fixture('event-answer');
+  let calls = 0;
+  const handler = createHandler({ projects: () => [{ id: f.cfg.id, root: f.root, cfg: f.cfg }], port: FAKE_PORT, publicDir: PUBLIC_DIR,
+    notify(root, event) {
+      calls++; assert.equal(root, f.root); assert.equal(event, 'monitor answer available');
+      assert.equal(JSON.parse(readFileSync(join(root, '.orchestra/inbox.jsonl'), 'utf8').trim()).answer, 'oui');
+      return 'queued';
+    } });
+  const res = fakeRes();
+  await handler(fakeReq('POST', '/api/answer', { body: JSON.stringify({ project: f.cfg.id, task: 'x/X1', pending: 'p1', answer: 'oui' }) }), res);
+  assert.equal(res.code, 200); assert.equal(JSON.parse(res.body).conductor, 'queued'); assert.equal(calls, 1);
+});
