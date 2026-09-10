@@ -278,7 +278,7 @@ test('mixed fleet drives Claude while emitting native Codex outbound without a C
     const state = readState(r.root);
     const row = state.tasks.find((t) => t.id === 'demo/R1');
     Object.assign(row, { runtime: 'codex', session: '01a08a8e-7713-71c1-803b-ce878c946267', hostId: 'local',
-      observation: { threadId: '01a08a8e-7713-71c1-803b-ce878c946267', hostId: 'local', status: 'completed', observedAt: new Date().toISOString() } });
+      observation: { threadId: '01a08a8e-7713-71c1-803b-ce878c946267', hostId: 'local', status: 'completed', observedAt: new Date().toISOString(), turnId: 'before', startedAt: new Date(Date.now() - 1000).toISOString() } });
     writeState(r.root, state);
     const result = run(r.root, 'drive', 'demo/A1', 'demo/R1', '--for=30');
     assert.equal(result.code, 0, result.out);

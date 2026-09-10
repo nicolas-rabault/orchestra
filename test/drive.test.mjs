@@ -110,7 +110,7 @@ test('a relay with an unreadable timestamp is still owed, with no age rather tha
 });
 
 test('the nudge carries the relay text verbatim at its head, and only the continue nudge otherwise', () => {
-  const text = 'L\'UTILISATEUR A REGARDÉ LE DÔME.\n\n« passe la barre en dessous »';
+  const text = '  L\'UTILISATEUR A REGARDÉ LE DÔME.\n\n« passe la barre en dessous »\n';
   const withRelay = nudgeFor(row('demo/R1', { relay: { text, writtenAt: 't' } }));
   assert.ok(withRelay.startsWith(text));
   assert.match(withRelay, /act on the message above/i);
