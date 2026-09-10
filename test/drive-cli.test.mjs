@@ -271,3 +271,23 @@ test('drive skips what it cannot or must not resume, and says so', () => {
     assert.match(run(r.root, 'drive', 'demo/ZZ').out, /no such row\(s\) — demo\/ZZ/);
   });
 });
+
+test('mixed fleet drives Claude while emitting native Codex outbound without a Claude resume for it', () => {
+  withFakeClaude((fake) => {
+    const r = fleet();
+    const state = readState(r.root);
+    const row = state.tasks.find((t) => t.id === 'demo/R1');
+    Object.assign(row, { runtime: 'codex', session: '01a08a8e-7713-71c1-803b-ce878c946267', hostId: 'local',
+      observation: { threadId: '01a08a8e-7713-71c1-803b-ce878c946267', hostId: 'local', status: 'completed', observedAt: new Date().toISOString() } });
+    writeState(r.root, state);
+    const result = run(r.root, 'drive', 'demo/A1', 'demo/R1', '--for=30');
+    assert.equal(result.code, 0, result.out);
+    const outbound = JSON.parse(result.out.split('\n').find((line) => line.startsWith('{')));
+    assert.equal(outbound.tool, 'send_message_to_thread');
+    assert.equal(outbound.arguments.threadId, row.session);
+    assert.ok(outbound.arguments.prompt.startsWith(RELAY));
+    assert.ok(fake.calls().includes('--resume a1-uuid'));
+    assert.ok(!fake.calls().includes(row.session));
+    assert.equal(relayOf(r, row.id).receipt, undefined);
+  });
+});

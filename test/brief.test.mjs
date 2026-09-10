@@ -204,3 +204,14 @@ test('an unknown --model is refused, not silently ignored', () => {
   assert.equal(res.status, 1);
   assert.match(res.stderr, /unknown --model "excution"/);
 });
+
+test('Codex launch brief uses native tasks and report collection without Claude background protocol', () => {
+  const r = published();
+  const res = run(r.root, ['demo/D1', '--runtime', 'codex']);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /independent native Codex task/);
+  assert.match(res.stdout, /wait_threads\/read_thread/);
+  assert.ok(!res.stdout.includes('SENDING A MESSAGE BACK DOES NOT WORK'));
+  assert.ok(!res.stdout.includes('dispatch an Explore subagent'));
+  assert.match(run(r.root, ['demo/D1', '--runtime', 'typo']).stderr, /unsupported brief runtime/);
+});
