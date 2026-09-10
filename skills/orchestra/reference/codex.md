@@ -100,14 +100,29 @@ Use a native **thread heartbeat automation** attached to the conductor for recur
 ticks. Inspect existing automations and update rather than duplicate. The prompt must rehydrate
 the project and this skill, poll real worker tasks, read the inbox, drive owed native turns, apply
 the normal gates, and remain quiet unless something meaningful changes or the user must act.
-Use the app automation tool, not a shell cron or the Claude `install-heartbeat` command. Keep the
-ordinary hourly cadence unless the user requested another one. A scheduled tick must release
-the conductor lock when done, just like an interactive tick.
+Use the app automation tool, not a shell cron or the Claude `install-heartbeat` command.
+The heartbeat must check the inbox every minute (`FREQ=MINUTELY;INTERVAL=1`). Update an existing
+conductor heartbeat instead of adding a second one. Keep full roadmap ticks hourly when nothing
+has changed: first run `orchestra inbox`, and exit silently when it is empty and the last full
+tick is less than an hour old. Store that full-tick timestamp as `conductor.lastFullTickAt` only
+after a complete tick. Missing timestamps require a full tick. Inbox checks do not advance it.
+A scheduled tick must release the conductor lock when done, just like an interactive tick.
 
 Codex desktop does not provide Claude's persistent `Monitor` tool or `SendMessage` semantics.
 Do not start a detached loop and claim it wakes this conversation: it does not. Poll inbox during
-active ticks and rely on the native heartbeat between turns. This means answers posted while the
-conductor is idle wait until the next scheduled tick; do not promise two-second notification.
+active ticks and use the minute heartbeat between turns. The UserPromptSubmit inbox hook only
+injects answers when a turn starts; it cannot wake an idle conductor. Never present that hook
+alone as automatic delivery. A minute schedule is polling, not instantaneous notification;
+host availability and scheduler delays still apply.
+
+On every wake, process monitor answers BEFORE routine reporting. An answer is already a user
+instruction: never wait for a chat message or ask whether to relay it. Acquire the native lock,
+relay each answer verbatim to its independent worker with the native task tool, move its pending
+item to answered (preserve askedAt, add answeredAt), journal an answer, and advance inboxSeen
+only through the answers actually handled. On failed or ambiguous dispatch, do not acknowledge
+the answer: inspect the worker before retrying. Human acceptance continues to the configured
+landing gates without another merge approval. Publish new questions in pending and the journal
+in the same turn; a final worker report or a chat-only question is not a monitor question.
 Take `orchestra lock acquire --kind conductor --session <threadId> --runtime codex`.
 Keep the tick lock only during the tick, and never fabricate a live process beat. A native lock
 uses a conservative four-hour lease when no process heartbeat exists; release it at the end of
