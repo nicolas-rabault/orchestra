@@ -8,10 +8,10 @@ import { startTurn } from '../lib/cli/drive.mjs';
 const now = Date.now();
 const iso = (delta = 0) => new Date(now + delta).toISOString();
 const uuid = '01a08a8e-7713-71c1-803b-ce878c946267';
-const make = () => attachCodex({ id: 'demo/A1', status: 'claimed', session: 'old', pending: [], relay: { text: 'exact reply', writtenAt: iso(-2000) }, codexWorker: { agentId: 'wrong' } }, uuid);
+const make = () => attachCodex({ id: 'demo/A1', status: 'claimed', session: 'old', model: 'opus', pending: [], relay: { text: 'exact reply', writtenAt: iso(-2000) }, codexWorker: { agentId: 'wrong' } }, uuid);
 const snap = (status, extra = {}) => ({ threadId: uuid, hostId: 'local', status, observedAt: iso(), ...extra });
 test('attach retains old session and removes subagent field; rejects non-native identity', () => {
- const row = make(); assert.equal(row.previousSession.session, 'old'); assert.equal(row.codexWorker, undefined);
+ const row = make(); assert.equal(row.previousSession.session, 'old'); assert.equal(row.model, null); assert.equal(row.previousSession.model, 'opus'); assert.equal(row.codexWorker, undefined);
  assert.throws(() => attachCodex(row, 'agent-name'));
  assert.deepEqual(attachCodex(row, uuid), row);
 });
