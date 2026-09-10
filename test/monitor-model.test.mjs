@@ -821,3 +821,13 @@ test('a row with no base still branches from the main branch', () => {
     assert.deepEqual(buildModel({ ...base, register: [] }).runAsks, []);
   });
 }
+
+test('enrolment todo does not mask the board status while explicit review remains authoritative', () => {
+  for (const status of ['claimed', 'landed']) {
+    const m = buildModel({ ...base, board: { status: 'ok', rows: [boardRow({ status })] }, register: [regRow({ status: 'todo' })] });
+    if (status === 'landed') assert.equal(m.nodes.length, 0);
+    else assert.equal(m.nodes[0].status, status);
+  }
+  const m = buildModel({ ...base, register: [regRow({ status: 'review' })] });
+  assert.equal(m.nodes[0].status, 'review');
+});

@@ -141,6 +141,20 @@ draft (`roadmaps.drafts`). It does NOT apply to a published roadmap (`roadmaps.p
 roadmap's parsed skeleton: the seven field names, `**Why.**`, `**Acceptance.**`, ids and branch
 names are English in every channel, and `orchestra roadmap lint` fails if they are not.
 
+## Worker progress in the monitor
+
+Workers on either runtime must publish meaningful progress with
+`orchestra progress <task-key> "<message>"`: at the start of a substantive step, after a
+verification result, when blocked, and when finishing. Write concise observations in the
+user's language, never an update per tool call or an artificial heartbeat. A finishing note
+states the evidence; it does not itself mark the task complete.
+
+This is an explicit exception to conductor-only journal writing: workers may append notes
+through `progress`, which validates the registered task and uses the journal's complete-line
+writer. Workers still never edit `state.json`, `inbox.jsonl`, or journal files directly.
+Progress is visible in the monitor and sends no wake event. A final report or question remains
+in the worker's final message and uses `orchestra notify` for the separate conductor wake.
+
 ## The journal (three mechanical obligations, no decision)
 
 The monitoring page reads three files; you write two of them and it writes the third. Never read
