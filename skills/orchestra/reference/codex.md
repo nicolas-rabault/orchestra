@@ -40,8 +40,12 @@ created. Get a fresh `wait_threads` snapshot, read its report, then record the o
 
 ## Observe and resume
 
-Use bounded `wait_threads` calls (up to eight workers together). Reuse each returned cursor as
-`afterCursor`; a timeout is an observation, not a failure. Prefer snapshots over rereading whole
+Use event-driven `wait_threads` while conducting: wait for worker completion or attention,
+with a bounded wait of at most 60 seconds, then process the result and check the monitor inbox.
+Use up to eight workers together and reuse each returned cursor as `afterCursor`. A multi-worker
+wait can return only the first changed worker: do not infer the other workers' state from it.
+A timeout is an observation, not a failure. Do not return to an hourly schedule while known
+worker completions or accepted user answers still need action. Prefer snapshots over rereading whole
 conversations. Record the observation with:
 
 ```
@@ -57,7 +61,9 @@ The file contains `threadId`, `hostId`, `observedAt` from the clock, and `status
   task is finished: read the final report and verify claimed work on disk before changing status.
 - `unknown`: native lookup failed, the state is ambiguous, or the turn failed/interrupted.
 
-Include the real latest `turnId` and `startedAt` when available (normalize Unix seconds to ISO).
+Include `turnId` from `latestTurn.id` and `startedAt` from the native snapshot (Unix seconds
+or ISO). A dispatch requires a fresh completed baseline; a needs-input flag may be an active
+approval and does not authorize resuming or approving it.
 Observations expire after five minutes. `ready` then prints `REFRESH`, holds new launches and
 does not invent a running or stopped process. Refresh from the native app, never from Claude's
 process list. The monitor shows these native observations and their uncertainty.
@@ -74,9 +80,14 @@ orchestra codex dispatched <key> <outbound.json>
 Do not retry an ambiguous dispatch automatically: inspect the native task first to avoid sending
 the same work twice. The CLI does not itself invoke app tools and cannot infer delivery.
 
-On a later successful completion, include that `dispatchId` and the matching native `turnId` in
-the observation. If the send tool supplied no turn id, completion needs a native `startedAt`
-at or after `acceptedAt`. No proof means no receipt: leave the relay owed and investigate. The
+Keep the outbound's `preparedAt` and baseline unchanged when recording dispatch. On a later
+successful completion, include its `dispatchId` and the native `turnId` and `startedAt` in the
+observation. If the send tool supplied no turn id, receipt requires a different turn from the
+pre-send completed baseline, starting no earlier than the preparation second. Comparing with
+acceptedAt alone is wrong: the turn can start before the tool returns and native timestamps
+have second precision. Serialize sends to each worker: this baseline proof assumes no concurrent
+sender starts another turn between the snapshot and the send. If that is uncertain, inspect the
+actual turn history before acknowledging. No proof means no receipt: leave the relay owed and investigate. The
 command stamps a receipt only for a completed, matching turn and the unchanged exact relay.
 An old completed snapshot, a creation result, an approval wait or a model refusal is not delivery.
 For a migration's first brief, verify its work directly; if no dispatch evidence exists, explicitly
@@ -102,9 +113,12 @@ the project and this skill, poll real worker tasks, read the inbox, drive owed n
 the normal gates, and remain quiet unless something meaningful changes or the user must act.
 Use the app automation tool, not a shell cron or the Claude `install-heartbeat` command.
 The heartbeat must check the inbox every minute (`FREQ=MINUTELY;INTERVAL=1`). Update an existing
-conductor heartbeat instead of adding a second one. Keep full roadmap ticks hourly when nothing
-has changed: first run `orchestra inbox`, and exit silently when it is empty and the last full
-tick is less than an hour old. Store that full-tick timestamp as `conductor.lastFullTickAt` only
+conductor heartbeat instead of adding a second one. Keep full roadmap reconciliation hourly
+when nothing has changed. First run `orchestra inbox`
+and inspect native workers using saved cursors and immediate `wait_threads` snapshots. A changed
+worker, completion, attention flag, unanswered monitor reply, or outstanding landing requires
+processing now, not after an hour. Exit silently only if none of these needs action and the last
+full tick is less than an hour old. Store that full-tick timestamp as `conductor.lastFullTickAt` only
 after a complete tick. Missing timestamps require a full tick. Inbox checks do not advance it.
 A scheduled tick must release the conductor lock when done, just like an interactive tick.
 
@@ -114,6 +128,15 @@ active ticks and use the minute heartbeat between turns. The UserPromptSubmit in
 injects answers when a turn starts; it cannot wake an idle conductor. Never present that hook
 alone as automatic delivery. A minute schedule is polling, not instantaneous notification;
 host availability and scheduler delays still apply.
+
+Prefer an actual host-supported event transport when it is available and verified to wake this
+same conductor. `codex queue` accepting text proves queueing, not that an idle desktop task starts
+a turn. Likewise an app-server protocol schema does not prove that the desktop exposes its
+control socket. Test the exact endpoint against a known session before enabling such a bridge;
+never start a competing conductor or silently substitute a separate CLI daemon. Until verified,
+keep the native heartbeat fallback. Claude keeps its Monitor answer/worker watches and the
+hourly recovery heartbeat; Codex uses native task completion waits while active. Neither runtime
+should schedule ordinary work that an already-received event can advance.
 
 On every wake, process monitor answers BEFORE routine reporting. An answer is already a user
 instruction: never wait for a chat message or ask whether to relay it. Acquire the native lock,
