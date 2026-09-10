@@ -1,0 +1,23 @@
+{
+  "name": "orchestra",
+  "version": "0.12.0+codex.20260910094339",
+  "description": "Conduct roadmaps with independent Claude or Codex sessions, a shared monitor and serialized merge gates.",
+  "author": {
+    "name": "Nicolas Rabault"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Orchestra",
+    "shortDescription": "Independent worker sessions for project roadmaps",
+    "longDescription": "Conduct project roadmaps with Claude Code or native Codex desktop tasks, preserving claims, journals, human review and merge gates.",
+    "developerName": "Nicolas Rabault",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Conduct this project's roadmaps with independent worker sessions."
+    ]
+  }
+}

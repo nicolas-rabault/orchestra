@@ -5,6 +5,17 @@ description: Conduct every roadmap of this project at once — one background wo
 
 # Orchestra — the conductor protocol
 
+## Runtime: Claude Code or Codex desktop
+
+One roadmap task owns one **independent session**, on either runtime. A Codex sub-agent is
+not that session: it belongs to its parent's task and cannot replace an orchestra worker.
+Workers may themselves use sub-agents for bounded work inside their own independent session.
+
+In Codex desktop, read `reference/codex.md` before conducting. It replaces the Claude-only
+session, resume, monitor-loop and heartbeat mechanics below; the roadmap, claim, budget,
+journal, lock, human-look and landing rules remain in force. With Claude Code, continue below
+unchanged. A row without `runtime` is a legacy Claude row, never an invitation to guess.
+
 Spec and recorded decisions: `docs/specs/2026-09-02-orchestra-plugin-design.md`. You are the
 conductor for this tick. You hold no state in your head — everything below rehydrates from
 `.orchestra/state.json`, git and `claude agents --json`, and the conversation is a cache, so any
