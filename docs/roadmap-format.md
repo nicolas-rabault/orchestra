@@ -23,7 +23,9 @@ the reader.
 **Acceptance.** How you know it landed, and with which instrument.
 ```
 
-A heading (`### <ID> — <title>`), the seven fields in any order, then the two required paragraphs.
+A heading (`### <ID> — <title>`), the seven fields in any order, then Why and Acceptance.
+New generated tasks also carry a **Scope.** paragraph defining the implementation boundary and stop condition.
+Legacy tasks without Scope remain readable.
 `—` (U+2014, an em dash) is the explicit way to write "none" — never leave a field blank, and never
 type a hyphen or an empty string where a field admits none.
 
@@ -115,3 +117,29 @@ orchestra roadmap lint
 
 Run it before you consider a roadmap finished. It reports every violation on this page, by task and
 line.
+
+## 8. Bounded structured drafts
+
+Prefer `orchestra roadmap draft <input.json>` to composing Markdown by hand. The command works
+identically in Claude and Codex, offline or online, without accessing the published stores.
+It writes an exclusive draft, never overwrites, publishes or launches a worker.
+
+Input: `roadmap`, `intent`, `outcome`, `excluded` (string array), and `tasks` (1–8).
+Optional `destination: local`. Each task requires `id`, `title`, `why`, `acceptance`, `scope`;
+optional `touches`, `deps`, `design`, `lane`. Omitted arrays are empty; design defaults false.
+Order follows array order; branch is `codex/<roadmap>/<lowercase-id>-task` for either engine.
+Text is non-empty and single-line. Unknown keys fail. Each task allows at most five Touches
+and 180 words across Why, Acceptance and Scope. The normal linter enforces these per-task
+limits whenever Scope is present, so editing the Markdown cannot bypass them. Dependency
+cycles within a draft are errors; qualified dependencies outside it require checking the board.
+
+Describe the user's smallest useful outcome. Start with one task; split only independent
+outcomes or necessary prerequisites that would make one focused session too large. About
+30 minutes is a sizing target, not a time estimate guaranteed by either engine. Acceptance
+names an existing check and its expected result. Scope excludes unrequested work and says
+when to stop. Keep a prototype local when that is the request. A test platform or design phase
+is not implicit in a bug fix. Material ambiguities need clarification; routine choices do not.
+
+The script validates structure, not meaning. The drafter must compare every task against the
+stated intent before presenting it. Larger requested programmes should be staged explicitly,
+without quietly discarding work or adding ambitious future phases.

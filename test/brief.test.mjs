@@ -82,26 +82,27 @@ test("the task's own spec and plan on disk are named, found by its id", () => {
   writeFileSync(join(r.root, 'docs', 'plans', '2026-09-09-d1.md'), 'plan\n');
   // A sibling task's file must NOT be swept in.
   writeFileSync(join(r.root, 'docs', 'specs', 'd2-other.md'), 'other\n');
+  writeFileSync(join(r.root, 'docs', 'specs', 'd10-other.md'), 'other\n');
   const res = run(r.root, ['demo/D1']);
   assert.match(res.stdout, /docs\/specs\/d1-first-thing\.md/);
   assert.match(res.stdout, /docs\/plans\/2026-09-09-d1\.md/);
-  assert.doesNotMatch(res.stdout, /d2-other/);
+  assert.doesNotMatch(res.stdout, /d2-other|d10-other/);
 });
 
 test('the orientation block precedes the rule that tells the worker to start from it', () => {
   const r = published();
   const res = run(r.root, ['demo/D1']);
-  assert.ok(res.stdout.indexOf('already located and sized') < res.stdout.indexOf('Start from the files named above'),
+  assert.ok(res.stdout.indexOf('already located and sized') < res.stdout.indexOf('start from Touches'),
     'the files must be named before the sentence that points at them');
 });
 
 test('branchTests reaches the brief; a project with none is told not to run the full suite', () => {
   const withTests = published({ config: { branchTests: 'uv run pytest -q' } });
-  assert.match(run(withTests.root, ['demo/D1']).stdout, /run uv run pytest -q on every iteration/);
+  assert.match(run(withTests.root, ['demo/D1']).stdout, /Use uv run pytest -q for relevant changes/);
 
   const without = published();
   const res = run(without.root, ['demo/D1']).stdout;
-  assert.match(res, /configured no narrower command/);
+  assert.match(res, /full suite belongs to the gate/);
   assert.doesNotMatch(res, /run  on every iteration/);
 });
 
@@ -141,7 +142,7 @@ test('--relaunch and --handover prefix the brief instead of replacing it', () =>
 test('the context rule is in every brief, because it is the whole cost of a session', () => {
   const res = run(published().root, ['demo/D1']).stdout;
   assert.match(res, /Keep your own context small/);
-  assert.match(res, /Explore subagent/);
+  assert.match(res, /Search by path or/);
 });
 
 test('an unknown key is an error naming it, not an empty brief', () => {
@@ -214,4 +215,14 @@ test('Codex launch brief uses native tasks and report collection without Claude 
   assert.ok(!res.stdout.includes('SENDING A MESSAGE BACK DOES NOT WORK'));
   assert.ok(!res.stdout.includes('dispatch an Explore subagent'));
   assert.match(run(r.root, ['demo/D1', '--runtime', 'typo']).stderr, /unsupported brief runtime/);
+});
+
+test('JSON briefs carry native selections and Scope without changing the text prompt', () => {
+  const r = published({ config: { workerModels: { codexExecution: 'chosen-model' }, workerThinking: { codexExecution: 'low' } } }, ROADMAP + '\n**Scope.** Only the first thing; stop after its test.\n');
+  const result = run(r.root, ['demo/D1', '--runtime', 'codex', '--json']);
+  assert.equal(result.status, 0, result.stderr);
+  const data = JSON.parse(result.stdout);
+  assert.equal(data.model, 'chosen-model'); assert.equal(data.thinking, 'low');
+  assert.equal(data.prompt, run(r.root, ['demo/D1', '--runtime', 'codex']).stdout);
+  assert.match(data.prompt, /\*\*Scope\.\*\* Only the first thing/);
 });

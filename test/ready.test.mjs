@@ -64,8 +64,8 @@ test('a row with no mine field at all is not demoted behind a stranger', () => {
 });
 
 test('a design task is planned on the design model', () => {
-  assert.equal(planLaunches([row('x/A', { design: true })], 0, 1)[0].model, 'fable');
-  assert.equal(planLaunches([row('x/A')], 0, 1)[0].model, 'opus');
+  assert.equal(planLaunches([row('x/A', { design: true })], 0, 1)[0].model, 'opus');
+  assert.equal(planLaunches([row('x/A')], 0, 1)[0].model, 'sonnet');
 });
 
 test('a question older than the floor is reported, oldest first, unknown age last', () => {

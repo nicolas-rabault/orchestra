@@ -118,7 +118,7 @@ test('the launch plan stands down while a worker turn is owed, and comes back on
     writeState(r.root, paid);
     const after = run(r.root, 'ready').out;
     assert.ok(!after.includes('LAUNCHES HELD'), after);
-    assert.match(after, /^launch: demo\/T1 — a fresh line \[opus\] on demo\/t1$/m);
+    assert.match(after, /^launch: demo\/T1 — a fresh line \[claude; sonnet\] on demo\/t1$/m);
   });
 });
 
@@ -164,6 +164,7 @@ test('drive resumes every stopped worker with the relay verbatim in the message 
     assert.equal(code, 0, out);
     // The registered session was unregistered before its resume, the others resumed directly.
     assert.match(fake.calls(), /^stop a1short$/m);
+    assert.doesNotMatch(fake.calls(), /--model|--effort/, 'legacy unknown choices inherit the resumed session');
     assert.match(out, /^stopped background session a1short \(demo\/A1\)$/m);
     for (const id of ['A1', 'A2', 'R1']) assert.match(out, new RegExp(`^driving: demo/${id} \\[claimed\\]`, 'm'));
     // The relay is the head of the message the worker received — physically, in the prompt argv.
@@ -290,4 +291,40 @@ test('mixed fleet drives Claude while emitting native Codex outbound without a C
     assert.ok(!fake.calls().includes(row.session));
     assert.equal(relayOf(r, row.id).receipt, undefined);
   });
+});
+
+test('Claude resume budget is enforced by the CLI, explicit renewal is audited and does not launch', () => {
+  withFakeClaude(fake => {
+    const r = fleet();
+    const state = readState(r.root);
+    const row = state.tasks.find(t => t.id === 'demo/A1');
+    row.autoResumes = 3; row.model = 'sonnet'; row.thinking = 'medium';
+    writeState(r.root, state);
+    let res = run(r.root, 'drive', 'demo/A1', '--for=0');
+    assert.match(res.out, /LIMIT: demo\/A1/);
+    assert.doesNotMatch(fake.calls(), /--resume a1-uuid/);
+    res = run(r.root, 'drive', '--renew', 'demo/A1', '--reason=Verify the fixed empty-config case');
+    assert.equal(res.code, 0, res.out);
+    assert.equal(readState(r.root).tasks.find(t => t.id === row.id).autoResumes, 0);
+    assert.doesNotMatch(fake.calls(), /--resume a1-uuid/);
+    res = run(r.root, 'drive', row.id, '--for=30');
+    assert.equal(res.code, 0, res.out);
+    assert.equal(readState(r.root).tasks.find(t => t.id === row.id).autoResumes, 1);
+    assert.match(fake.calls(), /--model sonnet --effort medium/);
+  });
+});
+
+test('compact readiness excludes full task history while keeping actionable obligations', () => {
+ withFakeClaude(() => {
+  const r = fleet();
+  const state = readState(r.root);
+  state.tasks[0].note = 'Long historical reasoning that no current action needs.';
+  writeState(r.root, state);
+  const res = run(r.root, 'ready', '--compact');
+  assert.equal(res.code, 0, res.out);
+  const data = JSON.parse(res.out);
+  assert.ok(data.idle.length); assert.ok(data.undelivered.length);
+  for (const key of ['tasks', 'fleet', 'ready']) assert.equal(key in data, false);
+  assert.doesNotMatch(res.out, /Long historical reasoning/);
+ });
 });

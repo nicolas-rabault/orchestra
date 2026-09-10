@@ -23,8 +23,9 @@ start on main. Keep the session title `orchestra-<project id>-<task slug>`.
 The prompt carries `orchestra brief <key> --relaunch --runtime codex` (or the ordinary brief
 with `--runtime codex` for a fresh row),
 the existing handoff, and any undelivered `relay.text` verbatim. Use `--model execution` for the
-design-to-execution handoff. The labels `opus` and `fable` name Claude models only: omit the
-native create tool's model override unless the user chose a Codex model. Tell the worker to
+design-to-execution handoff. Read model and thinking from `orchestra brief <key> --runtime codex --json`. Omit null
+values from native tool arguments. Non-null values are explicit project choices; forward them
+only when authorized and supported by the host. Claude model aliases never select a Codex model. Tell the worker to
 report in its final message, and to leave state.json and landings to the conductor.
 
 Creation is asynchronous. Do not put a queued `clientThreadId` in state.json. Resolve it to a
@@ -68,7 +69,8 @@ Observations expire after five minutes. `ready` then prints `REFRESH`, holds new
 does not invent a running or stopped process. Refresh from the native app, never from Claude's
 process list. The monitor shows these native observations and their uncertainty.
 
-For an idle native worker, `orchestra drive <key>` emits an outbound JSON object instead of
+A `LIMIT` row needs report inspection and a bounded remaining step before explicit budget renewal.
+Attaching a replacement preserves its counter. For an idle native worker, `orchestra drive <key>` emits an outbound JSON object instead of
 running Claude. Save it verbatim. Call `send_message_to_thread` with exactly its `arguments`,
 then add `acceptedAt` from the successful call's clock (and its `turnId` if supplied) to that
 object and run:

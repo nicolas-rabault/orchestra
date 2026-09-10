@@ -689,7 +689,7 @@ test('invokeCommand gives the launch cycle for a task nobody holds', () => {
   assert.equal(lines.length, 2);
   assert.ok(lines[0].includes(`git worktree add ${CFG.worktrees}/c4 -b lod/c4-prefetch ${CFG.mainBranch}`));
   assert.ok(lines[1].includes(`-n orchestra-${CFG.id}-c4`));
-  assert.ok(lines[1].includes('--model opus'));
+  assert.ok(lines[1].includes('--model sonnet'));
 });
 
 test('invokeCommand offers nothing for a landed task', () => {
@@ -706,7 +706,7 @@ test('invokeCommand builds the session name and worktree slug from cfg, and drop
   assert.equal(kind, 'launch');
   assert.equal(lines.length, 2);
   assert.equal(lines[0], 'git worktree add .orchestra/worktrees/lod-c2 -b lod/c2-derived-switch develop');
-  assert.equal(lines[1], 'claude --bg -n orchestra-a3f19c-lod-c2 --model opus --dangerously-skip-permissions "<brief>"');
+  assert.equal(lines[1], 'claude --bg -n orchestra-a3f19c-lod-c2 --model sonnet --effort medium --dangerously-skip-permissions "<brief>"');
   assert.ok(!lines.some((l) => l.includes('npm install')));
 });
 

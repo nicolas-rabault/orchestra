@@ -54,7 +54,7 @@ test('the fixture adopts, ticks and round-trips its register', () => {
 
   // The gate says there is work, and the plan names the launch.
   assert.match(p.run('tick-gate'), /^run hold-awake/);
-  assert.match(p.run('ready'), /launch: demo\/D1 — First thing \[opus\] on demo\/d1-first-thing/);
+  assert.match(p.run('ready'), /launch: demo\/D1 — First thing \[claude; sonnet\] on demo\/d1-first-thing/);
 
   // Nobody holds the baton, so nothing hands back and the lock is free.
   assert.match(p.run('beat'), /nobody is holding the baton/);

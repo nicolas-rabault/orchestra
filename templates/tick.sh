@@ -129,7 +129,7 @@ OUT="$DIR/tick.out"
   # output as a file it can read back. A pipeline's exit status is the last command's — `tee`'s —
   # and nothing here reads it, which is unchanged: `claude`'s own code has never been this script's
   # channel, the log line is.
-  env -u CLAUDE_CODE_CHILD_SESSION claude -p --dangerously-skip-permissions --model opus "/orchestra tick" 2>&1 | tee "$OUT"
+  env -u CLAUDE_CODE_CHILD_SESSION claude -p --dangerously-skip-permissions --model "__TICK_MODEL__" --effort "__TICK_EFFORT__" "/orchestra tick" 2>&1 | tee "$OUT"
   # What the slot bought. A tick refused by the account ceiling prints one line and writes nothing
   # at all — no register, no journal, no `budgetResetAt` — so the next slot re-earns the identical
   # refusal and the monitoring page shows a healthy system. Measured twice on 2026-09-06 in duckJam,

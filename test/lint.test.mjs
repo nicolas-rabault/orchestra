@@ -49,3 +49,16 @@ test('a task with no Why or no Acceptance is refused', () => {
   const v = lint(ROADMAP.replace('**Why.** The player sees the first thing.\n\n', ''));
   assert.ok(v.some((x) => /no paragraph beginning "\*\*Why/.test(x.message)));
 });
+
+test('local cycles, including qualified self-dependencies, cannot publish an unstartable roadmap', () => {
+ for (const dep of ['D1', 'demo/D1'])
+   assert.ok(lint(ROADMAP.replace('- **Deps** —', `- **Deps** ${dep}`)).some(v => /dependency cycle/.test(v.message)));
+ const second = ROADMAP.slice(ROADMAP.indexOf('### D1')).replaceAll('D1', 'D2').replaceAll('d1-', 'd2-').replace('- **Deps** —', '- **Deps** D1');
+ assert.ok(lint(ROADMAP.replace('- **Deps** —', '- **Deps** D2') + second).some(v => /dependency cycle/.test(v.message)));
+});
+
+test('empty evidence and oversized scoped tasks are rejected on the normal publish lint path', () => {
+ assert.ok(lint(ROADMAP.replace('A test asserts it.', '')).some(v => /Acceptance/.test(v.message)));
+ assert.ok(lint(ROADMAP + '\n**Scope.** ' + 'extra '.repeat(181)).some(v => /180 words/.test(v.message)));
+ assert.ok(lint(ROADMAP + '\n**Scope.**\n').some(v => /Scope/.test(v.message)));
+});

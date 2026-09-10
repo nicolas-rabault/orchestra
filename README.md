@@ -228,3 +228,27 @@ would read as a check while checking nothing. `init` prints the step as a remind
 ---
 
 Extracted from `planetCraft` at commit `86bf8412`.
+
+## Bounded tasks and worker cost
+
+`orchestra roadmap draft input.json` generates and validates a draft from explicit intent,
+outcome, exclusions and small tasks. See [the format](docs/roadmap-format.md#8-bounded-structured-drafts).
+Drafting does not publish or launch sessions. `ready --compact` returns actionable scheduling
+information without the full task history; `brief <key> --json` returns the exact worker prompt,
+runtime, role, model and thinking in one call.
+
+The shared worker policy defaults to Sonnet/medium for Claude execution and review, Opus/high
+for design. Codex model and thinking remain the native defaults unless explicitly configured. Scheduled
+Claude ticks use the execution model/effort too; reinstall an existing heartbeat to refresh its script.
+Use project configuration `workerModels` / `workerThinking` with keys `claudeExecution`,
+`claudeDesign`, `claudeReview`, `codexExecution`, `codexDesign`, `codexReview`. Values must be
+supported by the actual host. Native null means omit the override; no automatic upgrade or
+cross-engine fallback occurs. `doctor` shows the resolved policy.
+
+`maxAutoResumes` defaults to 3 and applies to both engines. It counts generic continuation
+nudges across session replacement; genuine relays do not reset it. At the limit, inspect the
+report and narrow the remaining work. `drive --renew <key> --reason="remaining step"` records
+that decision and resets the counter without launching work. This limits repeated dispatches,
+not wall-clock duration or requests inside a native turn. The brief's 30-minute task target and
+stop-after-two-failed-approaches rule are guidance. Claude context retirement remains measured;
+Codex token usage remains unknown without native evidence.

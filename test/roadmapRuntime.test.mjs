@@ -21,7 +21,7 @@ test('roadmap runtime resolution inherits conductor while preserving existing le
  assert.equal(workerRuntime({ id: 'constructor/A' }), 'claude');
  assert.equal(workerRuntime({ id: 'x/A' }), 'claude');
  const plan = planLaunches([{ id: 'demo/A' }, { id: 'native/A', design: true }], 0, 2, options);
- assert.equal(plan[0].runtime, 'claude'); assert.equal(plan[0].model, 'opus');
+ assert.equal(plan[0].runtime, 'claude'); assert.equal(plan[0].model, 'sonnet');
  assert.equal(plan[1].runtime, 'codex'); assert.equal(plan[1].model, null);
 });
 

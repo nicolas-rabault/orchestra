@@ -28,70 +28,6 @@ const readAll = () => docs().map(read).join('\n');
 // One row per item §6 names. `heading` is the section that carries it — several items share one,
 // which is why `anchors` exists: each anchor is the MEASUREMENT the item was paid for, so a section
 // that survives the port with its evidence stripped fails here too.
-const JOURNAL = '## The journal (three mechanical obligations, no decision)';
-const SECTIONS = [
-  { item: 'the nevers', heading: '## The six nevers', anchors: [/never merge a row/i] },
-  { item: "the journal's four keys and the clock", heading: JOURNAL,
-    anchors: [/`ts`, `kind`, `task`, `text`/, /Never type the timestamp/] },
-  { item: 'pending[] with id, options and askedAt', heading: JOURNAL,
-    anchors: [/askedAt/, /A QUESTION THAT IS NOT IN/] },
-  { item: 'the shared inboxSeen cursor and the stolen stamp', heading: JOURNAL,
-    anchors: [/inboxSeen/, /FIVE answers/] },
-  { item: 'the framing pass and the one interruption',
-    heading: '## The framing pass, and the one interruption',
-    anchors: [/thirteen/, /2026-08-14/] },
-  { item: 'the resume cycle; SendMessage does not wake a --bg worker',
-    heading: '## The tick', anchors: [/SendMessage does NOT wake/, /claude stop/] },
-  { item: 'the two 600-second ceilings',
-    heading: '## The tick', anchors: [/TWO 600-SECOND CEILINGS/] },
-  { item: 'exit code and CLI status are non-evidence',
-    heading: '## The tick', anchors: [/NON-EVIDENCE/, /exit 144/] },
-  { item: 'an undelivered relay is an obligation',
-    heading: '## The tick', anchors: [/UNDELIVERED:/, /8 h|eight hours/] },
-  { item: 'the decision template', heading: '## The decision template',
-    anchors: [/Where it stands/] },
-  { item: 'the picture rule',
-    heading: '### A question about a picture must carry the picture', anchors: [/thumbnail/] },
-  { item: 'the hands-on gate and the unfetched URL', heading: '## The hands-on gate',
-    anchors: [/Never hand out a URL you have not fetched/] },
-  { item: 'the dev-server sweep', heading: '### The dev-server sweep',
-    anchors: [/ORPHAN is the only verdict that kills/] },
-  { item: 'the conductor beat and the lock', heading: '## The tick',
-    anchors: [/conductor\.beat\.json/, /orchestra lock acquire/] },
-  { item: 'the stand-down tick, its ticket sweep and its archiving',
-    heading: '## The stand-down tick',
-    anchors: [/orchestra archive --write/, /orchestra archive-images --write/, /\bS1s?\b/] },
-];
-
-// The document's outline, in order. A superset of the headings above: it also pins the sections that
-// §6 does not name item by item but that the port must still carry.
-const OUTLINE = [
-  '## What is not here yet',
-  '## The six nevers',
-  '## The language you write in',
-  '## The journal (three mechanical obligations, no decision)',
-  '## The framing pass, and the one interruption',
-  "## The machine's capacity — the budget owns it, and you do not",
-  '## The tick',
-  '## Adoption (first run, or state lost)',
-  '## Preflight (once per machine, before the first launch)',
-  '## The decision template',
-  '### A question about a picture must carry the picture',
-  '## The hands-on gate',
-  '### The dev-server sweep',
-  // `reference/worker-briefs.md`'s own order: the renderer first, then the two hand-overs that
-  // call it. It reads the other way round in the source document, where the handoff introduced a
-  // brief the reader had not met yet.
-  '## Worker briefs',
-  '## Design→execution handoff (design tasks)',
-  // No longer "(EXPERIMENT — one row at a time)": the plugin measures a session's real token use
-  // now (`orchestra cost`) and the threshold was chosen by simulation over 122 real sessions, so
-  // the caveat the old title carried has an answer.
-  '## Retiring a long worker',
-  '## The stand-down tick',
-  '### The answer net, and what has no net under it yet',
-];
-
 // Every path and command of the source project. A survivor here is transformation 1 or 2 left undone
 // — and a false invocation in a protocol is worse than a false comment, because a worker types it.
 //
@@ -107,44 +43,15 @@ const FORBIDDEN = [
   'reports/', 'com.planetcraft', 'launchctl', 'crontab -',
 ];
 
-// The slice of `text` that belongs to ONE heading — from the heading's own line up to (not
-// including) the next heading at level 2 or 3. Anchors are tested against this slice, not the
-// whole document: several items share a heading, and several headings share a document, so an
-// anchor belonging to a section not yet written must not be satisfiable by prose that belongs to
-// its neighbour. Returns null when the heading itself is absent.
-function sectionSlice(text, heading) {
-  const at = text.indexOf(`\n${heading}\n`);
-  if (at < 0) return null;
-  const bodyStart = at + 1 + heading.length; // index of the heading's own trailing newline
-  const next = text.slice(bodyStart).search(/\n#{2,3} /);
-  const end = next < 0 ? text.length : bodyStart + next;
-  return text.slice(at + 1, end);
-}
-
-test('every section of spec §6 is present, with the measurement that paid for it', () => {
-  const texts = docs().map(read);
-  const missing = [];
-  for (const s of SECTIONS) {
-    // The slice is taken from whichever document carries the heading — never from the whole set
-    // joined together, which would let an anchor be satisfied by a neighbour in another file.
-    const slice = texts.map((t) => sectionSlice(t, s.heading)).find((x) => x !== null) ?? null;
-    if (slice === null) { missing.push(`${s.item}: no heading "${s.heading}" in any of ${docs().length} documents`); continue; }
-    for (const a of s.anchors) if (!a.test(slice)) missing.push(`${s.item}: anchor ${a} absent`);
-  }
-  assert.deepEqual(missing, []);
-});
-
-test('the outline is complete, and each document holds its own sections in order', () => {
-  const texts = docs().map((d) => [d, read(d)]);
-  // Present SOMEWHERE: this is the anti-loss guarantee, and it is what the split must not weaken.
-  const home = OUTLINE.map((h) => [h, texts.find(([, t]) => t.includes(`\n${h}\n`))?.[0] ?? null]);
-  assert.deepEqual(home.filter(([, d]) => d === null).map(([h]) => h), []);
-  // In order WITHIN each document. Across files there is no order to hold — a reference is read
-  // when a tick reaches its situation, not in sequence — so the check is per file.
-  for (const [doc, text] of texts) {
-    const mine = OUTLINE.filter((h) => text.includes(`\n${h}\n`)).map((h) => text.indexOf(`\n${h}\n`));
-    assert.deepEqual(mine, [...mine].sort((a, b) => a - b), `out of order in ${doc}`);
-  }
+// Structural regression checks only: behavioral scenarios still require review.
+test('the compact core retains lifecycle boundaries without loading historical anecdotes', () => {
+ const core = read(SKILL);
+ for (const evidence of [/yield-check/, /conductor lock/, /inboxSeen/, /pending\[\]/,
+   /answered\[\]/, /relay.text/, /orchestra land/, /orchestra await/, /roadmap claim/,
+   /relaunch/, /design handoff/, /LIMIT/, /--renew/, /--compact/, /Codex/, /Claude/])
+   assert.match(core, evidence);
+ assert.ok(core.split(/\s+/).length < 2200, 'core instructions must stay bounded');
+ assert.ok(read(join(ROOT, 'skills/roadmap/SKILL.md')).split(/\s+/).length < 800);
 });
 
 // The index is what makes a reference reachable at all: a conductor reads it to know WHEN to open
@@ -152,7 +59,7 @@ test('the outline is complete, and each document holds its own sections in order
 // a row naming a file that is not there sends a tick to read nothing.
 test("SKILL.md's index names every reference, and every reference is named by it", () => {
   const core = read(SKILL);
-  const from = core.indexOf('\n## What is not in this file, and when to read it\n');
+  const from = core.indexOf('\n## Read only what this tick needs\n');
   assert.ok(from >= 0, 'the core must carry the index of what is not in it');
   const index = core.slice(from, core.indexOf('\n## ', from + 10));
   assert.deepEqual(refs().filter((f) => !index.includes(`reference/${f}`)), [],
@@ -187,7 +94,7 @@ test('nothing in the protocol is a hand-filled placeholder any more', () => {
 test('the protocol sends launches through `orchestra brief`, not through a template', () => {
   const core = read(SKILL);
   assert.match(core, /orchestra brief <key>/);
-  assert.match(core, /IS the brief — do not compose one/);
+  assert.match(core, /Use its prompt exactly/);
 });
 
 // Every `orchestra …` the document names must be a subcommand `bin/orchestra` actually dispatches,

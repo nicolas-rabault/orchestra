@@ -1,182 +1,83 @@
 ---
 name: roadmap
-description: Write, check and manage a project's roadmaps with the orchestra plugin — drafted as markdown, then published either as GitHub issues (online mode) or as local markdown files (offline mode). Status is always derived, never written. Use when the user asks to write a roadmap, add or take a task, file a bug as a task, see the board, claim or release a task, open or reserve a roadmap, or publish a programme.
+description: Draft, lint, publish and manage project roadmaps using orchestra. Use for roadmap requests, adding or claiming tasks, filing bugs, and viewing the board.
 ---
 
-# The roadmap CLI — one grammar, two destinations
+# Roadmaps: the smallest requested result
 
-Every command below is `orchestra roadmap …`, which means:
+Use `"${CLAUDE_PLUGIN_ROOT}/bin/orchestra"` (or this plugin's `bin/orchestra` when unset).
+Run `orchestra doctor` first. If the project has not opted in, follow its initialization instructions.
 
-```sh
-"${CLAUDE_PLUGIN_ROOT}/bin/orchestra" roadmap <subcommand> [args]
-```
+## Understand before drafting
 
-Run it from anywhere inside the project. If `CLAUDE_PLUGIN_ROOT` is unset, the binary is `bin/orchestra`
-at the root of this plugin's own directory. **First, always:**
+Extract the user's intended result, ambition (fix, prototype, production change), and explicit constraints.
+Read only the files needed to resolve that intent. Clarify only an ambiguity that materially changes
+behavior, effort or acceptance. Otherwise state a conservative assumption and proceed.
 
-```sh
-"${CLAUDE_PLUGIN_ROOT}/bin/orchestra" doctor
-```
+Default to **one task**, one observable result, about **30 minutes of focused work** with a targeted
+check. This is a sizing target, not a promise. Split only when independent results or necessary
+prerequisites make that task too large. Do not create design, infrastructure, cleanup, documentation,
+benchmark or test-platform tasks unless requested or indispensable to the result. Keep unrequested
+requirements explicitly excluded. A prototype stays a prototype; a bug stays a targeted correction.
 
-`doctor` prints the resolved configuration in a project that has already opted in, marking every
-key that fell back to a default, and names the mode. **If it says the project has not opted in,
-stop and do what it tells you** — run `orchestra init --mode online` or `--mode offline`. Nothing
-else in this skill works before that, and every other subcommand exits 0 and silent rather than
-complaining, on purpose: that silence is what makes this plugin safe to install globally. (`doctor`,
-`orchestra instances` and `orchestra init` itself are the three exceptions that answer with no
-config at all.)
+Use existing verification tools. Acceptance names both the check and its expected result.
+Scope says what to implement, what to exclude, and where to stop. Stop after acceptance passes;
+future improvements require another request. If uncertainty prevents sizing, define a short discovery
+with a concrete answer as its output, rather than hiding an open-ended investigation inside a build.
+Set design true only for an unresolved consequential design decision, not routine implementation.
 
-## 1. Two destinations, one drafting room
+## Generate a draft
 
-- **`<roadmaps.drafts>/<slug>.md`** (default `.orchestra/drafts/`) is where a roadmap is WRITTEN and
-  linted. Nothing else can see it: it is not published, `board` lists it under `unpublished:`
-  precisely so it cannot be mistaken for work anyone knows about, and nothing will schedule it.
-- **`publish`** is the frontier. What it produces depends on the mode, and that is the only thing
-  the mode changes:
-  - **offline** — the draft moves to `<roadmaps.published>/<slug>.md` (default
-    `.orchestra/roadmaps/`, excluded from this clone) and the drafting file is gone. From that
-    moment that file *is* the roadmap. Nothing is committed: one machine, one register, one owner,
-    so a roadmap is this checkout's own working state. A project that wants its roadmaps shared
-    points `roadmaps.published` at a committed directory and commits them itself — `publish` never
-    will.
-  - **online** — one programme issue plus one issue per task, and the drafting file is deleted.
-    From that moment the issues *are* the roadmap.
-  - **local** — the roadmap's own frontmatter says `destination: local`, and then it publishes to
-    `<roadmaps.published>/<slug>.md` **whatever the mode is**, because a destination is a property
-    of the ROADMAP where the mode is a property of the project. Visible to this machine and to
-    nothing else: not the issue tracker, not the repository, which carries neither the file nor a
-    commit for it. Offline that is the store the mode already picks and asking for it changes
-    nothing. It is what a pull-request sweep's roadmap uses (`skills/pr-sweep`), so an online
-    project reviewing its own PRs does not file a public issue for each one. `local` is the only
-    value the frontmatter accepts.
-
-Either way, `publish` also enrols every task in the register, because publishing is the moment a
-roadmap becomes schedulable and nothing else in the system notices.
-
-**What offline mode cannot answer**, and say so if the user's question depends on it: "is somebody
-already working on this" has an answer **for this machine only**. There is one register and one
-owner. That question is the entire reason online mode exists.
-
-## 2. The grammar
-
-**Read `docs/roadmap-format.md` in this plugin before writing a task.** It is the whole contract and
-this section is not a substitute for it. In outline: a roadmap is prose plus a block per task — a
-`### <ID> — <title>` heading, seven fields in any order, then two required paragraphs.
-
-```
-### S1 — Read the config at boot
-
-- **Roadmap** startup
-- **Order** 1
-- **Deps** —
-- **Touches** `src/main.rs`
-- **Branch** `startup/s1-read-config`
-- **Design** no
-- **Lane** —
-
-**Why.** Plain language: what a user of the thing sees or feels differently once this lands.
-
-**Acceptance.** How you know it landed, and with which instrument.
-```
-
-Three details the linter will refuse and that are worth getting right first time:
-
-- **`—` (U+2014, an em dash) is the explicit way a field says "none"** — never an empty string, a
-  hyphen, or "N/A". Three fields do not admit it: every task belongs to a roadmap, lands on a
-  branch, and either needs a design pass or does not.
-- **A task's key is `<roadmap>/<ID>`.** The ID alone is unique only inside its own file, so pick one
-  no other roadmap has used either.
-- **There is no status field.** Not `Status`, `State`, `Landed`, `Done`, `Progress`, `Session`,
-  `Owner` or `Claimed`. Status is always derived — from git and the register locally, from the issue
-  for a task somebody else owns. Writing one is refused by name.
-
-The last segment of `Branch` must start with the task's lowercased id and a hyphen (`s1-`), because
-the id is what reconciliation matches on. The prefix before it is free.
-
-Check any roadmap before considering it finished:
+Read `docs/roadmap-format.md` when you need the Markdown contract. Prefer structured JSON to
+hand-written blocks. Write a JSON file and run:
 
 ```sh
-orchestra roadmap lint [path…]
+orchestra roadmap draft /path/to/input.json
 ```
 
-With no path it checks every draft. It exits non-zero on an error, prints warnings without failing,
-and says so when a file is clean.
+Example:
 
-## 3. The commands that exist
+```json
+{
+  "roadmap": "copy-link",
+  "intent": "Add a copy-link button to the existing screen.",
+  "outcome": "The button copies the current link.",
+  "excluded": ["Sharing service", "New UI framework"],
+  "tasks": [{
+    "id": "CP1",
+    "title": "Copy the current link",
+    "why": "Users can paste the current link elsewhere.",
+    "acceptance": "Click the button; inspect that the clipboard contains the current URL.",
+    "scope": "Add the button to the existing screen. Stop after the clipboard check. No sharing service.",
+    "touches": ["src/screen.js"]
+  }]
+}
+```
 
-Nine subcommands, and this list is exhaustive — **there is no `new` and no `bug`.**
+Required top-level keys: roadmap, intent, outcome, excluded (array), tasks.
+Optional destination: `local`. Required task keys: id, title, why, acceptance, scope.
+Optional task keys: touches, deps (default empty arrays), design (default false), lane (slug).
+All text is non-empty and single-line. Slugs use lowercase letters, digits and hyphens.
+IDs start with a letter, contain at most 12 alphanumeric characters, and are unique ignoring case.
+The command derives order and branch. It rejects unknown keys, more than 8 tasks, more than 5
+Touches per task, or more than 180 words across Why, Acceptance and Scope. Paths stay inside the
+repository; prefix a new path with `new `. Dependencies may reference later tasks; lint checks them.
+These structural checks cannot prove that a task has one objective: review its ambition yourself.
 
-- **`lint [path…]`** — checks the grammar of the given files, or every draft if none are given.
-- **`board [--json]`** — prints the derived state of every task, reconciled against git and the
-  register. `--json` is the machine-readable form. See §4 for how to read its lines.
-- **`publish [path]`** — lints first and refuses on any error, then publishes per the mode above and
-  enrols the tasks. With no path it takes the first draft in sorted order. If enrolment fails after a
-  successful publish it says so, names the recovery command, and exits non-zero — the roadmap IS
-  published in that case, so re-running `publish` is not what fixes it.
-- **`enrol`** — writes a register row for every published task that has none. Append-only: an
-  existing row is returned untouched, so it can never overwrite a note, a session or a recorded
-  commit subject. Safe to re-run.
-- **`claim <key>`** — takes a task. Online this assigns its issue and labels it, so every other
-  machine sees it taken; offline it succeeds without telling anybody, because there is nobody to
-  tell. A lost claim names the holder and exits non-zero.
-- **`release <key> [--force]`** — releases a claim **you** hold. Releasing one **somebody else**
-  holds needs `--force`; without it the command names the holder and refuses.
-- **`open <roadmap>`** / **`reserve <roadmap>`** — hands a roadmap's tasks to everyone, or takes that
-  back. Online this is one label on the programme issue. Offline both print why they did nothing.
-- **`sync`** — reconciles the shared channel with what actually landed. Online: closes every issue
-  the derivation proves landed, moves each task's `status:` label onto what the board derives, ticks
-  every programme's checklist against its own closed tasks, and closes a programme once all of it
-  has. Offline it does nothing, and that is correct: there is nowhere to write a status.
+The command writes and lints `<roadmaps.drafts>/<slug>.md`, refuses overwrites, and never publishes
+or launches workers. Present the draft and assumptions; publishing requires user intent to publish.
 
-A command that cannot apply in the current mode says so rather than pretending to succeed. Relay
-that sentence to the user instead of treating it as an error.
+## Lifecycle
 
-## 4. Reading the board
+- `lint [path…]`: validate drafts without network access.
+- `board [--json]`: inspect derived state, including unpublished drafts and corrections.
+- `publish <path>`: publish to the configured destination and enrol tasks. Offline/local writes
+  local Markdown; online creates issues. A published-but-unenrolled result names its recovery command.
+- `enrol`: register missing published tasks; safe to repeat.
+- `claim <key>` / `release <key>`: claim before work; never take someone else's closed roadmap.
+- `open <slug>` / `reserve <slug>`: change online roadmap availability.
+- `sync`: reconcile online status with landed work.
+- `runtime <slug> [claude|codex|inherit]`: select runtime for future workers.
 
-`board` prints one table plus up to five kinds of line, and they are not the same fact:
-
-- **`correction:`** — a real disagreement between the register and the derivation. It wants a human.
-- **`unverified:`** — the register says a task landed and recorded no commit subject to prove it. It
-  prints as `landed?`, never as `todo`, and is listed separately so an absence never quietly becomes
-  a verification.
-- **`not ours:`** — a task somebody else owns, deliberately dropped here so nothing schedules it.
-  Never a problem, and offline cannot produce this line at all.
-- **`orphan:`** — a task one record has and the other does not, and the two halves are different
-  facts. *In a roadmap and not in the register* means nothing will schedule it or even count it: run
-  the command the line names. *In the register and in no roadmap* is the reverse — a task nobody
-  else can see — and it wants a roadmap line written for it.
-- **`unpublished:`** — a draft. Nobody but this machine knows it exists.
-
-**If a board line looks wrong, the derivation is wrong** — git, the register, or the issue — or the
-register is stale. Fix that. Never add a field to make the board agree with what you already know;
-the block has no field for it, on purpose.
-
-## 5. Three rules, and what enforces them today
-
-- **Never take a roadmap that is not yours and not open.** Ask its owner to `open` it.
-- **Never work a task you have not claimed**, your own roadmaps included. Claiming is what makes the
-  task visibly taken to everyone else watching.
-- **Never write a status anywhere.**
-
-**Be honest about enforcement**: `guard-claim` (`hooks/guard-claim.mjs`) refuses `git worktree add
--b <branch>` — the one gesture that starts work — for a task that is neither yours-and-open nor
-claimed by you, failing open when the board is unreachable. It fails open too where a claim cannot be
-recorded at all — offline, and for a `destination: local` roadmap in any mode, `claim` succeeds
-without writing anything, so no claim ever reaches the board and a guard that demanded one refused
-the task you had just claimed. There the branch ref, and git's own refusal of a name it already has,
-are the interlock; online, where an issue's assignee records the claim, the refusal stands. That is
-one gesture, not every way work could start, so the rules still outlive what it catches; keep them on
-the paths where no tool is watching. The third rule needs no enforcement offline: there is no field
-to write a status into.
-
-## 6. Writing a good task
-
-`Why` names what a user of the thing sees or feels differently once the task lands — never a
-mechanism, never a file, never an internal number. `Acceptance` names the instrument that will show
-it: a test, a benchmark number, a screenshot pair, a log line. When that instrument does not exist
-yet, say so plainly rather than gesturing at "will look right" — building it is honest work, and it
-is often the task's own first step.
-
-Filing a bug is done with what exists: draft it as an ordinary task with its soft fields — `Order`,
-`Deps`, `Touches` and `Lane` — all `—`, because a bug usually does not yet know where it sits in a
-sequence, what it blocks, or which files fixing it will touch. Publish it like any other task.
+Never write status fields. Fix reported derivation/register disagreements at their source.
+Offline ownership answers concern this machine only. Drafting ends at the draft; it does not conduct it.

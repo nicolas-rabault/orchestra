@@ -137,10 +137,10 @@ test('installedRoot returns null when the text carries no marker', () => {
 // A placeholder added to a template without adding it to `freshRender`'s vars would leave it
 // unresolved in every real install — this catches that class of mistake directly on the shipped
 // template files, not on a hand-written fixture string.
-test('every real template renders with {ROOT, ID, BIN, ROOT_XML} and leaves no placeholder behind', () => {
+test('every real template renders project and model policy without unresolved placeholders', () => {
   const vars = {
     ROOT: '/Users/dev/my-project', ID: 'abc123', BIN: '/plugins/cache/orchestra@0.5.0/bin/orchestra',
-    ROOT_XML: '/Users/dev/my-project',
+    ROOT_XML: '/Users/dev/my-project', TICK_MODEL: 'sonnet', TICK_EFFORT: 'medium',
   };
   for (const name of TEMPLATES) {
     const out = renderTemplate(readTemplate(name), vars);

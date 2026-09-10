@@ -19,7 +19,8 @@ case "$1" in
   agents) cat "$D/agents.json" 2>/dev/null || echo '[]' ;;
   stop) echo "stopped $2" ;;
   -p)
-    printf '%s' "$5" > "$D/prompt-$3.txt"
+    for arg do prompt="$arg"; done
+    printf '%s' "$prompt" > "$D/prompt-$3.txt"
     while [ -f "$D/hold" ]; do sleep 0.05; done
     if [ -f "$D/refuse" ]; then cat "$D/refuse";
     elif [ -f "$D/answer" ]; then cat "$D/answer";
