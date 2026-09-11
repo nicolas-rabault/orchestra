@@ -155,6 +155,13 @@ has landed:
   owed (`LAUNCHES HELD:`) — a warm session pays no brief and a new one pays all of it — then budgets
   its launches against every other orchestra on this machine (`~/.orchestra/machine.json`,
   `maxWorkers`, default 8).
+  Each `ready` pass also removes clean worktrees belonging to terminal tasks once Git proves
+  their complete branch is merged into the configured main branch. It retries leftovers from
+  archived tasks too. `CLEANUP HELD:` (JSON: `cleanup.kept`) names local files, locks, unmerged
+  commits or worker liveness that prevents removal; nothing is forced. Ignored files are protected
+  too. Codex workers require a fresh completed observation; `codex observe` can refresh an
+  archived task without reopening it. Successful removals are journalled;
+  branch refs are retained. This runs on conductor passes, not on the desktop app’s archive button.
   `drive` resolves both lines: it stops the background registration, resumes each session in its
   worktree with the row's own relay at the head of the nudge, detached so the turn survives the
   600-second ceiling, and writes the relay's receipt only when that turn has returned — a
