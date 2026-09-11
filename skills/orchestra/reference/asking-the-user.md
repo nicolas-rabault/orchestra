@@ -2,7 +2,7 @@
 
 Read before you put a question to the user, and before you decide not to. It carries the framing
 pass that decides whether a question is theirs at all, the one interruption that is allowed, and
-the template every question they see is written in.
+the formats for decisions and hands-on checks.
 
 ## The framing pass, and the one interruption
 
@@ -44,7 +44,7 @@ What this costs, stated plainly so nobody discovers it later: a wrong solo rulin
 next checkpoint instead of being stopped within the hour. The exposure is a fork framing did not
 anticipate and no precedent covers — which is exactly what the `ruling` lines make visible.
 
-## The decision template
+## Before writing any question
 
 **Before you put ANY question mid-development, three checks.** Was it already answered at framing —
 `decisions[]` on the row (see The framing pass, and the one interruption)? Can you answer it
@@ -58,15 +58,17 @@ answer came back "yes, all four" in six minutes.
 
 Every question is written once and lands in two places: the message you put in chat, and the `ask`
 of its `pending[]` item. **The `ask` carries that whole body, word for word — never a summary of
-it.** The page prints `ask` and nothing else, so a body squeezed into one line there is the
-question asked with the half that made it answerable taken out. Measured 2026-09-08 in duckJam,
+it.** The page renders this body alongside the row’s title, opening links, images and answer buttons.
+Keep the explanation complete; refer to those controls by their visible names instead of repeating
+their URLs or the row’s technical metadata. Measured 2026-09-08 in duckJam,
 where every ask was one dense sentence: of the twelve answers given from the page that day, two
 were not answers at all — "Ta question n'a aucun sens, je ne comprends rien" and "pourquoi tu as
 besoin de 2 personnes ?" — each costing a full round trip before the question could even be
 understood, and one of the two had to be asked twice.
 
 **Write it for someone who has never seen the code AND does not know the project's vocabulary.**
-The first half of that is the easy half: no path, no function name, no identifier, no millisecond.
+Keep implementation paths, function names and identifiers out of the explanation. For a CLI
+test, give the actual working directory and command in the test instructions so it is runnable.
 The second half is the one that fails. Every word a worker uses for a thing — the name of a model,
 a mode, a stage, a score, a policy — is a word learnt inside the code, and on the page it means
 nothing. Three tests, and a body failing any of them is rewritten before it is sent:
@@ -93,22 +95,43 @@ noun in it was learnt in the code:
 > tries. A different character, one that is not part of the season, does finish it. Do we keep
 > round 04 as it is, or make it beatable by the season's own character?"
 
-The body carries no markdown — the page prints it verbatim, so `**` shows as two asterisks — and
-its labels are plain words in the user's language. The bracket header is the chat message's alone:
-the card already names the row, its kind and its port.
+## Choose the format that matches the user's action
 
-> [<ID> — <title> · `<branch>` · session `<name>` · server :<port>]  ← the chat message only
-> Where it stands: <one sentence, about the thing itself, in plain language>
-> The question: <one sentence, ending in a question mark>
-> Why it is yours to decide: <what makes the choice real: what each option costs, which rules or
-> earlier answers apply, what is waiting behind it>
-> Options: A) … · B) … · C) …
-> <sub>Technical: <the numbers, names and paths, for when the user wants them>
-> Pictures: <repo-relative path(s) to any screenshot the question is about></sub>
+A decision asks the user to choose an outcome. A hands-on check asks them to perform specific
+steps and report what they observe; use the test format in `hands-on-gate.md`. Do not turn a test
+into a vague “Do you validate?” or ask the user to design their own test.
 
-The trailing `server :<port>` is present only on a row that actually serves something. A CLI, a
-library or a firmware image drops it, and the one command that shows the change goes in the body
-instead — see The hands-on gate.
+Write plain text with short labelled sections in the user's language. The page displays text,
+so markdown emphasis and markdown links appear literally. Use everyday names for visible things;
+keep exact button/menu labels so the user can find them. Write one action per sentence.
+
+For a decision, use this order:
+
+> Situation: <what happens today, in one concrete sentence>
+> Choice: <what each alternative changes for the user and its main tradeoff>
+> Recommendation: <the option you recommend and why, in one sentence>
+> Question: <one explicit choice, understandable on its own, ending in ?>
+> Options: A) <concrete outcome> · B) <concrete outcome>
+
+Offer only real alternatives; two are enough when there are two. Avoid “yes/no”, “validate”,
+“continue” or “as planned” when those labels hide what the answer will authorize. Populate the
+item's `options` with those same letters and texts: Monitor renders them as answer buttons.
+
+Opening destinations belong in the row's `links[]`; a test server's port belongs in the pending
+item's `port`. In the body, name the matching control: “Open the staging preview below”, then
+say where to navigate inside it. Do not repeat those URLs in the question, options or footer.
+For chat, put any necessary clickable destination outside the shared `ask` body. A command the
+user must run belongs in the test instructions, with its working directory.
+
+The technical footer is optional. Include only evidence needed for this question that Monitor
+does not already show. Screenshot paths still belong there so Monitor can display the images:
+
+> <sub>Pictures: <repo-relative screenshot paths></sub>
+
+Before posting, read the body as the recipient: can they name the choice or first action, locate
+the control, and know what answer to give without reading the worker's report? If not, rewrite it.
+If the worker omitted a test step or expected result, obtain that evidence before asking the user;
+do not fill the gap with guesses.
 
 Relay the user's answer back to the worker verbatim, plus whatever context the worker needs.
 

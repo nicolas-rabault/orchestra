@@ -42,6 +42,47 @@ Three rules that come with it, and the first is not new:
   place the work can be looked at for as long as the row is open — where the `port` on a
   `pending[]` item dies with the question. Put a thing that stays on the row, and a thing that is
   the gate itself in the item.
+
+### Write a test the user can actually perform
+
+Before posting, obtain the worker's tested starting state, exact actions and expected visible
+results. Exercise the scenario yourself or inspect the worker's concrete evidence; still run any
+command and open any destination you will give the user, as required below. A green suite alone
+does not supply those steps. Ask the user only for the remaining human judgment.
+
+Use the following plain-text structure in the user's language. Keep the test focused on the
+changed behavior: usually one to three numbered steps, each pairing an action with its expected
+result. Give the starting screen, required data or login when the scenario needs it.
+
+> What changed: <one sentence about the visible behavior>
+> Start: <name the opening control below and the starting screen/state>
+> Check:
+> 1. <action with the exact visible control name>. Expected: <observable result>.
+> 2. <next action>. Expected: <observable result>.
+> Feedback: <what to report on failure: step, observed result, screenshot if useful>
+> Question: <does the specific behavior being tested match the stated expectation?>
+
+For example, with a verified preview recorded in `links[]` under the label “aperçu du formulaire”:
+
+> Ce qui change : Une adresse e-mail incorrecte affiche maintenant une erreur avant l'envoi.
+> Pour commencer : Ouvre « aperçu du formulaire » ci-dessous, puis le formulaire de contact.
+> À tester :
+> 1. Saisis « abc » dans « E-mail » et clique sur « Envoyer ». Attendu : une erreur apparaît sous « E-mail » et le formulaire reste ouvert.
+> 2. Remplace « abc » par une adresse valide. Attendu : l'erreur disparaît.
+> Ton retour : Si le résultat diffère, indique le numéro de l'étape et ce qui apparaît à l'écran.
+> Question : L'erreur apparaît-elle avec « abc » puis disparaît-elle avec une adresse valide ?
+
+These example steps are illustrative; write the actual steps from the task's acceptance and
+observed behavior. If offering answer buttons, use concrete labels such as “Both checks pass”
+and “A check fails; I will describe it”, and record the same options on the pending item.
+For a CLI or other non-web result, replace Start with the working directory and the exact tested
+command; describe the expected output. Keep commands copyable without markdown fences. For a
+visual comparison, name the displayed images and the specific difference to judge.
+
+The body names Monitor's opening controls; `links[]` and `port` carry their destinations. Keep
+URLs out of the body and footer when those controls already provide them. A required route inside
+the app still needs navigation instructions or its own verified, clearly labelled opening link.
+
 **The user's validation IS the approval** — do not then ask a second time for the merge; that
 second question is the one this roadmap paid for thirteen times over, in planetCraft (see The
 framing pass, and the one interruption). What follows validation is step 6's business (see The

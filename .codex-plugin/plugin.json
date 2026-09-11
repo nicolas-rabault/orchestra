@@ -1,6 +1,6 @@
 {
   "name": "orchestra",
-  "version": "0.13.0+codex.20260910181751",
+  "version": "0.13.0+codex.20260911093246",
   "description": "Conduct roadmaps with independent Claude or Codex sessions, a shared monitor and serialized merge gates.",
   "author": {
     "name": "Nicolas Rabault"

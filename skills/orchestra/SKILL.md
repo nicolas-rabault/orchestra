@@ -17,7 +17,7 @@ extra tasks, acceptance criteria, model upgrades or repeated verification.
 | First use, absent configuration/register, first Claude background worker | `reference/first-run.md` |
 | Any Codex conductor or worker | `reference/codex.md` |
 | A question or choice needs the user | `reference/asking-the-user.md` |
-| A result needs a human look or a server | `reference/hands-on-gate.md` |
+| A result needs a human look or a server | `reference/asking-the-user.md` and `reference/hands-on-gate.md` |
 | A pull-request row is actionable | `reference/pull-request-rows.md` |
 | Design handoff, missing session or retirement | `reference/worker-briefs.md` |
 | All rows are terminal | `reference/stand-down.md` |
